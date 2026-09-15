@@ -1,0 +1,15 @@
+{
+  "version": "2.1",
+  "workspaceRoot": "/Users/essam/Code/egpt-frqtl",
+  "type": "workspace",
+  "env": {
+    "products": [
+      {
+        "appId": "egpt-frqtl",
+        "localPath": ".",
+        "kbId": "General",
+        "communityId": "egpt"
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@descix/cli": "^1.0.6"
+  }
+}
