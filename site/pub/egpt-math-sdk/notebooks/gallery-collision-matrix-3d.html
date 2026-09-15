@@ -1,0 +1,51 @@
+<frqtl-notebook version="1" title="Collision Matrix 3D — the same density gradient, read in perspective">
+
+<cell type="markdown">
+# Collision Matrix 3D
+
+**Seven lanes of head-on collisions, distributed in a 3×3 grid of depth — the SAME density-vs-bounce-timing law as the 2D matrix, now visibly receding into the z axis.**
+
+Seven pairs of Dim-6 cube bodies (same voxel size, same capacity) launch head-on along X. Mass is swept on a log (powers-of-2) scale from 1 to capacity, giving density ρ ≈ 0.0002 … 1.0. The 2D collision-matrix arranges these lanes in a single column; this version distributes them in rows (Y) and columns (Z) so the perspective orbit camera reveals TRUE DEPTH — cubes at different Z recede convincingly, not just stack vertically. Engine bench C5 (z-axis bounce ≡ x-axis bounce) means this 3D distribution is architecturally free — no new engine behavior, only a different placement of the SAME physics.
+
+*New to FRQTL? Start with **Hello, FRQTL** (`getting-started-hello-frqtl`) for the `caps.frqtl` setup-module + declarative-canvas basics this notebook assumes.*
+</cell>
+
+<cell type="markdown">
+The experiment assembly — seven mass-swept lanes distributed in Y and Z — as a thin adapter over the canonical factory (see below):
+</cell>
+
+<cell type="module" name="./setups/collision-matrix-3d.js">
+/* setupCollisionMatrix3D — THIN ADAPTER over the canonical setup factory
+ * (WS gym-controls-as-sugar Bite 0 ADDENDUM, CEO 2026-07-03). Same Bite-0
+ * mechanism as every other de-forked notebook: the canonical factory is
+ * imported by BARE SPECIFIER (a relative path here would 404 — see
+ * lib/shim/notebook/frqtl-setups-importmap.js); this cell only bridges the
+ * notebook builder's `(frqtl, universe, options)` call shape to the factory's
+ * `(universe, options)` shape — ZERO physics here. The SAME canonical
+ * `lib/frqtl/objects/setup/setupCollisionMatrix3D.js` also drives the
+ * standalone `lib/frqtl/experiments/collision-matrix-3d/` page.
+ */
+import { setupCollisionMatrix3D as _setupCollisionMatrix3D } from '@frqtl/setups/collision-matrix-3d';
+
+export function setupCollisionMatrix3D(frqtl, universe, options) {
+    return _setupCollisionMatrix3D(universe, options);
+}
+</cell>
+
+<cell type="markdown">
+Declare a canvas that runs it. `render3d="true"` requests the three.js 3D renderer + perspective camera for this canvas (the notebook-realm mirror of an experiment page's `window._egpt3D = true;` opt-in). `renderOptions="shape=cube,colorScheme=roygbiv"` is the notebook-cell channel for the SAME `runner.setRenderOption('shape','cube')` / `('colorScheme','roygbiv')` calls the standalone page makes page-side beside `setup()` (WS gym-controls-as-sugar fix-loop #6 Finding B, 2026-07-04) — without it this canvas rendered soft default-shaded blobs instead of the shaded cube meshes the GYM/standalone page show; the render intent did not travel with the physics-only adapter. Click **Run** (or **Run All**):
+</cell>
+
+<cell type="canvas" id="c-cm3d-canvas" setup="./setups/collision-matrix-3d.js#setupCollisionMatrix3D" stage="480x480" seed="42" render3d="true" renderOptions="shape=cube,colorScheme=roygbiv"></cell>
+
+<cell type="markdown">
+## What you are seeing
+
+Seven pairs of cubes, arranged in a 3×3 grid facing the camera, collide head-on. Sparse (low-mass) lanes bounce almost instantly; dense (high-mass, near-capacity) lanes linger before separating — the SAME per-tick occupancy-ceiling law the 2D collision-matrix demonstrates, now visible with true perspective depth: cubes further back in Z genuinely recede, rather than merely stacking on a flat plane.
+
+**Compare to the 2D version** (`collision-matrix`): identical physics, identical lane masses — the ONLY difference is the render intent (`render3d`) and the lane distribution (Y×Z grid instead of a single Y column), both of which the canonical `setupCollisionMatrix3D.js` factory already encodes; nothing in this notebook cell reimplements it.
+
+The simulation runs live in your browser on the compiled FRQTL (WASM) engine.
+</cell>
+
+</frqtl-notebook>

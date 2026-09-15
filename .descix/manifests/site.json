@@ -1,0 +1,21 @@
+{
+  "_purpose": "Deployable site set for the egpt-frqtl PROD app. WITHOUT this manifest the CLI's legacy flow uploads the whole app directory. Site URLs are non-expiring and unsigned, so the set is an explicit ALLOWLIST: SiteWalker treats an empty `include` as match-everything.",
+  "_schema_pin": "Same schema as the egpt-godsworld worked example, authored against the PUBLISHED @descix/cli@1.0.6 tarball: lib/core/ManifestLoader.js::validateSiteManifest (sources[] non-empty; each {path required string, include?/exclude? string arrays}; buildCommand string|null) and lib/core/SiteWalker.js::walkDir (exclude tested BEFORE include, so exclude wins; isDirExcluded matches the BARE directory name, so directory excludes carry no glob suffix). RE-VERIFY THIS PIN against the CLI actually used at upload time before trusting it.",
+  "sources": [
+    {
+      "path": "site",
+      "include": [
+        "index.html",
+        "app-assets/**",
+        "pub/**"
+      ],
+      "exclude": [
+        ".descix",
+        "node_modules"
+      ]
+    }
+  ],
+  "buildCommand": null,
+  "_two_namespaces": "The IDE entry is index.html with its hashed React chunks under app-assets/; every router-resolved engine, vendor, notebook and math URL lives under pub/. The two namespaces are deliberately DISJOINT — serving the sdk dist at root would collide with the IDE's own index.html. Do not add a source that flattens pub/ to root.",
+  "_why_not_apps_ide_dist": "apps/ide/dist on its own is HALF A SITE: it carries no pub/ payload and a bare vite build leaves it in DEV-CORE mode, every engine/monaco/notebook/math URL resolving at /frqtl/... and /egpt-src/... which nothing serves on a backend-less host. Nothing in the built bytes announces which mode they are, which is exactly how the wrong bundle reached PROD before and served a dead shell."
+}

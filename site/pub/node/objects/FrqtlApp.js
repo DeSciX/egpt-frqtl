@@ -1,0 +1,2133 @@
+/* Copyright 2023-2026 by Essam Abadir */
+
+/**
+ * FrqtlApp — the HOST ADAPTER a page/IDE/notebook talks to for one FRQTL scene.
+ *
+ * This is an `Application` in the PixiJS sense: loop, scene registry, renderer facade,
+ * canvas, instrument taps, editor plumbing and world-property proxy all hang off ONE
+ * handle the host drives. It is NOT a loop driver — an object called "Runner" reads as
+ * the loop alone (Matter.js `Runner` drives `Engine`; `Render` and `Composite` are
+ * separate objects), so a caller carrying that muscle memory reaches for a `scene` or
+ * `renderer` that does not exist here and starts guessing at the interface. Named to
+ * match the surface it actually is, consistent with `FrqtlVision`.
+ *
+ * Handles universe construction, experiment setup via the frqtl/objects/setup factories,
+ * and the doTick → renderer.renderTick loop, over the Rust/WASM engine reached through
+ * the unified compat layer (frqtl/compat/egpt-engine.js) — engine-agnostic by contract.
+ *
+ * Host hook: `start()` publishes the live instance at `window._frqtlApp` — the ONE
+ * ambient handle same-origin embedders (STUDIO/CODE author surface, notebook pane,
+ * Playwright probes) drive the scene through. There is no second hook and no alias.
+ *
+ * Design (§6, §6.1 from WS_RENDERER_SHIM_DESIGN.md):
+ *   - The app OWNS the requestAnimationFrame loop. p5's loop()/noLoop() are
+ *     NO LONGER used. window.draw is no longer set.
+ *   - The renderer is obtained from THE DISPLAY SLOT (window.FrqtlDisplay, written by
+ *     render-boot.js). If the slot is empty when the draw loop first fires, the app
+ *     FAILS LOUD via _egptFailLoud — no silent P5Renderer fallback (Phase 1, WS-RENDERER).
+ *   - Fixed-timestep accumulator decouples physics ticks from draw frames:
+ *       tickHz:  physics ticks per second    (default: lock to drawHz → 1:1 as today)
+ *       drawHz:  draw frames per second cap  (default: display refresh)
+ *     Default (tickHz == drawHz) reproduces today's exact 1:1 loop.
+ *   - onTick fires per PHYSICS TICK; renderTick fires per DRAW FRAME.
+ *   - stepsPerFrame is kept as a back-compat alias: sets tickHz = drawHz * stepsPerFrame.
+ *   - Spiral-of-death guard: accumulated time clamped + ticks-per-frame capped.
+ *   - Determinism preserved: physics only ever advances in whole doTick() steps;
+ *     the headless run.js orchestrators (no RAF, no rendering) are unaffected.
+ *
+ * Usage (unchanged from before):
+ *
+ *   var runner = new FrqtlApp({
+ *     canvasParentId: 'canvas-wrapper',
+ *     canvasW: 600,
+ *     canvasH: 600,
+ *     seed: 42,
+ *     onTick: function(tickData, setupResult) { ... }
+ *   });
+ *
+ *   runner.createCanvas();
+ *   runner.setup(setupDoubleSlit, { wavelength: 64, ... });
+ *   runner.start();
+ *   runner.stop();
+ *   runner.toggle();
+ *   runner.step();  // single tick + render (step-by-step debugging)
+ *
+ * New (§6.1):
+ *   new FrqtlApp({ ..., tickHz: 120, drawHz: 30 })
+ *   // → 4 physics ticks per drawn frame
+ *
+ * Back-compat alias (§6.1):
+ *   new FrqtlApp({ ..., stepsPerFrame: 4 })
+ *   // → sets tickHz = drawHz * 4 (same as above if drawHz == display refresh)
+ */
+
+(function () {
+    'use strict';
+
+    // ── Fixed-timestep constants (§6.1) ─────────────────────────────────────
+    var MAX_FRAME_MS           = 100;   // clamp wall-clock delta (spiral-of-death guard)
+    var MAX_TICKS_PER_FRAME    = 10;    // hard cap for normal (bounded) operation
+    var MAX_TICKS_UNBOUNDED    = 200;   // hard cap for unbounded TPS (Infinity tickHz)
+
+    // ── FrqtlApp ─────────────────────────────────────────────────────
+
+    /**
+     * Resolve an engine class the host needs (`EGPTUniverse`, `Rectangle`) through a NAMED
+     * order, never a bare global identifier.
+     *
+     * A bare `EGPTUniverse` / `Rectangle` reference is a `ReferenceError` — not a falsy
+     * miss — in any host that has no `window`, which is precisely what made this runner
+     * browser-only and the taps below a browser privilege. The engine already publishes both
+     * on its HANDLE (`lib/frqtl/compat/egpt-engine.js` → `handle.EGPTUniverse`,
+     * `handle.Rectangle`), so a headless host passes what it already holds:
+     *
+     *     new FrqtlApp({ engine: handle, canvasW, canvasH, seed })
+     *
+     * Order: the injected handle, then `window` (what engine-boot.js publishes in a page),
+     * then `globalThis` (the node load side-effect). Absent ⇒ THROW naming the canonical
+     * path. There is NO alternative construction path and no optional-engine soft path:
+     * `EGPTUniverse.create(config)` remains the ONE construction authority.
+     * @private
+     */
+    function _resolveEngineClass(name, engineHandle) {
+        if (engineHandle && engineHandle[name]) { return engineHandle[name]; }
+        var g = (typeof window !== 'undefined' && window) ? window
+              : ((typeof globalThis !== 'undefined') ? globalThis : null);
+        if (g && g[name]) { return g[name]; }
+        throw new Error('[FrqtlApp] the engine class `' + name + '` is unreachable: it is ' +
+            'not published on this host and no `engine` handle was passed to the constructor ' +
+            '(new FrqtlApp({ engine: <lib/frqtl/compat/egpt-engine.js handle> })). Load the ' +
+            'engine first (engine-boot.js in a page). (FAIL-LOUD — no bare-global fallback, ' +
+            'and no construction path other than EGPTUniverse.create.)');
+    }
+
+    /**
+     * Resolve the capture INSTRUMENT — the relocated render-pipeline tap mechanism
+     * (`lib/frqtl/objects/instruments/capture.js`, THE_MINIMAL_SIM §4). Dual-mode, the same
+     * shape `ObjectFactory.js` and both renderer providers already use: `require` under
+     * CommonJS, the published global in a classic-script page. FAIL-LOUD, never a fallback —
+     * a host with no tap mechanism must say so, not silently lose its eyes.
+     * @private
+     */
+    function _resolveCaptureModule() {
+        if (typeof module !== 'undefined' && module.exports) {
+            return require('./instruments/capture.js');
+        }
+        if (typeof window !== 'undefined' && window.FrqtlCapture) { return window.FrqtlCapture; }
+        if (typeof FrqtlCapture !== 'undefined') { return FrqtlCapture; }
+        throw new Error('[FrqtlApp] canonical contract FrqtlCapture ' +
+            '(lib/frqtl/objects/instruments/capture.js) is unreachable (load order) — it is the ' +
+            'render-pipeline tap mechanism this host delegates to. Fail-loud, not a fallback.');
+    }
+
+    /**
+     * Resolve THE DISPLAY SLOT (`lib/frqtl/compat/renderer/display-slot.js`) — the ONE
+     * answer to "which provider owns the display". Dual-mode, the same shape the capture
+     * instrument and both renderer providers use: `require` under CommonJS, the published
+     * global in a classic-script page. FAIL-LOUD, never a fallback.
+     * @private
+     */
+    function _resolveDisplaySlot() {
+        if (typeof module !== 'undefined' && module.exports) {
+            return require('../compat/renderer/display-slot.js');
+        }
+        if (typeof window !== 'undefined' && window.FrqtlDisplay) { return window.FrqtlDisplay; }
+        if (typeof FrqtlDisplay !== 'undefined') { return FrqtlDisplay; }
+        throw new Error('[FrqtlApp] canonical contract FrqtlDisplay ' +
+            '(lib/frqtl/compat/renderer/display-slot.js) is unreachable (load order) — it is ' +
+            'the ONE display-provider authority this host reads. It heads the RENDERER phase ' +
+            '(renderer-layer-manifest.js). Fail-loud, not a fallback.');
+    }
+
+    /**
+     * @param {Object}   opts
+     * @param {string}   [opts.canvasParentId]   DOM element ID for the canvas.
+     * @param {Object}   [opts.engine]           Engine handle (compat/egpt-engine.js) carrying
+     *                                           EGPTUniverse + Rectangle. Omit in a page — the
+     *                                           boot-published globals are read instead.
+     * @param {number}   [opts.canvasW=600]       Physics canvas width in pixels.
+     * @param {number}   [opts.canvasH=600]       Physics canvas height in pixels.
+     * @param {number}   [opts.seed=42]           RNG seed for deterministic runs.
+     * @param {number}   [opts.tickHz]            Physics ticks/s (default: lock to drawHz).
+     * @param {number}   [opts.drawHz]            Draw frames/s cap (default: display refresh).
+     * @param {number}   [opts.stepsPerFrame=1]   Back-compat alias: sets tickHz = drawHz * N.
+     * @param {Function} [opts.onTick]            Called per PHYSICS TICK with (tickData, setupResult).
+     * @param {Function} [opts.onReady]           Called once the canvas is ready.
+     */
+    function FrqtlApp(opts) {
+        opts = opts || {};
+        var canvasW = opts.canvasW !== undefined ? opts.canvasW : 600;
+        var canvasH = opts.canvasH !== undefined ? opts.canvasH : 600;
+        var seed    = opts.seed    !== undefined ? opts.seed    : 42;
+
+        this._canvasParentId = opts.canvasParentId || null;
+        this._onTick         = opts.onTick  || null;
+        this._onReady        = opts.onReady || null;
+        // Multi-subscriber per-tick fan-out (peer of the single `_onTick` slot the
+        // experiment page owns). `addTickListener(fn)` lets a host-side consumer (the
+        // LiveChart wiring) subscribe to the tick stream WITHOUT stealing `_onTick`.
+        // Empty by default → zero behavior change (SU1); the fan-out fires AFTER
+        // `_onTick` at both tick sites (the RAF loop and step()).
+        this._tickListeners  = [];
+
+        // tickHz / drawHz — independent clocks (§6.1)
+        // drawHz=0 means "lock to display refresh" (the default)
+        this._drawHz = (opts.drawHz !== undefined && opts.drawHz > 0) ? opts.drawHz : 0;
+        // stepsPerFrame back-compat: treated as tickHz multiplier relative to drawHz
+        var spf = (opts.stepsPerFrame !== undefined) ? Math.max(1, opts.stepsPerFrame) : 1;
+        if (opts.tickHz !== undefined && opts.tickHz > 0) {
+            this._tickHz = opts.tickHz;
+        } else if (spf > 1) {
+            // stepsPerFrame > 1: tickHz = drawHz * spf  (if drawHz known at start, else approximate)
+            this._tickHz = (this._drawHz > 0) ? this._drawHz * spf : 60 * spf;
+        } else {
+            // Default 1:1: tickHz locked to drawHz at runtime (set in the frame loop)
+            this._tickHz = 0;   // 0 = "lock to drawHz" — resolved inside the frame loop
+        }
+
+        // Back-compat accessor
+        this.stepsPerFrame = spf;
+
+        // The engine classes, resolved through the named order (never a bare global).
+        var _Rectangle = _resolveEngineClass('Rectangle', opts.engine);
+
+        // Physics canvas rect
+        this.canvas_rect = new _Rectangle(0, 0, canvasW, canvasH, null, false);
+
+        // The INIT SEED, retained. This runner is the party that hands the seed to the
+        // universe, so it is the seed authority — and `seed` is half of the regeneration
+        // triple (code, seed, tick) a capture's SceneRecord must carry. It is FERRIED into
+        // the capture instrument's identity bag below, never re-derived there.
+        this._seed = seed;
+        // Tick SUSPENSION depth (see suspendTicks). Distinct from `_isLooping`, which is the
+        // USER's play/pause: a suspend must not lie to the play button, and a resume must not
+        // secretly start a stopped sim.
+        this._tickSuspend = 0;
+
+        // Universe — built through the ONE construction authority, `EGPTUniverse.create`
+        // (EGPTUniverse.CONFIG is the exported key/default/unit/effect table). This host
+        // names only the two settings it actually owns; every other key takes its published
+        // default (fps 60, iframeIntervalSeconds 1, no IQC, no bonding, groundUp,
+        // minMBFillRate 0.1, wavelengthScale 1, lowestDimension 0 — the setup factory /
+        // sketch's `universe.init()` overrides the last two per experiment anyway).
+        var _Universe = _resolveEngineClass('EGPTUniverse', opts.engine);
+        this.universe = _Universe.create({
+            rect: this.canvas_rect,
+            seed: seed,
+        });
+
+        this._setupResult  = null;
+        // Design-mode signal (Bite 4b) — DEFAULT false (Run / standalone bundles /
+        // experiment pages). When true (STUDIO authoring), the renderer DRAWS the
+        // Design-only markers (a manipulable emitter's visual circle, `lo._designMarker`).
+        // A render toggle at the output boundary (zero physics): it filters ONLY the
+        // renderTick view; hit-test / drag / codegen / getAuthoredObjects all read
+        // `largeObjects` (the world census) directly, so a marker stays selectable +
+        // draggable even when its circle is suppressed (the "grab mid-run" oracle uses
+        // the overlay handles).
+        this._designMode   = false;
+        // STAGE 3 camera-locked input-drive (Q-A5-DRIVE spec §2): { target, off } while an
+        // object is being camera-driven (the sticks move the object, the camera is LOCKED), else
+        // null. The runner is the ONE drive authority (it owns updateObjectProperty, the universe
+        // bounds, and cameraControl) — see setInputDriveTarget/getInputDriveTarget/driveInput.
+        this._inputDrive   = null;
+        // F5: optional host callback fired on a position write (center/rect) so an overlay can
+        // REPAINT event-driven (Studio sets it; a headless game leaves it null → no-op).
+        this._onObjectMoved = null;
+        this._isLooping    = false;
+        this._rafId        = null;
+        this._lastTickData = null; // repaint()'s source (§Studio Controls Realignment S4)
+
+        // Fixed-timestep state
+        this._accumulator  = 0;
+        this._lastFrame    = 0;
+        this._lastDraw     = 0;
+
+        // Budget-exhaustion warning throttle (see the drive loop). Default-muted;
+        // only emits under window._egptVerbose === true, at most once per interval.
+        this._lastBudgetWarn = 0;
+        this._BUDGET_WARN_INTERVAL_MS = 5000;
+
+        // Rate measurement (§fps/tps readout) — integers only, no per-frame allocation.
+        // Counts reset each ~RATE_WINDOW_MS; getRates() returns last computed snapshot.
+        this._rateWindowMs  = 1000;   // recompute window length
+        this._rateWindowEnd = 0;      // performance.now() when the current window ends
+        this._tickCount     = 0;      // physics ticks accumulated in this window
+        this._drawCount     = 0;      // draw frames accumulated in this window
+        this._lastTps       = 0;      // last computed ticks/sec
+        this._lastFps       = 0;      // last computed frames/sec
+
+        // Render options — threaded into every renderTick(tickData, largeObjects, options) call.
+        // Default: renderBaseCanvas true = draw particle layer (current behavior preserved).
+        // Use setRenderOption(key, val) to modify.
+        this._renderOptions = { renderBaseCanvas: true };
+
+        // Renderer (resolved lazily in start() — render-boot.js may not have run yet)
+        this._renderer = null;
+
+        // ── The render-pipeline TAP — DELEGATED, not implemented here ─────────
+        // The mechanism lives at lib/frqtl/objects/instruments/capture.js (THE_MINIMAL_SIM
+        // §4): a tap is an instrument on the primitive surface, not an editor concern. This
+        // host keeps only the `capture`/`captureStill`/`sceneRecord`/`setSourceRef`
+        // conveniences below, each a thin forward. The binding hands the instrument LIVE
+        // reads — the retained TickData, the active provider, the physics rect and the ONE
+        // render-options bag — so nothing is copied and no second authority is minted.
+        var self = this;
+        this._capture = _resolveCaptureModule().create(
+            { get lastTickData() { return self._lastTickData; } },
+            function () { return self._getRenderer(); },
+            { seed: this._seed, get rect() { return self.canvas_rect; } },
+            function () { return self._renderOptions; }
+        );
+    }
+
+    /**
+     * runner.largeObjects — THE OBJECT CENSUS, DERIVED FROM THE WORLD.
+     *
+     * ── Layer 1: API contract ────────────────────────────────────────────────
+     * The live array of `LargeObject` wrappers constructed on this runner's universe, in
+     * construction order (which is z-order for the renderer). It is the WORLD's array,
+     * not a copy: `new LargeObject(u, …)` self-registers into it and `dispose()` leaves
+     * it, so this host maintains no list of its own.
+     *
+     * This host used to keep `_largeObjects`, a SECOND, render-only registration list fed
+     * by `addLargeObject(lo)`. Its divergence from the engine's registry is unrepresentable
+     * in the model the primitive table teaches — "construct it and it is in the world" —
+     * and when it diverged, the object collided and counted correctly while being
+     * completely invisible in every picture, with no error. Both that list and the
+     * `addLargeObject`/`removeLargeObject` pair are DELETED: constructing IS registering,
+     * and `removeObject(obj)` (which disposes) IS removing.
+     *
+     * ── Layer 2: physics behaviour ───────────────────────────────────────────
+     * ZERO. A census read touches no frame, no dimension and no tick; the render VIEW
+     * (`_visibleLargeObjects`) filters it without mutating it.
+     * @returns {Array}
+     */
+    Object.defineProperty(FrqtlApp.prototype, 'largeObjects', {
+        configurable: true,
+        get: function () {
+            var u = this.universe;
+            return (u && Array.isArray(u.largeObjects)) ? u.largeObjects : [];
+        }
+    });
+
+    /**
+     * Toggle Design mode (Bite 4b). STUDIO calls setDesignMode(true) while authoring
+     * (MODE_DESIGN) so the manipulable emitter markers (`lo._designMarker`) render as
+     * visible circles, and false during Run / Pause so they are suppressed (you see
+     * the emission, not the source marker). Standalone bundles + experiment pages
+     * never call this → the default false suppresses the marker for pure output. Zero
+     * physics — this only gates the renderTick view (see _visibleLargeObjects).
+     * @param {boolean} v
+     */
+    FrqtlApp.prototype.setDesignMode = function (v) {
+        this._designMode = !!v;
+    };
+
+    /**
+     * Effective shellRender mode for a LargeObject (Bite 5b A6) — the SINGLE
+     * suppression authority. Precedence:
+     *   1. per-instance `lo.shellRender` (a valid 'design'|'run'|'never' string) —
+     *      the live override the Inspector / a game sets via updateObjectProperty
+     *      (the "red light bulb" flips a marker to 'run').
+     *   2. kind default: a manipulable marker (`lo._designMarker === true`) defaults
+     *      'design' (Bite-4b: invisible during Run); every ordinary LO defaults
+     *      'run' (always visible). This keeps every pre-existing scene byte-identical.
+     * @returns {'design'|'run'|'never'}
+     */
+    FrqtlApp.prototype._shellRenderOf = function (lo) {
+        var sr = lo && lo.shellRender;
+        if (sr === 'design' || sr === 'run' || sr === 'never') { return sr; }
+        return (lo && lo._designMarker === true) ? 'design' : 'run';
+    };
+
+    /**
+     * The largeObjects VIEW passed to the renderer each frame (Bite 5b A6): each LO
+     * is shown per its effective `shellRender` (see _shellRenderOf) — 'run' always,
+     * 'design' only while `_designMode` is on, 'never' hidden.
+     *
+     * It is a VIEW over `this.largeObjects` (the world's census), which is the whole of
+     * this method's remaining job: the host filters, it does not register. A new array
+     * (never mutates the census); returns the SAME array reference when nothing is
+     * filtered (the common case — all LOs 'run', or design mode with no 'never') to
+     * avoid per-frame churn.
+     * @returns {Array}
+     */
+    FrqtlApp.prototype._visibleLargeObjects = function () {
+        var los = this.largeObjects;
+        if (!los || los.length === 0) { return los; }
+        var self = this;
+        var anyHidden = false;
+        for (var i = 0; i < los.length; i++) {
+            if (los[i] && !self._isShellVisible(los[i])) { anyHidden = true; break; }
+        }
+        if (!anyHidden) { return los; }
+        return los.filter(function (lo) { return self._isShellVisible(lo); });
+    };
+
+    /** Whether a LO's shell paints in the CURRENT mode (Bite 5b A6). */
+    FrqtlApp.prototype._isShellVisible = function (lo) {
+        var sr = this._shellRenderOf(lo);
+        if (sr === 'run')   { return true; }
+        if (sr === 'never') { return false; }
+        return !!this._designMode;   // 'design'
+    };
+
+    /**
+     * Set a per-frame render option. Options are threaded into every renderTick() call.
+     *
+     * @param {string} key   — option key (e.g. 'renderBaseCanvas')
+     * @param {*}      value — option value
+     *
+     * Known options:
+     *   renderBaseCanvas (boolean, default true) — when false, the particle/base layer is
+     *     NOT composited into uScene before a post-process pass. The shader works from
+     *     uField only. Both p5 and three providers honor this identically (§4 contract).
+     */
+    FrqtlApp.prototype.setRenderOption = function (key, value) {
+        this._renderOptions[key] = value;
+    };
+
+    /**
+     * runner.renderCapabilities() — aggregates the active provider's OPTIONAL
+     * `renderCapabilities()` (WS Studio Controls Realignment §7 r2, item 1/4).
+     * Mirrors the `cameraControl` capability-check precedent: no provider, or a
+     * provider that doesn't implement `renderCapabilities()` (an older/BYO
+     * provider that predates this contract addition), returns an EMPTY array —
+     * never an error. `makeControlsForRenderSurface` (S5a) is the canonical
+     * consumer; it emits zero render controls when this returns `[]`.
+     *
+     * A future runner-owned universal knob with no per-provider translation
+     * would be aggregated HERE (concatenated with the provider's own list) —
+     * none exists yet (`renderBaseCanvas` is declared identically by BOTH
+     * providers per the BYO README §3, so there is nothing runner-only to add).
+     *
+     * @returns {Array<object>} field-descriptor-shaped capability descriptors
+     *   (`lib/shim/field-descriptor`'s `{name,type,constraint,unit,default,
+     *   description}` shape), or `[]`.
+     */
+    FrqtlApp.prototype.renderCapabilities = function () {
+        var prov = this._getRenderer();
+        if (!prov || typeof prov.renderCapabilities !== 'function') { return []; }
+        return prov.renderCapabilities();
+    };
+
+    /**
+     * runner.getRenderOption(key) — the validated READ counterpart to the
+     * permissive `setRenderOption` (WS Studio Controls Realignment §7 r2 item 1,
+     * "getRenderOption absent" architect finding). `setRenderOption` itself
+     * stays a PERMISSIVE low-level passthrough (unchanged — a blanket write
+     * validation there would break existing ad-hoc `setRenderOption` callers);
+     * this is the new read path added FOR declared capabilities.
+     *
+     * Validates `key` against the active renderer's `renderCapabilities()` WHEN
+     * one is resolvable — throws if the renderer is live and declares
+     * capabilities but `key` is not one of them (a typo'd/undeclared render key
+     * would otherwise silently read `undefined` forever, the exact fail-silent
+     * class this closes). Falls back to an UNVALIDATED passthrough read (same
+     * permissiveness as `setRenderOption`) when no renderer has resolved YET
+     * (lazy provider timing — mirrors `cameraControl`'s own pre-start null) or
+     * the active provider simply doesn't implement `renderCapabilities()` (an
+     * older/BYO provider) — never a false failure for a genuinely valid key
+     * read before boot completes.
+     *
+     * @param {string} key
+     * @returns {*} `this._renderOptions[key]`
+     * @throws {TypeError} if the renderer is live, declares capabilities, and
+     *   `key` is not among them.
+     */
+    FrqtlApp.prototype.getRenderOption = function (key) {
+        var prov = this._getRenderer();
+        if (prov && typeof prov.renderCapabilities === 'function') {
+            var caps = prov.renderCapabilities();
+            var found = false;
+            for (var i = 0; i < caps.length; i++) { if (caps[i].name === key) { found = true; break; } }
+            if (!found) {
+                throw new TypeError('[FrqtlApp.getRenderOption] "' + key + '" is not declared by ' +
+                    'the active renderer\'s renderCapabilities() (declared: [' +
+                    caps.map(function (c) { return c.name; }).join(', ') + ']). setRenderOption stays ' +
+                    'permissive for back-compat; getRenderOption is the VALIDATED read path.');
+            }
+        }
+        return this._renderOptions[key];
+    };
+
+    /**
+     * runner.setFilterActive(name, active) / runner.isFilterActive(name) — the
+     * canonical write/read pair for a `filter.<name>` render capability (WS
+     * Studio Controls Realignment §7 r2 item 2, the ratified filter re-model).
+     * `filter()`/`removeFilter()` are ALREADY-REQUIRED `RendererProvider`
+     * contract methods and the canonical MULTI-SLOT name-keyed filter primitive
+     * (`Filters.water`/`Filters.bloom` = `{name, glsl, uniforms}`) — this pair
+     * is NOT a second write path, it is the uniform accessor `controlBind.js`'s
+     * render branch calls for a `filter.` capability instead of tunneling
+     * through `setRenderOption` (which has no multi-slot/toggle semantics and
+     * cannot express "2 filters concurrently active").
+     *
+     * @param {string} name — a `Filters` catalog key (e.g. 'water', 'bloom').
+     * @param {boolean} active
+     * @throws {Error} if no renderer is active, or `name` is not a real
+     *   `Filters` catalog entry (FAIL-LOUD — never a silent no-op filter call).
+     */
+    FrqtlApp.prototype.setFilterActive = function (name, active) {
+        var prov = this._getRenderer();
+        if (!prov || typeof prov.filter !== 'function' || typeof prov.removeFilter !== 'function') {
+            throw new Error('[FrqtlApp.setFilterActive] no active renderer with filter()/' +
+                'removeFilter() (RendererProvider REQUIRED methods). (FAIL-LOUD.)');
+        }
+        var FiltersRef = (typeof window !== 'undefined' && window.Filters)
+            ? window.Filters : (typeof Filters !== 'undefined' ? Filters : null);
+        if (!FiltersRef || !Object.prototype.hasOwnProperty.call(FiltersRef, name)) {
+            throw new Error('[FrqtlApp.setFilterActive] unknown filter "' + name + '" — not a ' +
+                'Filters.js catalog entry. (FAIL-LOUD.)');
+        }
+        if (!this._activeFilters) { this._activeFilters = {}; }
+        if (active) {
+            prov.filter(FiltersRef[name]);
+            this._activeFilters[name] = true;
+        } else {
+            prov.removeFilter(name);
+            delete this._activeFilters[name];
+        }
+    };
+
+    /** @param {string} name — a `Filters` catalog key. @returns {boolean} */
+    FrqtlApp.prototype.isFilterActive = function (name) {
+        return !!(this._activeFilters && this._activeFilters[name]);
+    };
+
+    // ── Render-pipeline TAPS (the RENDER_STAGES contract) — DELEGATED ──────
+    //
+    // The MECHANISM lives at `lib/frqtl/objects/instruments/capture.js` (THE_MINIMAL_SIM
+    // §4): the tap is an INSTRUMENT on the primitive surface — bound to the loop, the
+    // provider, the scene identity and the live render-options bag — not an editor concern,
+    // and it needs no host and no DOM. This host keeps only the conveniences below, and
+    // each is a THIN FORWARD: zero dispatch, zero throw rules, zero provenance stamping
+    // here. The reject-not-throw wrapper lives in exactly ONE place (the mechanism), so
+    // these forwards deliberately add no try/catch of their own.
+    //
+    // The stage vocabulary stays with its owner, `lib/shim/render/render-stages` (the shim
+    // owns cross-layer vocabularies — peer of frame-data's RENDER_INTENT_KEYS); the
+    // instrument ferries it. Contract: docs/internal/engine/RENDERER_CONTRACT.md §1a.4 + §10.
+
+    /**
+     * runner.setSourceRef(ref) — register the experiment/rung identity for the SceneRecord.
+     * Forwards to the instrument's identity. See instruments/capture.js.
+     * @param {string|null} ref
+     */
+    FrqtlApp.prototype.setSourceRef = function (ref) {
+        return this._capture.setSourceRef(ref);
+    };
+
+    /**
+     * runner.sceneRecord() → Promise<SceneRecord + its own content id>. Forwards.
+     * @returns {Promise<object>}
+     */
+    FrqtlApp.prototype.sceneRecord = function () {
+        return this._capture.sceneRecord();
+    };
+
+    /**
+     * THE DIVERGENCE GATE — a physics-registered object that no renderer can see is a
+     * THROW, never an invisible body.
+     *
+     * ── Layer 1: API contract ────────────────────────────────────────────────
+     * Called before every draw and before every capture. The world answers which of its
+     * LIVE engine registrations carry no JS wrapper (`unwrappedLargeObjectHandles` — the
+     * only ledger that can tell a live object from a torn-down one); any survivor means
+     * the draw list DERIVED from the world's wrapper census is missing something the
+     * physics knows about, and this refuses to draw rather than paint a lie.
+     *
+     * With the census at the world handle the ordinary case cannot arise — constructing a
+     * `LargeObject` registers it for physics AND render in one act. What remains is the
+     * RAW `universe.registerLargeObject(spec)` path, which is legitimate in a headless
+     * conformance harness (nothing draws) and is exactly the silent-invisible case in a
+     * rendered world. So this is the enforcement tooth on the preferred shape, not an
+     * alternative to it.
+     *
+     * The capability check is METHOD PRESENCE (the `move()`/`cameraControl` idiom): a
+     * world that publishes no ledger is not a world this host can interrogate, and this
+     * host does not invent one.
+     *
+     * ── Layer 2: physics behaviour ───────────────────────────────────────────
+     * ZERO. It reads two ledgers and throws or returns; no frame, dimension, tick or
+     * op-program is touched.
+     * @private
+     */
+    FrqtlApp.prototype._assertRenderCensus = function () {
+        var u = this.universe;
+        if (!u || typeof u.unwrappedLargeObjectHandles !== 'function') { return; }
+        var orphans = u.unwrappedLargeObjectHandles();
+        if (orphans.length === 0) { return; }
+        throw new Error('[FrqtlApp] ' + orphans.length + ' object(s) are registered with the ' +
+            'PHYSICS of this world but absent from its render census — handle(s) [' +
+            orphans.join(', ') + ']. They collide and count correctly and CANNOT BE SEEN, ' +
+            'which is the one outcome this surface refuses: a silently wrong picture is worse ' +
+            'than an error, because what the eye is taught from it is wrong. Construct large ' +
+            'objects through `new LargeObject(universe, …)` (or a part that does — Wall, ' +
+            'GraphingDetectorWall, Tunnel …), which registers them for physics AND render in ' +
+            'one act. The raw `universe.registerLargeObject(spec)` path carries no wrapper and ' +
+            'belongs to headless harnesses only. (FAIL-LOUD.)');
+    };
+
+    /**
+     * runner.capture(stage) — the generic render-pipeline tap. Forwards.
+     * @param {string} stage — a member of `RenderStages.RENDER_STAGES`.
+     * @returns {Promise<object>}
+     */
+    FrqtlApp.prototype.capture = function (stage) {
+        // A Promise-returning entry point never throws SYNCHRONOUSLY: a mixed error channel
+        // guarantees an uncaught exception at some call site that only wrote `.catch()`.
+        try { this._assertRenderCensus(); } catch (e) { return Promise.reject(e); }
+        return this._capture.capture(stage);
+    };
+
+    /**
+     * runner.captureStill() — the LAST-STAGE CONVENIENCE. Forwards.
+     * @returns {Promise<object>}
+     */
+    FrqtlApp.prototype.captureStill = function () {
+        try { this._assertRenderCensus(); } catch (e) { return Promise.reject(e); }
+        return this._capture.captureStill();
+    };
+
+    /**
+     * Add a background-image under-layer (shared backdrop helper — Phase 2, WS-RENDERER).
+     *
+     * Creates and registers a NON-COLLIDING LargeObject that the renderer draws as the
+     * bottom-most layer via _layerBackdrop (under particles and large objects).
+     *
+     * This is the canonical way to add a backdrop in ANY experiment — no per-page
+     * LargeObject construction needed. The backdop's .visible is false by default;
+     * the caller toggles it on when desired.
+     *
+     * @param {Object} image     - a p5.Graphics, HTMLCanvasElement, or any renderable
+     *                             object the active renderer can draw as a backdrop image.
+     * @param {Object} [rect]    - optional {left, top, w, h} in physics pixels.
+     *                             Defaults to the full canvas rect.
+     * @param {Object} [opts]    - optional overrides: { visible (default false),
+     *                             color (default [0,0,0]) }
+     * @returns {Object}         - the LargeObject created, for further manipulation.
+     */
+    FrqtlApp.prototype.addBackdrop = function (image, rect, opts) {
+        opts = opts || {};
+        var r = rect || {
+            left: 0, top: 0,
+            w: this.canvas_rect.w,
+            h: this.canvas_rect.h
+        };
+        var color = opts.color || [0, 0, 0];
+        var visible = (opts.visible !== undefined) ? opts.visible : false;
+
+        // Construct via the global — LargeObject is loaded by stack-boot before setup().
+        var _LO = (typeof window !== 'undefined' && window.LargeObject)
+            ? window.LargeObject : (typeof LargeObject !== 'undefined' ? LargeObject : null);
+        var _CT = (typeof window !== 'undefined' && window.CollisionTypes)
+            ? window.CollisionTypes : (typeof CollisionTypes !== 'undefined' ? CollisionTypes : null);
+
+        if (!_LO || !_CT) {
+            throw new Error('[FrqtlApp.addBackdrop] LargeObject / CollisionTypes are not on the ' +
+                'page — stack-boot.js must load the game layer before setup() runs.');
+        }
+
+        var backdrop = new _LO(
+            this.universe,
+            [r.left, r.top, r.w, r.h],
+            _CT.NONE, [], 'backdrop', 'closest', null, 1, color
+        );
+        backdrop.backdrop = true;
+        backdrop.image    = image;
+        backdrop.visible  = visible;
+
+        // No render-list call: constructing a LargeObject on this world IS registering it,
+        // for physics AND for the renderer (CollisionTypes.NONE makes it draw-only).
+        return backdrop;
+    };
+
+    /**
+     * Remove any registered object (LargeObject, or compound wrapper with a .walls
+     * array, .detector_wall, ._emitter, or .notEmitter property) from the render
+     * list AND fully tear it down engine-side (WS Studio Controls Realignment S4,
+     * design item 1 — the CEO-found "delete leaves the emitter tick-fn running"
+     * defect).
+     *
+     * FULL DELETE TEARDOWN: deleting an object removes EVERYTHING it registered —
+     * not just its Layers-panel row. Every sub-object that owns a `dispose()`
+     * method (LargeObject unregisters engine-side, killing its compiled
+     * collision op-program; QuantumEmitter/PointSource tombstone + splice their
+     * host tick-fn(s) out of `experimentTickFunctions`, stopping emission dead)
+     * gets it called here — ONE canonical teardown fan-out, never a kind-sniffing
+     * branch that has to be kept in sync with what each object actually owns.
+     * Also untracks any emitter from `_emitters` (the Layers-panel enumeration
+     * list `getAuthoredObjects` reads) so a deleted emitter cannot resurface
+     * there. Uniform sugar over `dispose()` — callers need not know the internal shape.
+     *
+     * DISPOSE IS THE REMOVAL. `LargeObject.dispose()` unregisters engine-side, and that
+     * one call also leaves the world's wrapper census (which the renderer derives its
+     * draw list from) — so there is no second "and also take it off the render list"
+     * step to forget, and no window in which a deleted object keeps drawing a body that
+     * no longer collides.
+     *
+     * @param {Object} obj
+     */
+    FrqtlApp.prototype.removeObject = function (obj) {
+        if (!obj) return;
+        var self = this;
+
+        function _dispose(o) {
+            // FAIL-LOUD (architect gate, S4 commit 11e440d4): dispose() is ALREADY
+            // internally idempotent on every implementer (LargeObject/QuantumEmitter/
+            // PointSource all guard `if (this._disposed) return;`), so a try/catch HERE
+            // can only swallow a GENUINE engine teardown failure (e.g.
+            // unregisterLargeObject throwing on an out-of-range/already-tombstoned WASM
+            // handle, or a tick-fn splice bug) — exactly the silent-failure class this
+            // whole bite exists to close, and it would re-create "delete leaves it
+            // running" in the ONE path most likely to hit it (an already-torn-down
+            // object). Let it throw — propagates out of removeObject to the caller.
+            if (o && typeof o.dispose === 'function') { o.dispose(); }
+        }
+        function _untrackEmitter(em) {
+            if (!em || !self._emitters) return;
+            var i = self._emitters.indexOf(em);
+            if (i !== -1) { self._emitters.splice(i, 1); }
+        }
+
+        if (obj.walls && Array.isArray(obj.walls)) {
+            obj.walls.forEach(function (lo) { _dispose(lo); });
+            return;
+        }
+        if (obj.detector_wall) {
+            _dispose(obj.detector_wall);
+            return;
+        }
+        // Wall (W1) facade: a single inner LargeObject at obj.lo. Tear it down.
+        if (obj._schemaKind === 'Wall' && obj.lo) {
+            _dispose(obj.lo);
+            return;
+        }
+        // Composite emitter (the ObjectFactory "visual circle" pattern — a
+        // LargeObject carrying ._emitter — or CircuitGate's .notEmitter): tear
+        // down the emitter half FIRST, then the visual/host object itself.
+        if (obj._emitter) { _dispose(obj._emitter); _untrackEmitter(obj._emitter); }
+        if (obj.notEmitter) { _dispose(obj.notEmitter); _untrackEmitter(obj.notEmitter); }
+        _dispose(obj);
+        _untrackEmitter(obj); // obj itself may BE a bare emitter (no visual LO wrapper)
+    };
+
+    /**
+     * Track a QuantumEmitter (or PointSource) in the IDE emitters list.
+     * These objects register themselves with the engine universe in their own
+     * constructors; this method records them for the Layers panel.
+     *
+     * @param {Object} emitter
+     * @returns {Object} the same emitter (for chaining)
+     */
+    FrqtlApp.prototype.addEmitter = function (emitter) {
+        if (!emitter) return emitter;
+        if (!this._emitters) { this._emitters = []; }
+        if (this._emitters.indexOf(emitter) === -1) { this._emitters.push(emitter); }
+        return emitter;
+    };
+
+    /**
+     * Canonical BY-NAME object resolver (emission-gate contract §4 — "reference by
+     * NAME, resolve LAZILY"). Handles are assigned fresh at registration and never
+     * survive codegen, so any cross-object reference that must survive a Restart
+     * (Save → eval the generated module) is a NAME, resolved against the live
+     * runner at use time. This is the ONE runner-level name lookup: it walks
+     * `largeObjects` + `_emitters` and, for each entry, considers the entry itself
+     * plus its facade back-references (`_facade`/`_wall` — the Wall builder's hop,
+     * `_groupOwner` — grouped composites, `_emitter` — the marker→emitter hop);
+     * the first candidate whose `.name` matches (and passes `predicate`, when
+     * given) wins.
+     *
+     * Returns null when nothing matches — the CALLER decides whether that is
+     * FAIL-LOUD (the emission gate throws; a LiveChart retries next scan).
+     *
+     * @param {string} name
+     * @param {Function} [predicate] — optional filter (cand) => boolean
+     * @returns {Object|null}
+     */
+    FrqtlApp.prototype.getObjectByName = function (name, predicate) {
+        if (typeof name !== 'string' || !name) { return null; }
+        var lists = [this.largeObjects, this._emitters || []];
+        for (var l = 0; l < lists.length; l++) {
+            var arr = lists[l];
+            for (var i = 0; i < arr.length; i++) {
+                var entry = arr[i];
+                if (!entry) { continue; }
+                // FACADE-FIRST ordering: an inner LO often carries the SAME name as the
+                // facade that owns it (the Wall builder mirrors it) — the facade IS the
+                // object (it owns the read methods, e.g. getLiveCount); the raw entry is
+                // implementation. Same-name ties therefore resolve to the facade.
+                var candidates = [entry._facade, entry._wall, entry._groupOwner, entry, entry._emitter];
+                for (var c = 0; c < candidates.length; c++) {
+                    var cand = candidates[c];
+                    if (cand && cand.name === name && (!predicate || predicate(cand))) {
+                        return cand;
+                    }
+                }
+            }
+        }
+        return null;
+    };
+
+    /**
+     * Return the de-duped top-level authored objects across largeObjects + emitters.
+     *
+     * "Authored" means: NOT a backdrop, NOT a _grouped sub-object, NOT a particle.
+     * Group-owner wrappers are surfaced once even if their sub-LargeObjects are
+     * also in the list.
+     *
+     * This is the authoritative enumeration used by serializeDesign — it closes the
+     * gap where setup()-created emitters were in runner._emitters but NOT in
+     * runner.largeObjects, causing them to be missed on save.
+     *
+     * @param {object|null} backdropRef — the backdrop LargeObject to exclude (or null)
+     * @returns {Array<{obj: object, kind: 'largeObject'|'emitter', isPrimary: boolean}>}
+     *   Each entry: obj = the JS wrapper, kind = 'largeObject' or 'emitter',
+     *   isPrimary = true for group owners / standalone, false for grouped sub-objects.
+     *   Callers that want only top-level authored objects filter isPrimary===true.
+     */
+    FrqtlApp.prototype.getAuthoredObjects = function (backdropRef) {
+        var seen    = new Set();
+        var result  = [];
+
+        // ── LargeObjects ────────────────────────────────────────────────────
+        var los = this.largeObjects;
+        for (var i = 0; i < los.length; i++) {
+            var lo = los[i];
+            if (!lo) { continue; }
+            if (lo === backdropRef || lo.backdrop === true) { continue; }
+            if (seen.has(lo)) { continue; }
+            seen.add(lo);
+            var isGrouped = lo._grouped === true;
+            result.push({ obj: lo, kind: 'largeObject', isPrimary: !isGrouped });
+        }
+
+        // ── Emitters (including ones that were NOT surfaced via largeObjects) ─
+        var ems = this._emitters || [];
+        for (var j = 0; j < ems.length; j++) {
+            var em = ems[j];
+            if (!em) { continue; }
+            if (seen.has(em)) { continue; }
+            seen.add(em);
+            var emGrouped = em._grouped === true;
+            result.push({ obj: em, kind: 'emitter', isPrimary: !emGrouped });
+        }
+
+        return result;
+    };
+
+    /**
+     * Hit-test a physics-pixel point against the registered LargeObjects.
+     * Returns the topmost (last-added) LargeObject whose rect contains the point,
+     * skipping backdrops and invisible objects.
+     *
+     * Coordinates must already be in PHYSICS pixels (not CSS pixels). The caller
+     * maps CSS px → physics px accounting for devicePixelRatio / canvas scaling.
+     *
+     * @param {number} x
+     * @param {number} y
+     * @returns {Object|null}
+     */
+    FrqtlApp.prototype.hitTest = function (x, y) {
+        var _los = this.largeObjects;
+        for (var i = _los.length - 1; i >= 0; i--) {
+            var lo = _los[i];
+            if (!lo || lo.backdrop || lo.visible === false) continue;
+            var r = lo.rect;
+            if (!r) continue;
+            if (x >= r.left && x <= r.left + r.w && y >= r.top && y <= r.top + r.h) {
+                return lo;
+            }
+        }
+        return null;
+    };
+
+    /**
+     * Fan a RENDER-ONLY property write out to the objects a composite wrapper owns.
+     *
+     * ── Layer 1: API contract ────────────────────────────────────────────────
+     * `owner` is a group wrapper (Box / Tunnel / OvenBox / SlitScreen …). Every
+     * registered object carrying `_groupOwner === owner` — the back-ref the group
+     * objects already stamp on their children at construction (ObjectSchema design
+     * rule 6) — receives the SAME write through the SAME accessor, so each child's
+     * own kind branch (Wall facade → inner LargeObject, plain LargeObject mirror)
+     * applies unchanged. A child whose descriptor does not declare the prop is
+     * skipped (a heterogeneous group is legal); a non-wrapper owns nothing and this
+     * is a no-op. Never recurses into itself (`child !== owner`).
+     *
+     * ── Layer 2: physics behavior ────────────────────────────────────────────
+     * None. Only `engineVisible:false` (render-only) props reach here — colour,
+     * opacity, visibility. Zero engine writes, zero op-program recompiles, so a
+     * bench golden cannot move (SU1).
+     *
+     * @param {Object} runner — the FrqtlApp owning the object list.
+     * @param {Object} owner  — the wrapper the write was addressed to.
+     * @param {string} prop   — a render-only field name.
+     * @param {*}      value  — the new value.
+     */
+    function _fanOutRenderPropToGroup(runner, owner, prop, value) {
+        var list = runner.largeObjects;
+        if (!owner || !list || list.length === 0) { return; }
+        var schema = (typeof window !== 'undefined' && window.ObjectSchema)
+            ? window.ObjectSchema
+            : (typeof ObjectSchema !== 'undefined' ? ObjectSchema : null);
+        for (var i = 0; i < list.length; i++) {
+            var child = list[i];
+            if (!child || child === owner || child._groupOwner !== owner) { continue; }
+            if (schema) {
+                var childDesc = schema.get(child._schemaKind || child.kind || 'LargeObject');
+                var declared = false;
+                if (childDesc) {
+                    for (var f = 0; f < childDesc.fields.length; f++) {
+                        if (childDesc.fields[f].name === prop) { declared = true; break; }
+                    }
+                }
+                if (!declared) { continue; }
+            }
+            runner.updateObjectProperty(child, prop, value);
+        }
+    }
+
+    /**
+     * Uniform schema-driven mutation entry point (Phase 4 — runner level).
+     *
+     * ONE public method the IDE uses to edit ANY property of ANY object.
+     * Routing:
+     *   engineVisible:false (color, visible, alpha, name, ...) →
+     *       mutate the JS-side wrapper directly (render layer; no engine ABI).
+     *   engineVisible:true  (rect, collision_type, source_rects, ...) →
+     *       forward to universe.updateObjectProperty (engine-concurrence path).
+     *
+     * Validation: prop MUST be in the schema for kind → TypeError (FAIL LOUD).
+     *
+     * @param {Object}  lo    - LargeObject / QuantumEmitter wrapper with .handle and .kind
+     * @param {string}  prop  - Field name declared in ObjectSchema for lo's kind
+     * @param {*}       value - New value
+     * @throws {TypeError}    - If prop is unknown / readonly for the object's kind
+     */
+    FrqtlApp.prototype.updateObjectProperty = function (lo, prop, value) {
+        if (!lo) return;
+
+        // Every shipped object class STAMPS `_schemaKind` (LargeObject, QuantumEmitter,
+        // PointSource, Wall, DetectorWall, SphereEmitter, …), so the
+        // old `|| 'LargeObject'` fallback never described a real object — it only fired for
+        // a handle that is not one of them. Defaulting there turned "I cannot identify this
+        // object" into "Property X is not in the schema for kind LargeObject", which blames
+        // the SCHEMA for what is actually an unidentified caller argument and sends the
+        // reader to the wrong owner entirely. Identify the failure honestly instead.
+        var kind = lo._schemaKind || lo.kind;
+        if (!kind) {
+            throw new TypeError(
+                '[FrqtlApp.updateObjectProperty] this object carries no `_schemaKind` ' +
+                '(nor `kind`), so its descriptor cannot be resolved — property "' + prop + '" was ' +
+                'not rejected by any schema. Every shipped object class stamps `_schemaKind`; a ' +
+                'handle without one is usually the wrong handle (e.g. a raw emitter handle rather ' +
+                'than the palette object that wraps it).'
+            );
+        }
+
+        // ── Schema lookup ─────────────────────────────────────────────────────
+        var schema = (typeof window !== 'undefined' && window.ObjectSchema)
+            ? window.ObjectSchema
+            : (typeof ObjectSchema !== 'undefined' ? ObjectSchema : null);
+
+        var fieldDef = null;
+        if (schema) {
+            var descriptor = schema.get(kind);
+            if (!descriptor) {
+                throw new TypeError(
+                    '[FrqtlApp.updateObjectProperty] Unknown object kind "' + kind + '"'
+                );
+            }
+            for (var i = 0; i < descriptor.fields.length; i++) {
+                if (descriptor.fields[i].name === prop) {
+                    fieldDef = descriptor.fields[i];
+                    break;
+                }
+            }
+            if (!fieldDef) {
+                throw new TypeError(
+                    '[FrqtlApp.updateObjectProperty] Property "' + prop +
+                    '" is not in the schema for kind "' + kind + '"'
+                );
+            }
+            if (fieldDef.type === 'readonly') {
+                throw new TypeError(
+                    '[FrqtlApp.updateObjectProperty] Property "' + prop +
+                    '" is readonly for kind "' + kind + '"'
+                );
+            }
+            // ── Declared-type normalization (THE type gate) ───────────────────
+            // The descriptor declares the TYPE; the accessor is the one validating gate,
+            // so this is where the written value is made to match it — or REJECTED. The
+            // semantics live with the declarations, at the descriptor owner
+            // (lib/frqtl/objects/schema `normalizeValue`), and are FERRIED here: a
+            // boolean 0/1 becomes a real boolean (every consumer tests IDENTITY — a
+            // stored `0` reads as "still visible" and the write silently does nothing);
+            // a wrong-typed value (a `'42'` string, a non-array `color`, a non-array
+            // `rect` that would reach `lo.rect.w = r[2]` as NaN geometry, an undeclared
+            // enum member) THROWS here instead of being stored and poisoning a reader
+            // far away. Throw-or-apply, one call, every caller.
+            value = schema.normalizeValue(fieldDef, value, kind);
+
+            // ── SphereEmitter (Bite 4b) — sugar; no engine handle ─────────────
+            // A SphereEmitter's real state lives in the setupSphereEmitter3D control
+            // closure (a host emit tick-fn), not on any engine object. Route EVERY
+            // editable/adapter prop to the matching control setter via the facade's
+            // own write-router (applyProp) — mechanism-A: the Inspector and the visual
+            // marker's coupled-move call THIS, never resolveBind (which is why the
+            // SphereEmitter kind sits outside controlBind's bind-executable allowlist).
+            // `rect` here is the coupled-move from the visual marker → control.setCenter.
+            // Return BEFORE the generic engineVisible mirror-write below (which would
+            // assign to a getter-only prop and throw). No universe delegation — the
+            // sugar IS the engine-facing write.
+            // ── Wall (W1) — sugar facade over ONE LargeObject (lo.lo) ─────────
+            // A lexicon edit RECOMPILES the running op-program (the "flip a wall into a
+            // detector mid-run" live path — Wall.setV2Prop). Every other
+            // prop (rect/color/alpha/visible/layer/shellShape) is DELEGATED DOWN to the
+            // inner LargeObject via the SAME accessor, so its engine-visible rect/layer
+            // push + render-only mirror logic applies UNCHANGED (the inner LO keeps its
+            // own _schemaKind 'LargeObject'). Return before the generic paths below
+            // (which would hit the facade's read-only rect getter and throw).
+            if (kind === 'Wall') {
+                // Collision LEXICON v2: the nested behavior/direction/modifier/hook props
+                // live on the FACADE (updated in place so the Inspector's visibleWhen re-read
+                // reveals dependent fields immediately) and recompile the running op-program
+                // via setV2Prop. It is the ONE wall write path.
+                // R2AX (two-axis mirror, 2026-07-26): pitchDeg is a FACADE v2 prop,
+                // exactly like orientationDeg — its live edit re-bakes the 3-space
+                // reflection via the SAME setV2Prop recompile path (Wall.setPitch). It
+                // MUST be listed here or it falls to the `lo.lo` delegate below and
+                // recurses into the inner LargeObject, whose schema has no pitchDeg →
+                // a spurious "not in the schema for kind LargeObject" throw on a live
+                // edit that would otherwise land. One facade path, no schema mirror.
+                var V2_WALL_PROPS = ['collisionBehavior', 'bounceDirection', 'decoherence',
+                    'hooks', 'markTag', 'countFilter', 'capacity', 'orientationDeg', 'pitchDeg'];
+                if (V2_WALL_PROPS.indexOf(prop) !== -1) {
+                    if (typeof lo.setV2Prop === 'function') { lo.setV2Prop(prop, value); }
+                } else if (lo.lo) {
+                    this.updateObjectProperty(lo.lo, prop, value);
+                }
+                if (prop === 'rect' && typeof this._onObjectMoved === 'function') {
+                    this._onObjectMoved(lo, prop);
+                }
+                return;
+            }
+
+            // ── Tunnel (D5) — composite sugar over two Walls + the exit gate ──
+            // Its live SUGAR props (the exit-gate flags) recompile the gate's op-program via
+            // the facade's own write-router. Without this hop the write fell through to the
+            // generic mirror-write below, setting a DEAD property on the wrapper while the
+            // gate program stayed as it was — the Inspector flag flipped and nothing happened.
+            // The router returns FALSE for props it does not own (`color`), which deliberately
+            // falls through to the group fan-out that paints both mirror walls.
+            if (kind === 'Tunnel' && typeof lo.applyProp === 'function') {
+                if (lo.applyProp(prop, value)) { return; }
+            }
+
+            if (kind === 'SphereEmitter') {
+                if (typeof lo.applyProp === 'function') { lo.applyProp(prop, value); }
+                // F5: a position write (drive / carry / programmatic center or rect-adapter)
+                // fires the object-moved event so a host (Studio's overlay) can REPAINT — PR-1
+                // made the bbox DATA fresh, but the flat overlay only redraws on discrete events;
+                // this EXTENDS the event set (never a poll). rect/center are the position props.
+                if ((prop === 'center' || prop === 'rect') && typeof this._onObjectMoved === 'function') {
+                    this._onObjectMoved(lo, prop);
+                }
+                return;
+            }
+
+            // ── Render-only (engineVisible:false) ─────────────────────────────
+            // Mutate the JS-side wrapper object directly. The renderer reads from it
+            // on the next draw frame. No engine ABI — physics is not affected.
+            if (!fieldDef.engineVisible) {
+                // WS Studio Controls Realignment S4 (design §2.3.5 / CEO §4 call #7):
+                // collision_type/actions are SUGAR-INPUT fields compiled to an
+                // op-program at REGISTRATION (actionCompiler.js) — a bare mirror-write
+                // (what every OTHER engineVisible:false prop gets) would only update
+                // this wrapper's DISPLAY value, never retarget the RUNNING op-program
+                // (a wall flipped to a detector mid-run would keep acting like a
+                // wall). Route these two through the recompile-and-push helper
+                // instead — "flipping a wall into a detector mid-run" made live.
+                if ((kind === 'LargeObject' || kind === 'backdrop') &&
+                    (prop === 'collision_type' || prop === 'actions') &&
+                    typeof lo.recompileActions === 'function') {
+                    var recompileOpts = {};
+                    recompileOpts[prop === 'collision_type' ? 'collisionType' : 'actions'] = value;
+                    lo.recompileActions(recompileOpts);
+                    return;
+                }
+                lo[prop] = value;
+                // ── GROUP FAN-OUT (throw-or-apply, never a silent no-op) ───────
+                // A composite wrapper (Box / Tunnel / OvenBox / SlitScreen) owns no
+                // drawn body of its own: it DECLARES a render-only prop ("Render
+                // color for both mirror walls") whose effect lives on the walls it
+                // built. The bare mirror-write above would set a dead property on
+                // the wrapper and change nothing on screen — the exact silent no-op
+                // the accessor contract forbids. So a render-only write on a wrapper
+                // ALSO fans out to the objects it owns, via the SAME accessor.
+                // Ownership is the ALREADY-DECLARED `_groupOwner` back-ref every
+                // group object stamps on its children at construction (schema design
+                // rule 6) — never a per-kind child list here (that would be the
+                // schema mirror). A non-wrapper matches nothing and is unchanged.
+                _fanOutRenderPropToGroup(this, lo, prop, value);
+                return;
+            }
+        }
+
+        // ── Composite emitter move (WS Studio Controls Realignment S4, design ────
+        //    §2.2/§2.5.5 — "the coupled-move caveat") ──────────────────────────────
+        // A visual LargeObject carrying `._emitter` (the ObjectFactory
+        // QuantumEmitter/PointSource "visual circle" pattern) moves BOTH halves as
+        // ONE logical write — this coupling is owned HERE, in the canonical
+        // accessor every caller (Studio's overlay drag, the Inspector, a page's own
+        // code) already goes through, NOT re-implemented in AuthorView pointer
+        // code. Recurse through the SAME accessor so the emitter's own kind-specific
+        // rect handling (QuantumEmitter.setSourceRect / PointSource.repositionToRect,
+        // below) applies unchanged. Guarded on `lo._emitter !== lo` — the emitter
+        // itself never carries an `_emitter` of its own, so this never loops.
+        if (prop === 'rect' && lo._emitter && lo._emitter !== lo) {
+            this.updateObjectProperty(lo._emitter, 'rect', value);
+        }
+
+        // ── Engine-visible (engineVisible:true) ───────────────────────────────
+        // For 'rect' props: also update the JS-side wrapper's render rect so the
+        // renderer sees the new position without waiting for the next tick.
+        // Use the same dimension-first/setter order as _updateLargeObjectRectImpl:
+        //   w/h raw writes first, then set left (→ x, right) and set top (→ y, bottom).
+        if (prop === 'rect' && lo.rect) {
+            var r = value;   // [left, top, w, h]
+            // PR-1 (item 4): lo.rect is now a REAL Rectangle instance (2D case) — this comment is
+            // TRUE, no longer stale. Set w/h first (own fields), THEN left/top (linked setters that
+            // read the updated w/h): `set left` recomputes _x = left + w/2, _right = left + w;
+            // `set top` recomputes _y = top + h/2, _bottom = top + h. So the center + far edges stay
+            // consistent with left/top after a drag/programmatic rect write — the auto-recompute the
+            // hand-rolled bag never had. (A 6-element z/d rect is still a bare bag; harmless here —
+            // plain property writes, no linked recompute needed for the flat overlay.)
+            lo.rect.w    = r[2];
+            lo.rect.h    = r[3];
+            lo.rect.left = r[0];
+            lo.rect.top  = r[1];
+        }
+
+        // ── Mirror engine-visible scalar props onto the JS wrapper (Bug #1/#2 fix) ─
+        // The JS wrapper (lo) is the read/serialize source of truth for the inspector
+        // and serializeDesign. On WASM the engine state lives in Rust; the JS wrapper
+        // is a SHADOW. Without this mirror, lo.collision_type / lo.actions / lo.layer /
+        // lo.reposition all stay at CONSTRUCTOR values after a call,
+        // so Save→Restart silently drops every edit to those fields.
+        //
+        // Rule: for every engineVisible scalar prop (not 'rect' — handled via Rectangle
+        // setters above; not 'source_rects' — handled by the emitter path), write
+        // lo[prop] = value NOW so inspector and serializeDesign always read live state.
+        // This mirrors what the render-only path already does for engineVisible:false props.
+        if (prop !== 'rect' && prop !== 'source_rects') {
+            if (prop === 'actions' && (kind === 'LargeObject' || kind === 'backdrop')) {
+                // 'actions' maps to arr_collision_actions on the JS LargeObject wrapper.
+                var actArr = Array.isArray(value) ? value.slice() : [value];
+                lo.arr_collision_actions = actArr;
+                lo.actions = actArr;   // keep schema name 'actions' in sync too
+            } else if (prop === 'layer' && (kind === 'LargeObject' || kind === 'backdrop')) {
+                // 'layer' → observedDimensions in the engine. null = all dimensions.
+                lo.layer = (value !== null && value !== undefined) ? value : null;
+                lo.observedDimensions = (value !== null && value !== undefined) ? [value] : [];
+            } else {
+                lo[prop] = value;
+            }
+        }
+
+        // ── PointSource rect: reposition all angle emitters ─────────────────
+        // PointSource is a user-space compound object (N engine emitters, one per angle).
+        // Engine updateObjectProperty does not know about PointSource — handle it here.
+        if (kind === 'PointSource' && prop === 'rect') {
+            if (typeof lo.repositionToRect === 'function') {
+                lo.repositionToRect(value[0], value[1], value[2], value[3], this.universe);
+            }
+            // PointSource has no single engine handle — skip the universe delegation below.
+            return;
+        }
+
+        // ── QuantumEmitter rect: reposition the single canonical source rect ────
+        // QuantumEmitter is engine-agnostic sugar (G-EMIT-2) — its real state is
+        // emState.sourceRects, mutated directly (no provider ABI to delegate to;
+        // the RETIRED updateEmitterSourceRects no longer exists). Mirrors the
+        // PointSource branch above — this is the "composite emitter move" fix
+        // (design §2.2/§2.5.5): before this branch existed, a rect write on a
+        // QuantumEmitter passed schema validation then silently no-oped (the
+        // universe-delegation below has no LargeObject/backdrop branch for it).
+        if (kind === 'QuantumEmitter' && prop === 'rect') {
+            if (typeof lo.setSourceRect === 'function') {
+                lo.setSourceRect(value);
+            }
+            return; // no universe delegation — the sugar IS the engine-facing write.
+        }
+
+        // Delegate to universe for the engine-side update.
+        if (this.universe && typeof this.universe.updateObjectProperty === 'function') {
+            this.universe.updateObjectProperty(lo.handle, kind, prop, value);
+        }
+    };
+
+    // ── STAGE 3: camera-locked input-drive (Q-A5-DRIVE spec §2) ──────────────────
+    // Selecting an object in 3D LOCKS the camera and re-points the MOVE/LOOK sticks at
+    // the OBJECT, driving its `center` in the camera basis CAPTURED at selection. The A5
+    // change-of-basis pair (cameraOffsetFromWorld/worldFromCameraOffset) is reused verbatim
+    // — the lock (CameraControls emits zero camera output while a target is set) is what
+    // makes that reuse exact: worldFromCameraOffset reads the LIVE (frozen) pose = the
+    // captured basis. ONE drive authority (this runner, which already owns
+    // updateObjectProperty + the universe bounds + cameraControl); CameraControls stays a
+    // dumb forwarder; a game gets programmatic parity for free (same three methods).
+
+    /** Resolve the center-bearing target: a marker's `_emitter` (the SphereEmitter facade —
+     *  the marker LO has no `center`; the facade's setCenter moves the emission source the
+     *  user sees follow the view), else the handle itself. */
+    FrqtlApp.prototype._resolveDriveTarget = function (handle) {
+        if (handle && handle._emitter && typeof handle._emitter.getCenter === 'function') {
+            return handle._emitter;
+        }
+        return handle;
+    };
+    /**
+     * Resolve the ROTATION target (B7): the first of the selected object, its emitter/wall
+     * facade, or the resolved center-target that exposes setOrientation. Null ⇒ no rotation
+     * affordance (the LOOK-drive rotate term is ignored). Separate from the center-target so a
+     * wall (rotate-capable, LO-backed) and an emitter (rotate-capable, marker-backed) both work.
+     */
+    FrqtlApp.prototype._resolveOrientationTarget = function (object, target) {
+        var cands = [object, target, (object && object._emitter), (object && object._wall),
+                     (target && target._wall)];
+        for (var i = 0; i < cands.length; i++) {
+            if (cands[i] && typeof cands[i].setOrientation === 'function') { return cands[i]; }
+        }
+        return null;
+    };
+    FrqtlApp.prototype._readDriveCenter = function (t) {
+        if (!t) { return null; }
+        if (typeof t.getCenter === 'function') { var c = t.getCenter(); return Array.isArray(c) ? c : null; }
+        if (Array.isArray(t.center)) { return t.center.slice(); }
+        return null;
+    };
+
+    /**
+     * getUniverseBounds() → { width, height, zHalf } (engine px). The 2D canvas is
+     * width×height; the "canvas cube" adds a z-extent — a named convention parameter
+     * (spec §2c): zHalf = min(width,height)/2 (a cube-ish volume centered on the z=0
+     * target). Used by the drive clamp; a game may read it too.
+     */
+    FrqtlApp.prototype.getUniverseBounds = function () {
+        var r = this.canvas_rect || {};
+        var w = (typeof r.w === 'number') ? r.w : (r.width || 0);
+        var h = (typeof r.h === 'number') ? r.h : (r.height || 0);
+        return { width: w, height: h, zHalf: Math.min(w, h) / 2 };
+    };
+    /** Clamp a driven center to the canvas cube (spec §2c — confinement in the DRIVE path,
+     *  NEVER in the updateObjectProperty accessor, which stays throw-or-apply against the
+     *  schema; the engine/emitter/programmatic placement set `center` freely). */
+    FrqtlApp.prototype._clampToUniverseCube = function (c) {
+        var b = this.getUniverseBounds();
+        var x = Math.max(0, Math.min(b.width, c[0]));
+        var y = Math.max(0, Math.min(b.height, c[1]));
+        var z = Math.max(-b.zHalf, Math.min(b.zHalf, (c[2] != null) ? c[2] : 0));
+        return [x, y, z];
+    };
+
+    /**
+     * setInputDriveTarget(object | null) — arm/disarm camera-locked object drive.
+     * Called by the host (Studio's selection effect) on select (object) / deselect (null).
+     * Resolves the center-bearing target + captures the LOCKED camera-local offset once.
+     * FAIL-SOFT: no object / no cameraControl (2D) / no cameraOffsetFromWorld / no center ⇒
+     * stores null ⇒ drive inert (the sticks orbit the camera as today).
+     */
+    FrqtlApp.prototype.setInputDriveTarget = function (object) {
+        this._inputDrive = null;
+        if (!object) { return; }
+        var cam = this.cameraControl;
+        if (!cam || typeof cam.cameraOffsetFromWorld !== 'function' ||
+            typeof cam.worldFromCameraOffset !== 'function') { return; }
+        var target = this._resolveDriveTarget(object);
+        var orientationTarget = this._resolveOrientationTarget(object, target);
+        var center = this._readDriveCenter(target);
+        // Arm if we can drive EITHER position (center) OR orientation (rotate-capable target).
+        // A rotate-only target (e.g. a wall selected for LOOK-spin) still LOCKS the camera so
+        // the LOOK stick rotates it; positional terms are simply inert (no captured offset).
+        if (!center && !orientationTarget) { return; }
+        // SCREEN-NORMALIZED DRIVE (CEO ruled): capture the LOCKED orbit distance so driveInput can
+        // scale a stick deflection to the same APPARENT screen motion at any zoom. A perspective
+        // camera subtends a world displacement δ over screen-pixels ∝ δ/distance — so to hold the
+        // on-screen amount constant, the WORLD delta must scale ∝ distance. This is the root fix
+        // for the CEO's rung-8 "flip" FEEL: at the telephoto framing (dist 2873) the old fixed
+        // world-px rate barely moved the projected object while the flat marker raced (two
+        // displacement scales — docs/internal/engine/DRIVE_FEEDBACK_CONTRACT.md); scaling by
+        // distance/ref puts the drive on the render's own scale. lockedDist is invariant during a
+        // drive (camera locked).
+        var lockedDist = (typeof cam.getOrbit === 'function') ? cam.getOrbit().distance : null;
+        this._inputDrive = {
+            target: target,
+            off: center ? cam.cameraOffsetFromWorld(center) : null,
+            lockedDist: lockedDist,
+            orientationTarget: orientationTarget
+        };
+    };
+    /**
+     * DRIVE_DISTANCE_REF — the reference orbit distance at which the screen-normalized drive rate
+     * is 1:1 with the pre-normalization rate (so the DEFAULT framing feels unchanged). Matches the
+     * provider's own default-framing distance (`Math.max(w,h)*1.6`, three-provider `_init`) — a UX
+     * feel constant, not a physics coupling. Farther than this ⇒ faster world motion (same screen
+     * motion); closer ⇒ slower world motion (same screen motion).
+     */
+    FrqtlApp.prototype._driveDistanceRef = function () {
+        var b = this.getUniverseBounds();
+        return Math.max(b.width, b.height) * 1.6;
+    };
+    /** getInputDriveTarget() → the driven object (or null). CameraControls reads this at the
+     *  top of each frame; its non-null value IS the camera lock (§2b). */
+    FrqtlApp.prototype.getInputDriveTarget = function () {
+        return this._inputDrive ? this._inputDrive.target : null;
+    };
+    FrqtlApp.prototype.isInputDriveActive = function () { return !!this._inputDrive; };
+
+    /**
+     * driveInput({ right, up, forward }) — apply ONE drive step (engine px in the camera
+     * basis). Accumulate the deltas into the captured offset, map back to world via
+     * worldFromCameraOffset (reads the LOCKED pose), clamp to the canvas cube, write via the
+     * canonical `updateObjectProperty(target,'center',…)` accessor, then RE-PROJECT the offset
+     * from the clamped center so a clamped axis "sticks" at the wall (no invisible over-travel).
+     */
+    FrqtlApp.prototype.driveInput = function (delta) {
+        var d = this._inputDrive;
+        if (!d || !delta) { return; }
+        // ── ROTATION (B7b) — LOOK's HORIZONTAL axis repurposed for a rotate-capable target.
+        //   `delta.rotate` is a per-frame degree increment (deg/sec × dt, from CameraControls'
+        //   lookX). It is NOT distance-scaled: an angle is zoom-invariant (unlike a positional
+        //   world delta, which IS distance-scaled below to hold the on-screen amount constant).
+        //   When a rotate target is present, LOOK-x is CONSUMED by rotation, so the positional
+        //   `right` term (also lookX-derived) is dropped — MOVE is unchanged, camera-drive
+        //   (no target) is untouched. Walls re-aim their directional cone; emitters sweep (pulsar).
+        var rotating = !!d.orientationTarget;
+        if (rotating && typeof delta.rotate === 'number' && delta.rotate) {
+            var cur = (typeof d.orientationTarget.getOrientation === 'function')
+                ? (d.orientationTarget.getOrientation() || 0) : 0;
+            try { d.orientationTarget.setOrientation(cur + delta.rotate); } catch (e) { /* fail-soft */ }
+        }
+        // Positional drive requires a captured offset (a center-bearing target). A rotate-only
+        // target (no center) drives orientation exclusively.
+        if (!d.off) { return; }
+        var cam = this.cameraControl;
+        if (!cam || typeof cam.worldFromCameraOffset !== 'function') { return; }
+        // Screen-normalize: scale the incoming (world-px) delta by lockedDistance / referenceDistance
+        // so the apparent on-screen motion is the same at any zoom (CEO ruled). scale=1 at the default
+        // framing (backward-compatible); >1 when zoomed out (telephoto), <1 when zoomed in. No lock
+        // distance (older provider / 2D) ⇒ scale 1 (unchanged).
+        var ref = this._driveDistanceRef();
+        var scale = (typeof d.lockedDist === 'number' && d.lockedDist > 0 && ref > 0) ? (d.lockedDist / ref) : 1;
+        // LOOK-x is repurposed to rotation for a rotate-capable target → drop the lateral `right`
+        // slide (else lookX would both rotate AND slide). MOVE (up/forward) is unchanged.
+        var rightDelta = rotating ? 0 : (delta.right || 0);
+        d.off.right   += rightDelta * scale;
+        d.off.up      += (delta.up      || 0) * scale;
+        d.off.forward += (delta.forward || 0) * scale;
+        var c = cam.worldFromCameraOffset(d.off);
+        if (!c) { return; }
+        c = this._clampToUniverseCube(c);
+        try { this.updateObjectProperty(d.target, 'center', c); } catch (e) { return; }
+        d.off = cam.cameraOffsetFromWorld(c);   // re-project (glue to the wall on clamp)
+    };
+
+    // ── Target-UX: drive-feedback bag threaded to the provider via the renderTick opts channel ──
+    // (spec §1). While driving, the provider draws a universe-cube wireframe + a crosshair reticle
+    // at the target center — projected by the REAL camera, so feedback and object are the SAME
+    // projected thing (dissolves the flat-marker-vs-projection decoupling). This is LIVE per-frame
+    // state (the target moved via driveInput), NOT a persistent user knob — so it rides a fresh
+    // opts bag each render, never setRenderOption. Arrow-legal: runner(objects) → provider(renderer)
+    // over the EXISTING renderTick(…, opts) path (no new RendererProvider method, no signature
+    // change). A provider that ignores opts.driveFeedback draws nothing (capability-checked, R4/R5).
+
+    /** @returns {{center:number[], bounds:object}|null} the live drive-feedback, or null when not driving. */
+    FrqtlApp.prototype._computeDriveFeedback = function () {
+        if (!this.isInputDriveActive()) { return null; }
+        var center = this._readDriveCenter(this._inputDrive.target);
+        if (!center) { return null; }
+        return { center: center, bounds: this.getUniverseBounds() };
+    };
+    /** The render options for a frame: the persistent user options plus the live drive-feedback (if any). */
+    FrqtlApp.prototype._renderOptsWithFeedback = function () {
+        var fb = this._computeDriveFeedback();
+        if (!fb) { return this._renderOptions; }
+        return Object.assign({}, this._renderOptions, { driveFeedback: fb });
+    };
+
+    /**
+     * pickObjectAtScreen(cssX, cssY, cssW, cssH) → the nearest placeable object to a CAMERA-AWARE
+     * ray through the screen point, or null (spec §2). Replaces the flat camera-blind bbox hit-test
+     * in 3D: for each object, unproject the click onto THAT object's own z-plane via the provider's
+     * screenToWorld capability and measure the world distance to its center; pick the nearest within
+     * a world-px threshold. So clicking where the object VISUALLY appears selects it. Objects-layer
+     * (composes the provider ray + a nearest-center test); consumed downward by AuthorView. Returns
+     * null (fail-soft) when there is no screenToWorld capability (2D / BYO without it) — the host
+     * then falls back to the Layers panel (the guaranteed camera-independent selector).
+     */
+    FrqtlApp.prototype.pickObjectAtScreen = function (cssX, cssY, cssW, cssH) {
+        var r = this.renderer;
+        if (!r || typeof r.screenToWorld !== 'function') { return null; }
+        var los = this.largeObjects;
+        if (!los.length) { return null; }
+        var bounds = this.getUniverseBounds();
+        var thresh = Math.max(bounds.width, bounds.height) * 0.08;   // world-px pick radius
+        var best = null, bestD = Infinity;
+        for (var i = 0; i < los.length; i++) {
+            var lo = los[i];
+            // Prefer the emitter facade's live center (the drive target); else the LO rect center.
+            var center = this._readDriveCenter(this._resolveDriveTarget(lo));
+            if (!center) {
+                if (lo.rect) {
+                    center = [lo.rect.left + lo.rect.w / 2, lo.rect.top + lo.rect.h / 2,
+                              (typeof lo.rect.z === 'number') ? lo.rect.z : 0];
+                } else { continue; }
+            }
+            var z = (typeof center[2] === 'number') ? center[2] : 0;
+            var wp = r.screenToWorld(cssX, cssY, cssW, cssH, z);   // world (x,y) on this object's z-plane
+            if (!wp) { continue; }
+            var dd = Math.sqrt((wp.x - center[0]) * (wp.x - center[0]) + (wp.y - center[1]) * (wp.y - center[1]));
+            if (dd < bestD) { bestD = dd; best = lo; }
+        }
+        return (bestD <= thresh) ? best : null;
+    };
+
+    /**
+     * Uniform schema-driven mutation entry point for the live UNIVERSE singleton
+     * (WS Studio Controls Realignment S1, design §2.3.2 / gap-census #10).
+     *
+     * Mirrors `updateObjectProperty`'s throw-or-apply discipline for the ONE other
+     * object every experiment page has exactly one of: the universe itself. Unlike
+     * a Frame/LargeObject prop there is no separate engine-ABI branch to dispatch
+     * to — `wavelengthScale`'s own JS-side property setter
+     * (`EGPTUniverse.prototype.wavelengthScale`, `wasm-engine.js`) already calls
+     * through to the WASM ABI (`_wasm.set_wavelength_scale`), so once schema
+     * validation has passed, `this.universe[prop] = value` IS the engine write —
+     * never a bare, unvalidated assignment (that's exactly the bind-local-property-
+     * list anti-pattern this accessor exists to close off).
+     *
+     * @param {string} prop  - Field name declared in ObjectSchema.get('Universe')
+     * @param {*}      value - New value
+     * @throws {TypeError} - If prop is unknown or readonly for the 'Universe' kind
+     */
+    FrqtlApp.prototype.setUniverseProperty = function (prop, value) {
+        var schema = (typeof window !== 'undefined' && window.ObjectSchema)
+            ? window.ObjectSchema
+            : (typeof ObjectSchema !== 'undefined' ? ObjectSchema : null);
+        if (!schema) {
+            throw new TypeError(
+                '[FrqtlApp.setUniverseProperty] ObjectSchema is unavailable — cannot ' +
+                'validate "' + prop + '" (FAIL-LOUD: never write to the universe unvalidated).'
+            );
+        }
+        var descriptor = schema.get('Universe');
+        if (!descriptor) {
+            throw new TypeError('[FrqtlApp.setUniverseProperty] Unknown object kind "Universe"');
+        }
+        var fieldDef = null;
+        for (var i = 0; i < descriptor.fields.length; i++) {
+            if (descriptor.fields[i].name === prop) { fieldDef = descriptor.fields[i]; break; }
+        }
+        if (!fieldDef) {
+            throw new TypeError(
+                '[FrqtlApp.setUniverseProperty] Property "' + prop +
+                '" is not in the schema for kind "Universe". Valid properties: ' +
+                descriptor.fields.map(function (f) { return f.name; }).join(', ')
+            );
+        }
+        if (fieldDef.type === 'readonly') {
+            throw new TypeError(
+                '[FrqtlApp.setUniverseProperty] Property "' + prop + '" is readonly for kind "Universe"'
+            );
+        }
+        this.universe[prop] = value;
+    };
+
+    /**
+     * Read counterpart to setUniverseProperty — same schema validation, live read
+     * (no tick dependency, unlike the LargeObject snapshot path).
+     *
+     * @param {string} prop - Field name declared in ObjectSchema.get('Universe')
+     * @returns {*} the current value of `this.universe[prop]`
+     * @throws {TypeError} - If prop is unknown for the 'Universe' kind
+     */
+    FrqtlApp.prototype.getUniverseProperty = function (prop) {
+        var schema = (typeof window !== 'undefined' && window.ObjectSchema)
+            ? window.ObjectSchema
+            : (typeof ObjectSchema !== 'undefined' ? ObjectSchema : null);
+        if (schema) {
+            var descriptor = schema.get('Universe');
+            if (descriptor) {
+                var fieldDef = null;
+                for (var i = 0; i < descriptor.fields.length; i++) {
+                    if (descriptor.fields[i].name === prop) { fieldDef = descriptor.fields[i]; break; }
+                }
+                if (!fieldDef) {
+                    throw new TypeError(
+                        '[FrqtlApp.getUniverseProperty] Property "' + prop +
+                        '" is not in the schema for kind "Universe". Valid properties: ' +
+                        descriptor.fields.map(function (f) { return f.name; }).join(', ')
+                    );
+                }
+            }
+        }
+        return this.universe[prop];
+    };
+
+    /**
+     * Move a LargeObject to a new position.
+     * Private dispatch target — kept so internal callers don't break.
+     * The public entry point is updateObjectProperty(lo, 'rect', [left, top, w, h]).
+     *
+     * @param {Object} lo    LargeObject wrapper with .handle and .rect
+     * @param {number} left  New left edge (physics pixels)
+     * @param {number} top   New top edge (physics pixels)
+     * @param {number} [w]   New width  (default: unchanged)
+     * @param {number} [h]   New height (default: unchanged)
+     */
+    FrqtlApp.prototype.moveLargeObject = function (lo, left, top, w, h) {
+        if (!lo || !lo.rect) return;
+        var newW = (w !== undefined) ? w : lo.rect.w;
+        var newH = (h !== undefined) ? h : lo.rect.h;
+        // Route through the uniform API so engine-visible mutation goes through one path.
+        this.updateObjectProperty(lo, 'rect', [left, top, newW, newH]);
+    };
+
+    // ── Canvas creation ────────────────────────────────────────────────────
+
+    /**
+     * Create the canvas and attach it to the configured parent element.
+     *
+     * When the p5 renderer is active: MUST be called from p5's setup() context
+     * (delegates to the p5 provider's init(), which calls createCanvas()).
+     *
+     * FAIL-LOUD: with no renderer provider resolved this THROWS naming
+     * render-boot.js. There is no bare-p5 fallback — a page that draws through
+     * an unresolved renderer is the silent-degradation this file's own doctrine
+     * forbids.
+     *
+     * @returns {p5.Element|HTMLCanvasElement} The created canvas element.
+     * @throws {Error} when no RendererProvider is active.
+     */
+    FrqtlApp.prototype.createCanvas = function () {
+        var prov = this._getRenderer();
+        if (prov && prov.init) {
+            // New path: delegate to provider
+            var el = prov.init({
+                parentEl: this._canvasParentId,
+                width:    this.canvas_rect.w,
+                height:   this.canvas_rect.h
+            });
+            if (this._onReady) { this._onReady(this); }
+            return el;
+        }
+
+        throw new Error('[FrqtlApp.createCanvas] no RendererProvider is active — ' +
+            'the page must boot one through lib/frqtl/experiments/_shared/render-boot.js ' +
+            '(window._egptWhenRendererReady) before calling createCanvas().');
+    };
+
+    // ── Experiment setup ───────────────────────────────────────────────────
+
+    /**
+     * Run a setup factory (e.g. setupDoubleSlit) on this runner's universe.
+     *
+     * CANONICAL TEARDOWN (CEO drive #2, 2026-07-14 — the S4 dispose discipline,
+     * generalized to setup-level reinit): `universe.init()` (called BY the setup
+     * factory, below) resets the WASM instance's physics state but does NOT
+     * clear the JS-side `universe.experimentTickFunctions` array — a fact
+     * `fx-experiment.js`'s own loop-control docstring already names explicitly
+     * ("NOT cleared by init() and would duplicate on every reset"), which is
+     * why THAT mechanism never pushes a recurring tick-fn in the first place.
+     * A setup factory that DOES register a recurring host tick-fn (e.g. a
+     * continuous burst injector) for a LIVE, re-runnable experiment page must
+     * therefore tear its OWN registration down before the next `setup()` call
+     * installs a new one, or the OLD tick-fn keeps firing into the SAME array
+     * forever, compounding the population across every reinit (the exact
+     * "5730 → 8890 → 10160 → 10720" runaway the tester measured). Rather than
+     * require every such page to remember a bespoke unhook, this ONE canonical
+     * check-and-call — mirroring `removeObject`'s own `_dispose()` idiom
+     * EXACTLY (any object with a `.dispose()` method gets it called,
+     * idempotently, no kind-sniffing) — runs here, generically, for every
+     * experiment page: a setup factory that returns `{dispose(){...}}` on its
+     * `setupResult` gets automatic teardown-before-reinit for free. Every
+     * EXISTING setup factory (none of which currently returns `.dispose`) is
+     * byte-identical — this is a pure ADDITION, not a behavior change, for
+     * anything that doesn't opt in.
+     */
+    FrqtlApp.prototype.setup = function (setupFn, opts) {
+        opts = opts || {};
+        if (this._setupResult && typeof this._setupResult.dispose === 'function') {
+            this._setupResult.dispose();
+        }
+        // RETAINED so `restart()` can replay the SAME scene in-place. Kept here (the
+        // one place a setup is run) rather than at each call site, so every page —
+        // and every host driving a declared `restart` action — gets it for free.
+        this._setupFn   = setupFn;
+        this._setupOpts = opts;
+        this._setupResult  = setupFn(this.universe, opts);
+        // NO render-list assignment: a factory's LargeObjects registered themselves with
+        // the world as they were CONSTRUCTED. The old line replaced the host's shadow list
+        // with `setupResult.largeObjects`, which both required every factory to remember to
+        // return the list AND silently dropped anything built outside it.
+        return this._setupResult;
+    };
+
+    /**
+     * restart() — the PAGE-LEVEL restart primitive (presentation pass Item 2,
+     * CEO-ratified E-P2b): stop → dispose → re-run the RETAINED setup factory with
+     * its ORIGINAL opts → start. The scene returns to tick 0 IN-PAGE: no reload, so
+     * the camera orbit, render options and any host wiring survive.
+     *
+     * Teardown runs EXACTLY ONCE — `setup()` above already calls the previous
+     * setupResult's `dispose()` before installing the new one, so this method must
+     * NOT dispose again (double teardown was the stacking-regression this seam was
+     * built to avoid).
+     *
+     * DISTINCT BY DESIGN from STUDIO's codegen Restart (AuthorView), which rebuilds
+     * a persisted DESIGN and reloads the page: that one is STUDIO chrome and stays
+     * where it is. This one replays the already-loaded module.
+     *
+     * @returns {*} the fresh setup result.
+     * @throws {Error} FAIL-LOUD when no setup factory has ever been run (there is
+     *   nothing to replay) — never a silent no-op.
+     */
+    FrqtlApp.prototype.restart = function () {
+        if (typeof this._setupFn !== 'function') {
+            throw new Error('[FrqtlApp] restart(): no setup factory has been run on this ' +
+                'runner — call setup(factory, opts) first. (FAIL-LOUD — a restart with nothing to ' +
+                'replay would silently do nothing.)');
+        }
+        this.stop();
+        var result = this.setup(this._setupFn, this._setupOpts);
+        this._lastTickData = null;
+        // Always resume: "restart" means run the scene again from tick 0 — a restart
+        // that left the loop paused would read as a dead button.
+        this.start();
+        return result;
+    };
+
+    // ── Renderer resolution ────────────────────────────────────────────────
+
+    /**
+     * Resolve the DISPLAY renderer.
+     *  1. this._renderer (already resolved this session, or set directly by a host/test)
+     *  2. the DISPLAY SLOT (`compat/renderer/display-slot.js`) — the ONE answer to
+     *     "which provider owns the display", written by whichever boot ran the selection.
+     *
+     * The bare `window._egptActiveRenderer` global this used to read is DELETED: a slot
+     * plus a global would be two truths about one fact (RENDERER_CONTRACT §9, architect
+     * finding d.1).
+     *
+     * FAIL-LOUD: if neither is set when rendering is requested, this is a boot
+     * configuration error — render-boot.js must run before the draw loop starts
+     * (see `_failLoudMissingRenderer`). No silent P5Renderer fallback (P5Renderer was
+     * deleted in Phase 1). An EMPTY slot is a legitimate state, not an error: the `tick`
+     * and `field` taps are backend-independent and work with no display at all.
+     */
+    FrqtlApp.prototype._getRenderer = function () {
+        if (!this._renderer) {
+            var prov = _resolveDisplaySlot().get();
+            if (prov) { this._renderer = prov; }
+        }
+        return this._renderer || null;
+    };
+
+    /**
+     * runner.cameraControl — the OPTIONAL camera sugar handle from the active
+     * renderer provider, or null. The camera analogue of a setup factory's
+     * temperatureControl: an experiment page does
+     *   `var cam = runner.cameraControl; if (cam) wireWidget(cam);`
+     * exactly as blackbody does `if (result.temperatureControl) …`. The presence
+     * of the handle is the CAPABILITY CHECK — the page never sniffs the renderer.
+     * Resolves lazily (after start(), when the provider is live) and caches the
+     * non-null handle (null/2D providers re-check cheaply; a custom provider that
+     * implements getCameraControl() gets the same UI for free).
+     * @returns {{ setOrbit(spec):void, getOrbit():Object }|null}
+     */
+    Object.defineProperty(FrqtlApp.prototype, 'cameraControl', {
+        configurable: true,
+        get: function () {
+            if (!this._cameraControl) {
+                var r = this._getRenderer();
+                if (r && typeof r.getCameraControl === 'function') {
+                    this._cameraControl = r.getCameraControl();   // null in 2D, handle in 3D
+                }
+            }
+            return this._cameraControl || null;
+        }
+    });
+
+    /**
+     * Report a missing renderer loudly; called from the draw loop when
+     * _getRenderer() returns null on the first render attempt.
+     */
+    FrqtlApp.prototype._failLoudMissingRenderer = function () {
+        var msg = 'FrqtlApp: the DISPLAY SLOT is empty (window.FrqtlDisplay.get() === null).\n\n' +
+            'render-boot.js must load (via stack-boot.js or explicit tag) and resolve\n' +
+            'BEFORE the draw loop fires. This is a page configuration error.\n\n' +
+            'P5Renderer has been removed (WS-RENDERER Phase 1). All experiment pages\n' +
+            'must use the canonical RendererProvider stack via stack-boot.js.';
+        // `typeof window.X` guards the PROPERTY, not the OBJECT: in a host with no `window`
+        // the deref itself is a ReferenceError, which is what stopped a headless process
+        // from ever reaching this (correct) diagnosis. Guard the object first.
+        var w = (typeof window !== 'undefined' && window) ? window : null;
+        if (w && typeof w._egptRendererFailLoud === 'function') {
+            w._egptRendererFailLoud(msg);
+        } else if (w && typeof w._egptFailLoud === 'function') {
+            w._egptFailLoud(msg);
+        } else if (typeof document === 'undefined') {
+            // No DOM to paint the overlay into — the message is still LOUD, on the console
+            // this host does have. Never silent.
+            if (typeof console !== 'undefined' && console.error) { console.error('[FrqtlApp] ' + msg); }
+        } else {
+            if (typeof console !== 'undefined' && console.error) { console.error('[FrqtlApp] ' + msg); }
+            if (!document.getElementById('egpt-renderer-error')) {
+                var b = document.createElement('div');
+                b.id = 'egpt-renderer-error';
+                b.style.cssText = 'position:fixed;inset:0;z-index:99998;background:#000a1a;' +
+                    'color:#6b9eff;font:13px/1.55 ui-monospace,monospace;padding:22px;' +
+                    'white-space:pre-wrap;overflow:auto;border:2px solid #1640b6;';
+                b.textContent = msg;
+                (document.body || document.documentElement).appendChild(b);
+            }
+        }
+        /* Stop the loop to prevent repeated error overlays */
+        this._isLooping = false;
+        if (this._rafId !== null) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+    };
+
+    // ── RAF loop (§6, §6.1) ───────────────────────────────────────────────
+
+    /**
+     * Build and return the inner RAF frame callback for this runner.
+     * Shared by start() and toggle() — one definition, no drift.
+     *
+     * When tickHz === Infinity the loop runs up to MAX_TICKS_UNBOUNDED ticks
+     * per animation frame (unbounded TPS mode).  In all other cases the normal
+     * MAX_TICKS_PER_FRAME cap applies and a warning fires if it is hit.
+     */
+    FrqtlApp.prototype._makeFrame = function () {
+        var self = this;
+        function frame(now) {
+            if (!self._isLooping) { return; }
+            self._rafId = requestAnimationFrame(frame);
+
+            // ── Fixed-timestep accumulator (§6.1) ──────────────────────────
+            if (self._lastFrame === 0) { self._lastFrame = now; }
+            var delta = Math.min(now - self._lastFrame, MAX_FRAME_MS);
+            self._lastFrame = now;
+            self._accumulator += delta;
+
+            // Resolve effective tickDt and drawDt for this frame
+            var tickHz = self._tickHz;
+            var drawHz = self._drawHz;
+            var tickDt, drawDt;
+
+            if (tickHz === Infinity) {
+                // Unbounded TPS: run as many ticks per frame as the safety budget allows.
+                // tickDt = 0 keeps the while-condition always true until budget runs out.
+                tickDt = 0;
+            } else if (tickHz > 0) {
+                tickDt = 1000 / tickHz;
+            } else {
+                // Lock to drawHz (1:1 default): advance exactly one tick per draw.
+                tickDt = delta;
+                self._accumulator = delta;  // override accumulator to guarantee 1 tick/frame
+            }
+            drawDt = (drawHz > 0) ? (1000 / drawHz) : 0;
+
+            // ── Physics ticks ───────────────────────────────────────────────
+            var lastTickData = null;
+            var budget = (tickHz === Infinity) ? MAX_TICKS_UNBOUNDED : MAX_TICKS_PER_FRAME;
+            // `_tickSuspend` is checked PER TICK, not once per frame: at unbounded TPS this
+            // loop runs a whole batch of ticks inside ONE rAF frame, so a suspend raised from
+            // inside a tick listener must break the batch IMMEDIATELY. Checking it only at the
+            // top of the frame is exactly what let ~120 ticks elapse between a waypoint and an
+            // awaited capture.
+            while ((tickDt === 0 || self._accumulator >= tickDt) && budget-- > 0 && self._tickSuspend === 0) {
+                var td = self.universe.doTick();
+                lastTickData = td;
+                self._lastTickData = td; // repaint()'s source — see that method's docstring
+                if (tickDt > 0) { self._accumulator -= tickDt; }
+                self._countTick(now);
+                if (self._onTick) { self._onTick(td, self._setupResult); }
+                self._notifyTickListeners(td);
+            }
+
+            // Budget exhaustion (persistent slow physics). This fires on nearly every
+            // frame whenever the render/tick budget can't keep up, so the warning is
+            // MUTED BY DEFAULT — it was flooding the console once per frame. It surfaces
+            // ONLY when the caller opts into verbose logging (window._egptVerbose === true)
+            // AND at most once per _BUDGET_WARN_INTERVAL_MS so even verbose runs stay
+            // readable. The accumulator reset (the actual correctness action) is unchanged.
+            if (budget <= 0 && tickDt > 0 && self._accumulator >= tickDt) {
+                if (typeof window !== 'undefined' && window._egptVerbose === true
+                        && window.console && console.warn) {
+                    var _lastWarn = self._lastBudgetWarn || 0;
+                    if (now - _lastWarn >= self._BUDGET_WARN_INTERVAL_MS) {
+                        self._lastBudgetWarn = now;
+                        console.warn('[FrqtlApp] tick budget exhausted — physics may be falling behind');
+                    }
+                }
+                self._accumulator = 0;  // reset to avoid unbounded catch-up
+            }
+            // In unbounded mode, always drain the accumulator so it does not compound.
+            if (tickHz === Infinity) { self._accumulator = 0; }
+
+            // ── Draw frame ──────────────────────────────────────────────────
+            var shouldDraw = drawDt > 0
+                ? (now - self._lastDraw) >= drawDt
+                : true;  // no drawHz cap → draw every frame
+
+            if (lastTickData && shouldDraw) {
+                var prov = self._getRenderer();
+                if (prov && prov.renderTick) {
+                    self._assertRenderCensus();
+                    prov.renderTick(lastTickData, self._visibleLargeObjects(), self._renderOptsWithFeedback());
+                } else if (!self._rendererMissingReported) {
+                    self._rendererMissingReported = true;
+                    self._failLoudMissingRenderer();
+                    return;
+                }
+                self._countDraw(now);
+                self._lastDraw = now;
+            }
+        }
+        return frame;
+    };
+
+    /**
+     * Start the simulation loop.
+     * Idempotent — calling start() while already running does nothing.
+     * Owns requestAnimationFrame — does NOT set window.draw or call p5 loop().
+     *
+     * For backward compatibility with pages that also define window.setup (which p5
+     * calls on load), the runner's loop co-exists with p5: p5's own draw() is a
+     * no-op (we set window.draw = empty function below so p5 doesn't double-render).
+     */
+    FrqtlApp.prototype.start = function () {
+        // Idempotency guard: if a RAF loop is already running, do nothing.
+        // Without this guard, a second start() call spawns a second concurrent loop,
+        // doubling the tick rate (observable as TPS × 2 on the readout).
+        if (this._isLooping || this._rafId !== null) { return; }
+
+        // Suppress p5's own draw loop so it doesn't double-render while our RAF loop runs.
+        // p5 calls window.draw every frame if it's defined.
+        if (typeof window !== 'undefined') {
+            window.draw = function () { /* RAF loop drives rendering; p5 draw is a no-op */ };
+            // Expose the live runner on window so ANY experiment page (and same-origin
+            // embedders such as the IDE author surface) can drive it identically — Layers
+            // panel toggles, backdrop controls, inspector edits — without per-page wiring.
+            // Set once here rather than inline in every experiment sketch (Phase 2, WS-RENDERER).
+            window._frqtlApp = this;
+        }
+
+        this._isLooping     = true;
+        this._accumulator   = 0;
+        this._lastFrame     = 0;
+        this._lastDraw      = 0;
+        this._rateWindowEnd = 0;
+        this._tickCount     = 0;
+        this._drawCount     = 0;
+        this._lastTps       = 0;
+        this._lastFps       = 0;
+
+        this._rafId = requestAnimationFrame(this._makeFrame());
+
+        // Also call p5's loop() for pages that still rely on p5 being "running"
+        // (e.g. mousePressed etc. — p5 must be in a running state for event handling).
+        if (typeof loop === 'function') { loop(); }
+    };
+
+    /**
+     * runner.suspendTicks() / resumeTicks() — hold the TICK CLOCK across an async operation
+     * that must observe one specific tick, without touching the user's play/pause state.
+     *
+     * A counted pair (nested suspends are safe; the clock resumes when the LAST one releases).
+     * The batch loop checks the depth PER TICK, so a suspend raised from inside a tick
+     * listener breaks the current batch immediately rather than at the next frame — which is
+     * the whole point: at unbounded TPS a single rAF frame runs a hundred-plus ticks, so
+     * "stop at the next frame" is far too late for anything that means "at THIS tick".
+     *
+     * This is deliberately NOT `stop()`: `stop()` is the user's pause, and a consumer that
+     * borrowed it would leave the play button lying about the run state and could
+     * accidentally restart a sim the user had paused. Physics determinism is untouched — the
+     * tick SEQUENCE is identical either way; only wall-clock pacing changes.
+     *
+     * The canonical consumer is a capture that must correspond to a known tick
+     * (`CameraPath`'s waypoint handlers). Always release in a `finally`.
+     */
+    FrqtlApp.prototype.suspendTicks = function () {
+        this._tickSuspend += 1;
+        return this._tickSuspend;
+    };
+
+    /** Release one suspend. Never goes below zero (an unbalanced resume is a no-op, not a debt). */
+    FrqtlApp.prototype.resumeTicks = function () {
+        if (this._tickSuspend > 0) { this._tickSuspend -= 1; }
+        return this._tickSuspend;
+    };
+
+    /** @returns {boolean} whether the tick clock is currently held. */
+    Object.defineProperty(FrqtlApp.prototype, 'ticksSuspended', {
+        configurable: true,
+        get: function () { return this._tickSuspend > 0; }
+    });
+
+    /**
+     * Pause the simulation.
+     */
+    FrqtlApp.prototype.stop = function () {
+        this._isLooping = false;
+        if (this._rafId !== null) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
+        // Keep p5's loop running for event handling but suppress its draw.
+        // (window.draw is already a no-op from start(); keep it that way.)
+    };
+
+    /**
+     * Toggle play/pause.
+     * Resume path re-uses _makeFrame() — same loop body as start(), no drift.
+     */
+    FrqtlApp.prototype.toggle = function () {
+        if (this._isLooping) {
+            this.stop();
+        } else {
+            // Guard: if somehow a stale _rafId is present, cancel it first.
+            if (this._rafId !== null) {
+                cancelAnimationFrame(this._rafId);
+                this._rafId = null;
+            }
+            this._isLooping = true;
+            this._lastFrame = 0;   // reset timer on resume to avoid catch-up spike
+            this._rafId = requestAnimationFrame(this._makeFrame());
+        }
+    };
+
+    /**
+     * Advance exactly one tick + render. Useful for step-by-step debugging.
+     */
+    FrqtlApp.prototype.step = function () {
+        // THE SECOND TICK DRIVER. `doTick()` is called in exactly two places — the RAF batch
+        // loop and here — and a suspension that only the loop honoured would be a half-closed
+        // guarantee: the notebook realm and the Studio Design path drive ticks through step(),
+        // and any of them could advance the world out from under an in-flight
+        // capture-at-a-known-tick. Suspended ⇒ this is a NO-OP returning the retained
+        // TickData, so a caller polling step() simply makes no progress until the hold
+        // releases (it does not throw: a step during a sub-second internal hold is not a
+        // caller error, and a throw would break the manual step button).
+        if (this._tickSuspend > 0) { return this._lastTickData; }
+        var tickData = this.universe.doTick();
+        this._lastTickData = tickData; // repaint()'s source — see that method's docstring
+        if (tickData) {
+            var prov = this._getRenderer();
+            if (prov && prov.renderTick) {
+                this._assertRenderCensus();
+                prov.renderTick(tickData, this._visibleLargeObjects(), this._renderOptsWithFeedback());
+            } else if (!this._rendererMissingReported) {
+                this._rendererMissingReported = true;
+                this._failLoudMissingRenderer();
+            }
+        }
+        if (this._onTick) { this._onTick(tickData, this._setupResult); }
+        this._notifyTickListeners(tickData);
+        return tickData;
+    };
+
+    /**
+     * addTickListener(fn) — subscribe to the per-tick stream WITHOUT clobbering the
+     * page's single `_onTick` slot. `fn(tickData, setupResult)` runs after `_onTick`
+     * at every tick (RAF loop + step()). Returns an unsubscribe function.
+     *
+     * Host-side sugar for the LiveChart wiring (lib/components/live-chart-wiring):
+     * the wiring accumulates its source wall's collided frames once per tick here.
+     * Idempotent (same fn added once); safe to call before start().
+     * @param {Function} fn
+     * @returns {Function} unsubscribe
+     */
+    FrqtlApp.prototype.addTickListener = function (fn) {
+        if (typeof fn !== 'function') { return function () {}; }
+        if (this._tickListeners.indexOf(fn) === -1) { this._tickListeners.push(fn); }
+        var self = this;
+        return function () { self.removeTickListener(fn); };
+    };
+
+    /**
+     * removeTickListener(fn) — drop a previously-added tick listener. No-op if absent.
+     * @param {Function} fn
+     */
+    FrqtlApp.prototype.removeTickListener = function (fn) {
+        var i = this._tickListeners.indexOf(fn);
+        if (i !== -1) { this._tickListeners.splice(i, 1); }
+    };
+
+    /**
+     * Fan out one tick to every registered listener. A listener throwing does NOT
+     * abort the loop or the other listeners (its error is surfaced to the console,
+     * never swallowed silently) — the tick clock is never held hostage by a consumer.
+     * @private
+     */
+    FrqtlApp.prototype._notifyTickListeners = function (tickData) {
+        var ls = this._tickListeners;
+        if (!ls || !ls.length) { return; }
+        for (var i = 0; i < ls.length; i++) {
+            try { ls[i](tickData, this._setupResult); }
+            catch (e) {
+                if (typeof console !== 'undefined' && console.error) {
+                    console.error('[FrqtlApp] tick listener threw:', e);
+                }
+            }
+        }
+    };
+
+    /**
+     * Repaint the CURRENT physics state WITHOUT advancing the tick clock (WS
+     * Studio Controls Realignment S4, design §2.5.4 — "drag must NEVER call
+     * runner.step() — the tick loop is the only clock"). Re-invokes the active
+     * renderer's `renderTick` against the LAST computed TickData (tracked by
+     * `step()` and the RAF loop) and the CURRENT world census — so a
+     * Design-mode drag (sim stopped, no RAF loop running) still gives immediate
+     * visual feedback for a moved wall/emitter rect (the wrapper's `.rect` was
+     * already mutated in place by `updateObjectProperty` BEFORE this is called)
+     * without ticking physics or drawing a new frame's worth of particle motion.
+     * A no-op before the first tick has ever run (`_lastTickData` is null).
+     */
+    FrqtlApp.prototype.repaint = function () {
+        if (!this._lastTickData) { return; }
+        var prov = this._getRenderer();
+        if (prov && prov.renderTick) {
+            this._assertRenderCensus();
+            prov.renderTick(this._lastTickData, this._visibleLargeObjects(), this._renderOptsWithFeedback());
+        }
+    };
+
+    // ── Accessors ──────────────────────────────────────────────────────────
+
+    Object.defineProperty(FrqtlApp.prototype, 'isRunning', {
+        get: function () { return this._isLooping; }
+    });
+
+    Object.defineProperty(FrqtlApp.prototype, 'setupResult', {
+        get: function () { return this._setupResult; }
+    });
+
+    /**
+     * The active renderer provider (RendererProvider | null).
+     * Available after start() has been called (or after the display slot is written).
+     */
+    Object.defineProperty(FrqtlApp.prototype, 'renderer', {
+        get: function () { return this._getRenderer(); }
+    });
+
+    /**
+     * Return the most recently computed rate snapshot.
+     *
+     * Rates are recomputed once per ~1 s rolling window (no per-frame allocation;
+     * integers only).  Returns { fps: 0, tps: 0 } until the first window expires.
+     *
+     * @returns {{ fps: number, tps: number }}
+     */
+    FrqtlApp.prototype.getRates = function () {
+        return { fps: this._lastFps, tps: this._lastTps };
+    };
+
+    /**
+     * Read the current rate limits.
+     *
+     * fpsLimit — draw frames per second cap (0 = lock to display refresh, i.e. no cap).
+     * tpsLimit — physics ticks per second cap:
+     *     0        = 1:1 locked to drawHz (one tick per draw frame, the default)
+     *     > 0      = tick at that Hz (e.g. 240)
+     *     Infinity = unbounded — run up to MAX_TICKS_UNBOUNDED ticks per frame
+     *
+     * @returns {{ fpsLimit: number, tpsLimit: number }}
+     */
+    FrqtlApp.prototype.getRateLimits = function () {
+        return { fpsLimit: this._drawHz, tpsLimit: this._tickHz };
+    };
+
+    /**
+     * Set rate limits at runtime.  Changes take effect on the next RAF frame
+     * (no restart required).
+     *
+     * @param {Object} limits
+     * @param {number} [limits.fpsLimit]  Draw frames/s cap. 0 = display refresh.
+     *                                    Must be ≥ 0.
+     * @param {number} [limits.tpsLimit]  Physics ticks/s cap.
+     *                                    0        = 1:1 locked (default).
+     *                                    > 0      = tick at that Hz.
+     *                                    Infinity = unbounded (up to safety budget).
+     *                                    Must be ≥ 0 (or Infinity).
+     *
+     * Throws a RangeError on invalid inputs (FAIL-LOUD).
+     */
+    FrqtlApp.prototype.setRateLimits = function (limits) {
+        if (!limits || typeof limits !== 'object') {
+            throw new TypeError('[FrqtlApp.setRateLimits] limits must be an object');
+        }
+        if (limits.fpsLimit !== undefined) {
+            var fps = limits.fpsLimit;
+            if (typeof fps !== 'number' || fps < 0 || isNaN(fps)) {
+                throw new RangeError('[FrqtlApp.setRateLimits] fpsLimit must be a non-negative number, got: ' + fps);
+            }
+            this._drawHz = fps;
+        }
+        if (limits.tpsLimit !== undefined) {
+            var tps = limits.tpsLimit;
+            if (typeof tps !== 'number' || (tps < 0 && tps !== -Infinity) || isNaN(tps)) {
+                throw new RangeError('[FrqtlApp.setRateLimits] tpsLimit must be ≥ 0 or Infinity, got: ' + tps);
+            }
+            // Normalise -Infinity or negative finite to 0 (1:1 locked).
+            this._tickHz = (tps < 0) ? 0 : tps;
+        }
+    };
+
+    /**
+     * Internal helper: tick the rate counters. Call once per physics tick.
+     * @param {number} now  — performance.now() value for this frame
+     */
+    FrqtlApp.prototype._countTick = function (now) {
+        this._tickCount += 1;
+        if (this._rateWindowEnd === 0) {
+            // Initialise window on first call
+            this._rateWindowEnd = now + this._rateWindowMs;
+        }
+    };
+
+    /**
+     * Internal helper: tick the draw counters. Call once per rendered frame.
+     * Checks whether the window has expired and flushes a new rate snapshot.
+     * @param {number} now  — performance.now() value for this frame
+     */
+    FrqtlApp.prototype._countDraw = function (now) {
+        this._drawCount += 1;
+        if (now >= this._rateWindowEnd && this._rateWindowEnd > 0) {
+            // Compute elapsed — clamp to at least 1 ms to guard against division by zero.
+            var elapsed = Math.max(now - (this._rateWindowEnd - this._rateWindowMs), 1);
+            this._lastFps = Math.round(this._drawCount * 1000 / elapsed);
+            this._lastTps = Math.round(this._tickCount * 1000 / elapsed);
+            this._drawCount    = 0;
+            this._tickCount    = 0;
+            this._rateWindowEnd = now + this._rateWindowMs;
+        }
+    };
+
+    // ── Export ─────────────────────────────────────────────────────────────
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = { FrqtlApp: FrqtlApp };
+    } else {
+        window.FrqtlApp = FrqtlApp;
+    }
+
+})();

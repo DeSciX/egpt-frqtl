@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Empty Universe</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Vendored three.js (r128) — a load-by-eval rung may request the three renderer
+         (walkthrough R6, ?renderer=three&egpt3D=1). render-boot.js reads this before
+         falling back to a CDN; setting it mirrors the _egptWasmPkgUrl precedent so the
+         dev realm has no silent CDN dependency. Harmless for 2D/p5 loads (only read
+         when three is selected). -->
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+
+    <!-- Canonical shared loader. No page scripts: the universe is created via the
+         RecipeContext object and populated by an eval'd buildExperiment(exp) module
+         (a saved project) OR left blank (Empty Universe / palette authoring). -->
+    <script src="../_shared/stack-boot.js"></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+    </div>
+
+    <!--
+      WORLD INTROSPECTION — what SAMPLER is this world actually running?
+
+      The one stamping site on this page for resolved-world `data-*` attributes
+      (the pattern documented on lib/frqtl/experiments/single-source-interference/
+      index.html's #ssi-metrics; SAME attribute name, same resolution ladder, same
+      'engine-default' sentinel — a second spelling would defeat the purpose).
+
+      WHY it exists: a fixed-vs-average A/B whose two arms cannot be told apart
+      from the evidence is a null experiment. This element makes the arm READABLE
+      off the DOM (`[data-stepping]`) and, whenever a sampler was explicitly
+      declared, VISIBLE in the still — so a capture can never be a silent no-op
+      mistaken for a result.
+
+      HIDDEN when nothing was declared: a STUDIO scene that never names a sampler
+      renders exactly as before (no badge, no layout change); the attribute is
+      still stamped for machine readback.
+    -->
+    <div id="frqtl-world-introspect" data-role="world-introspect"
+         data-stepping="engine-default" hidden
+         style="position:fixed;left:8px;bottom:8px;z-index:9997;padding:3px 7px;
+                background:rgba(0,0,0,0.62);color:#8fe3ff;border:1px solid #2a6b80;
+                border-radius:3px;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;
+                pointer-events:none;"></div>
+
+    <!-- Empty universe — the load target for saved .js projects (Phase 3) -->
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Empty Universe — blank canvas + the load target for saved .js projects.
+     *
+     * A "project" is a buildExperiment(exp) .js recipe (see codegen.js). This page
+     * constructs a RecipeContext, inits a blank universe, and exposes
+     * window.FrqtlPage.applyModuleSource(src) so the IDE author surface (and any
+     * other consumer — the hosted eyes, a doc snippet) can eval a saved recipe
+     * against the live RecipeContext. With no module it is simply an empty
+     * universe the palette authors into.
+     *
+     * Engine-agnostic: runs JS or WASM identically.
+     */
+    var CANVAS_W = 600;
+    var CANVAS_H = 400;
+    var experiment = null;
+
+    window.setup = function () {
+        // WS Studio Controls Realignment S6 (save realignment) — honor a
+        // forwarded `?seed=` the SAME way fx-experiment.js does on a canonical
+        // experiment page (lib/shim/page-params KEYS.SEED — read via the
+        // contract, never a raw literal), so Studio's saved-project reload
+        // (which always lands here — see codegen.js's own docstring for why)
+        // can reproduce the RNG stream the design was authored/saved under.
+        // Absent or non-numeric falls back to the pre-existing hardcoded 42.
+        var _seedParam = (window.PageParams)
+            ? new URLSearchParams(window.location.search).get(window.PageParams.KEYS.SEED)
+            : null;
+        var _seed = (_seedParam !== null && _seedParam !== '' && !isNaN(Number(_seedParam)))
+            ? Number(_seedParam) : 42;
+        experiment = new RecipeContext({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: CANVAS_W,
+            canvasH: CANVAS_H,
+            seed: _seed
+        });
+        // Default-init a blank universe so design mode has a valid universe even
+        // before (or without) a module is applied.
+        experiment.init({ dimension: 2, wavelengthScale: 8 });
+        window._egptBackdrop = null;
+        // run() sets window._frqtlApp and window._egptExperiment. The author
+        // surface immediately drops it into design mode (stop + step).
+        experiment.run();
+        _stampWorldIntrospection();
+    };
+
+    /**
+     * _resolvedStepping() — WHICH WAVE-WALK SAMPLER IS THIS WORLD RUNNING?
+     *
+     * The SAME resolution ladder single-source-interference/index.html documents for
+     * its own #ssi-metrics stamp, one hop up (a recipe page has no LOCKED opts bag —
+     * its declared world config IS `exp.initCfg`):
+     *
+     *   1. the universe's own RESOLVED read-back, when the provider ever exposes one
+     *      (truth-in-labeling: what RAN beats what was asked). Vestigial today —
+     *      wasm-engine.js deliberately publishes no `stepping` read-back, because that
+     *      would require a JS copy of the engine's default.
+     *   2. `exp.initCfg.stepping` — what the SCENE SOURCE declared. Exact whenever a
+     *      recipe named a sampler, which since the RecipeContext ferry is also exactly
+     *      when the engine received one (before the ferry this would have certified a
+     *      lie: initCfg claimed a sampler universe.init never got).
+     *   3. 'engine-default' — a SENTINEL, never a copied value. The default has exactly
+     *      one home (the Rust `Stepping` serde enum); a page printing 'fixed' here would
+     *      have minted a second, driftable copy of it.
+     *
+     * @returns {string} 'fixed' | 'average' | 'engine-default' (or whatever a recipe
+     *                   declared — this reports, it does not validate).
+     */
+    function _resolvedStepping() {
+        var exp = window._egptExperiment;
+        var u   = (exp && exp.runner) ? exp.runner.universe : null;
+        if (u && u.stepping !== undefined && u.stepping !== null) { return String(u.stepping); }
+        var cfg = exp ? exp.initCfg : null;
+        if (cfg && cfg.stepping !== undefined && cfg.stepping !== null) { return String(cfg.stepping); }
+        return 'engine-default';
+    }
+
+    /**
+     * _stampWorldIntrospection() — THE one site on this page that writes the resolved-
+     * world data-* attributes. Called after every world step (setup, applyModuleSource,
+     * _egptApplyWalkthrough), which is exactly when the answer can change: `initCfg` is
+     * written by `exp.init()` and by nothing else, so there is no per-tick stamping to do.
+     *
+     * The badge is SHOWN only when a sampler was actually declared — an A/B still then
+     * carries its own arm label, while an ordinary STUDIO scene (which names no sampler)
+     * renders byte-identically to before.
+     */
+    function _stampWorldIntrospection() {
+        var el = document.getElementById('frqtl-world-introspect');
+        if (!el) { return; }
+        var stepping = _resolvedStepping();
+        el.setAttribute('data-stepping', stepping);
+        var declared = (stepping !== 'engine-default');
+        el.hidden = !declared;
+        el.textContent = declared ? ('stepping: ' + stepping) : '';
+    }
+
+    /**
+     * window.FrqtlPage — this page's PUBLIC surface.
+     *
+     * A public hook gets a public name: an underscore on the front door tells the
+     * reader the door is not a door, and this IS the shipped, documented, only way
+     * to load a hand-written scene into the blank page (STUDIO's author surface,
+     * the hosted eyes, and the getting-started doc all come through here). The
+     * `Frqtl*` namespace-object family (FrqtlDisplay, FrqtlVision, FrqtlCapture,
+     * FrqtlCaptureHost) is the established public-global convention. Additional
+     * page hooks join this object only through review — it is a front door, not a
+     * dumping ground.
+     */
+    window.FrqtlPage = {
+        /**
+         * Apply a saved project's .js recipe against this page's Experiment.
+         *
+         * The IDE calls this from the parent after the page boots (replacing the old
+         * applyDesign(entities) path). The source defines buildExperiment(exp); we
+         * eval it, then build (which re-inits the universe and adds the objects).
+         * Leaves the loop STOPPED — the author surface manages design/run mode.
+         *
+         * FAIL-LOUD: a missing RecipeContext, a source that defines no
+         * buildExperiment(exp), or any throw from the recipe (an unknown object kind,
+         * a bad init) paints the visible error overlay AND rethrows — the same
+         * contract as _egptApplyWalkthrough. A silent blank canvas is never a result.
+         *
+         * @param {string} src — the buildExperiment(exp) module source (or falsy = stay blank)
+         * @returns {boolean} true (throws on any failure)
+         */
+        applyModuleSource: function (src) {
+            var exp = window._egptExperiment;
+            if (!exp) {
+                _egptPaintWalkthroughError('Recipe load failed', 'no RecipeContext on the page.');
+                throw new Error('[empty] FrqtlPage.applyModuleSource: no RecipeContext');
+            }
+            exp.runner.stop();
+            if (!src) {
+                // Blank universe — re-init clean.
+                exp.init({ dimension: 2, wavelengthScale: 8 });
+                _stampWorldIntrospection();
+                return true;
+            }
+            try {
+                // Eval defines window.buildExperiment for this (same-origin) page.
+                (0, eval)(src);
+                if (typeof window.buildExperiment !== 'function') {
+                    throw new Error('module did not define buildExperiment(exp)');
+                }
+                exp._built = false;                 // allow rebuild over the blank init
+                exp.build(window.buildExperiment);  // recipe calls exp.init() + exp.addObject(...)
+                _stampWorldIntrospection();         // the recipe just declared this world
+                return true;
+            } catch (e) {
+                _egptPaintWalkthroughError('Recipe load failed', String((e && e.stack) || e));
+                console.error('[empty] FrqtlPage.applyModuleSource failed:', e);
+                throw e;   // FAIL-LOUD — surface, never swallow to a blank canvas.
+            }
+        },
+
+        /**
+         * displayResolution() — what display does the BUILT WORLD require, and what did
+         * this page actually boot?
+         *
+         * THE SCENE SOURCE IS THE ONE AUTHORITY ON WHAT KIND OF SCENE IT IS. A caller
+         * cannot know — and must not declare — whether a recipe is 3D: the recipe declares
+         * it, by opening the z-axis at `exp.init({activeAxes})`. So the page reads it back
+         * off the world the source just built (`universe.activeAxes` is the RESOLVED
+         * read-back, including the engine's own default when a recipe omits it) and
+         * REPORTS it. A host that booted the wrong display reloads with the answer; the
+         * one renderer-selection authority (`render-boot.js`'s `_egptSelectRenderer`) then
+         * derives the renderer NAME from the `egpt3D` flag exactly as it always has — this
+         * method mints no second renderer derivation.
+         *
+         * Before V4 the hosted eyes steered this boot from `sceneRecord.build.renderer` /
+         * `projection.kind` — provenance RESULTS doing double duty as caller REQUESTS. A
+         * caller who omitted them (the natural first call) silently got a 2D display under
+         * a 3D scene: no error, just the wrong renderer running 3D physics flat. A silently
+         * wrong world with no error is poisoned training data, which is why the request
+         * role was deleted rather than documented.
+         *
+         * @returns {{required:{egpt3D:boolean}, booted:{egpt3D:boolean, renderer:string|null}}}
+         */
+        displayResolution: function () {
+            var exp = window._egptExperiment;
+            if (!exp || !exp.runner || !exp.runner.universe) {
+                throw new Error('[empty] FrqtlPage.displayResolution: no built world on the ' +
+                    'page — apply a scene source first. (FAIL-LOUD.)');
+            }
+            var axes = exp.runner.universe.activeAxes;
+            return {
+                required: { egpt3D: !!(axes && axes.z) },
+                booted: {
+                    egpt3D: !!window._egpt3D,
+                    renderer: (typeof window._egptRenderer === 'string') ? window._egptRenderer : null
+                }
+            };
+        }
+    };
+
+    /**
+     * Paint a visible FAIL-LOUD overlay in the canvas area — every recipe load
+     * path must SURFACE an error, never paint a silent blank canvas on a missing
+     * factory / bad recipe.
+     */
+    function _egptPaintWalkthroughError(title, detail) {
+        var host = document.getElementById('canvas-wrapper') || document.body;
+        var box = document.createElement('div');
+        box.setAttribute('data-role', 'walkthrough-error');
+        box.style.cssText =
+            'position:absolute;inset:0;z-index:9998;padding:14px;overflow:auto;' +
+            'white-space:pre-wrap;background:#1a0000;color:#ff6b6b;border:2px solid #b6161c;' +
+            'font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;';
+        box.textContent = title + '\n\n' + detail;
+        if (host.style && (!host.style.position || host.style.position === 'static')) {
+            host.style.position = 'relative';
+        }
+        host.appendChild(box);
+    }
+
+    /**
+     * Apply a WALK-THROUGH rung: inject the rung's per-rung setup-factory DELTA
+     * (frqtl-relative script paths, resolved through the engineRouter path authority
+     * via window._egptInjectScript) BEFORE eval'ing the recipe source, FAIL-LOUD on
+     * any script-load failure OR eval error (a visible overlay + a rejected
+     * promise).
+     *
+     * @param {string} src — the buildExperiment(exp) recipe source.
+     * @param {string[]} scriptRelPaths — frqtl-relative setup-factory paths.
+     * @returns {Promise<boolean>}
+     */
+    window._egptApplyWalkthrough = function (src, scriptRelPaths) {
+        var exp = window._egptExperiment;
+        if (!exp) {
+            _egptPaintWalkthroughError('Walk-through load failed', 'no RecipeContext on the page.');
+            return Promise.reject(new Error('[empty] _egptApplyWalkthrough: no RecipeContext'));
+        }
+        if (typeof window._egptInjectScript !== 'function') {
+            _egptPaintWalkthroughError('Walk-through load failed',
+                'window._egptInjectScript missing (stack-boot did not expose the injector).');
+            return Promise.reject(new Error('[empty] _egptApplyWalkthrough: no _egptInjectScript'));
+        }
+        exp.runner.stop();
+        var paths = Array.isArray(scriptRelPaths) ? scriptRelPaths : [];
+        var chain = paths.reduce(function (ch, rel) {
+            return ch.then(function () { return window._egptInjectScript(rel); });
+        }, Promise.resolve());
+        return chain.then(function () {
+            // Eval defines window.buildExperiment for this (same-origin) page. Any
+            // throw here (undefined factory, bad recipe) propagates to the catch.
+            (0, eval)(src);
+            if (typeof window.buildExperiment !== 'function') {
+                throw new Error('recipe did not define buildExperiment(exp)');
+            }
+            exp._built = false;
+            exp.build(window.buildExperiment);   // recipe calls exp.addObject('SphereEmitter', ...) etc.
+            _stampWorldIntrospection();          // the rung just declared this world
+            return true;
+        }).catch(function (e) {
+            _egptPaintWalkthroughError('Walk-through load failed', String((e && e.stack) || e));
+            console.error('[empty] _egptApplyWalkthrough failed:', e);
+            throw e;   // FAIL-LOUD — surface, never swallow to a blank canvas.
+        });
+    };
+
+    // Load p5 (which invokes window.setup) only once BOTH engine AND renderer are live.
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var s = document.createElement('script');
+            s.src = '../../js/lib/p5.min.js';
+            document.body.appendChild(s);
+        });
+    });
+
+    // p5 calls setup() automatically after it loads.
+    </script>
+
+</body>
+</html>

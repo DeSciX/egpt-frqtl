@@ -1,0 +1,5 @@
+{
+  "expectedArtifact": "egpt_math_sdk_wasm_bg.wasm",
+  "bridgeModule": "egpt_math_sdk_wasm.js",
+  "note": "Run `npm run build:wasm-bridge` to generate wasm-bindgen bridge artifacts."
+}

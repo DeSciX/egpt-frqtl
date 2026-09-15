@@ -1,0 +1,62 @@
+<frqtl-notebook version="1" title="Big Bang — structure from nothing, no gravity law">
+
+<cell type="markdown">
+# Big Bang
+
+**Large-scale structure — filaments, voids, bound clumps — from a uniform particle field, with no gravity law anywhere.**
+
+A single radial point source fires quanta with zero initial velocity. Every outward movement is emergent: `frameGenMode: 'topDown'` means the engine uses top-down frame generation (Phase B `buildFramesFromSprites`) and Brownian motion, not directed launch vectors. Filaments and voids are a consequence of single-occupancy + the recursive compress nudge, nothing else.
+
+*New to FRQTL? Start with **Hello, FRQTL** (`getting-started-hello-frqtl`) for the `caps.frqtl` setup-module + declarative-canvas basics this notebook assumes.*
+</cell>
+
+<cell type="markdown">
+The experiment assembly — a single radial `PointSource` at canvas center — as editable user code:
+</cell>
+
+<cell type="module" name="./setups/big-bang.js">
+/* setupBigBang — THIN ADAPTER over the canonical setup factory
+ * (WS gym-controls-as-sugar Bite 0: this cell used to hand-copy the physics —
+ * a divergent fork of lib/frqtl/objects/setup/setupBigBang.js that had already
+ * drifted onto a stale `universe.init(...)` positional-argument call the engine
+ * now FAIL-LOUDs on. The canonical factory is imported by BARE SPECIFIER (a
+ * relative path here would 404 — see lib/shim/notebook/frqtl-setups-importmap.js);
+ * this cell only bridges the notebook builder's `(frqtl, universe, options)` call
+ * shape to the factory's `(universe, options)` shape — ZERO physics here.)
+ */
+import { setupBigBang as _setupBigBang } from '@frqtl/setups/big-bang';
+
+export function setupBigBang(frqtl, universe, options) {
+    return _setupBigBang(universe, options);
+}
+</cell>
+
+<cell type="markdown">
+Declare a canvas that runs it. `setup="<module>#<export>"` + `stage`/`seed`; the shim synthesizes and runs the builder boilerplate in the realm. Click **Run** (or **Run All**):
+</cell>
+
+<cell type="canvas" id="c-bb-canvas" setup="./setups/big-bang.js#setupBigBang" stage="480x480" seed="42"></cell>
+
+<cell type="markdown">
+## What you are seeing
+
+An initially smooth particle field develops texture: dense filaments thread between emptier voids, and bound clumps condense — the cosmic-web morphology — with no force equation driving the collapse. No Newtonian gravity, no `G`, no cosmological constant.
+
+**`lightSourceDiameter` is the primary knob.** It sets the outer radius of the emission ring. Because `minRadius: 2` fills inward, the total emitter count scales as `(radius / 2) × 72` (at the default 5° increment). Larger diameter → more initial quanta → larger emergent explosion:
+
+| `lightSourceDiameter` | Active quanta (~50 frames) | Field |
+|---|---|---|
+| 16 | ~21,000 | Tight compact cluster, few emergent Frame circles |
+| **64** (default) | ~79,000 | Well-developed explosion, prominent Frame hierarchy |
+| 128 | ~157,000 | Very large expansion; stack overflow observed at init (2k+ emitters) |
+
+The full sweep with screenshots is in [`docs/internal/physics-lab/big-bang-lightSourceDiameter.md`](../../docs/internal/physics-lab/big-bang-lightSourceDiameter.md).
+
+**`dispersionAngleIncrement`** (default 5°) sets the angular resolution of the ring: 5° = 72 rays, 10° = 36 rays. Larger values produce discrete spokes in the initial field.
+
+**`frameGenMode: 'topDown'` is the mode switch.** Setting it `'groundUp'` disables top-down frame generation — the expansion collapses because there are no directed launch vectors to carry particles outward.
+
+**Edit the physics:** open the `./setups/big-bang.js` tab and pass an option override to the canonical factory — e.g. change the adapter's `_setupBigBang(universe, options)` call to `_setupBigBang(universe, Object.assign({ lightSourceDiameter: 32 }, options))` (also try `dispersionAngleIncrement` or `maxTicks`) — then re-Run. The emergent structure changes because you edited the construction. (The physics body itself lives in the canonical `lib/frqtl/objects/setup/setupBigBang.js` — this cell is a thin, engine-agnostic adapter over it.) The simulation runs live in your browser on the compiled FRQTL (WASM) engine.
+</cell>
+
+</frqtl-notebook>

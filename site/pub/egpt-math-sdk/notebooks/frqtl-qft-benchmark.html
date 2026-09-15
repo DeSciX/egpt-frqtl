@@ -1,0 +1,218 @@
+<frqtl-notebook version="1" title="A Quantum Computer That Runs in Your Browser — FRQTL QFT Benchmark">
+
+<cell type="markdown">
+# A Quantum Computer That Runs in Your Browser
+
+**White Paper:** *Logarithmic Root Finding — A Deterministic, EGPT-Native, efficiently and classically computable QFT.* E. Abadir, Electronic Graph Paper Theory (EGPT) Research Group.
+
+Shor's factoring algorithm has three stages: classical setup, **the Quantum Fourier Transform** (the one step believed to need quantum hardware), and classical post-processing. This notebook computes that QFT step **deterministically, classically, in this browser tab** — and benchmarks it head-to-head against a published large-scale supercomputer Shor simulation.
+
+Every cell below reaches its math through one injected capability — `math` — and imports nothing. `math` is the live FRQTL math SDK the IDE resolved; the backend that actually executes is reported by the SDK itself, never asserted.
+</cell>
+
+<cell type="js" lane="math" id="backend">
+// The ONLY way a cell gets compute: ask the injected builtin BY NAME.
+// activeMathBackend is a DERIVED field — it reports whatever
+// MathBackendRegistry.active() is (wasm-math under audience='public').
+const { math, display } = caps;
+const backend = math.activeMathBackend;
+display(`Live math backend (derived from the SDK): ${backend}`);
+</cell>
+
+<cell type="markdown">
+## 1. Reframing the QFT in information space
+
+Classical statevector simulation of the QFT scales as `O(2^n)` memory and `O(n·2^n)` operations — the exponential wall a supercomputer hit at 39 bits. EGPT sidesteps statevector simulation entirely: a number `k` is bijective to its information vector `H(k) = log2(k)`, and the RET Iron Law gives `H(p×q) = H(p) + H(q)`. Period extraction becomes a deterministic operation in lossless information space, not a search over a `2^n` Hilbert space.
+</cell>
+
+<cell type="markdown">
+## 2. The Logarithmic Root Finding algorithm
+
+Two quantum steps are replaced by deterministic EGPT analogues:
+
+- **Superposition → logarithmic decomposition.** Recursively apply `log2` to `H(k)` for `n = ceil(log2 k)` steps, distilling `L_final = H(H(...H(k)...))`.
+- **QFT → deterministic period extraction.** The order is read directly as `r ~ floor(H(k) / L_final)`, then probed in a small even neighborhood.
+- **Factor extraction (classical Shor tail).** Compute `y = a^(r/2) mod k`; recover factors via `gcd(y±1, k)` (Pollard p-1 packaged in refinement).
+
+Complexity: `O((log k)^3)` — polynomial in the bit length, where statevector simulation is exponential.
+</cell>
+
+<cell type="markdown">
+## 3. The benchmark baseline — a published supercomputer result
+
+We benchmark against the largest published statevector simulation of Shor's algorithm. All figures below are read from the SDK's single baseline authority (`math.benchmarks.qftBaseline`) — this notebook inlines no numbers.
+</cell>
+
+<cell type="js" lane="math" id="baseline">
+// Render the published baseline FROM THE SINGLE AUTHORITY.
+// Reads math.benchmarks.qftBaseline by name; FAIL-LOUD if absent. No literal.
+const { math, display } = caps;
+const b = math.benchmarks && math.benchmarks.qftBaseline;
+if (!b) {
+  throw new Error(
+    '[notebook] math.benchmarks.qftBaseline is absent — the benchmark must ' +
+    'not narrate against a missing baseline. The figures live in ONE authority ' +
+    '(qft-benchmark-baseline.js), surfaced on the SDK as math.benchmarks.qftBaseline. ' +
+    '(FAIL-LOUD — never an inlined literal, never a silent blank.)'
+  );
+}
+const c = b.citation;
+const lines = [
+  `Published result: ${c.authors}`,
+  `  "${c.title}." ${c.venue}, ${c.year}. DOI: ${c.doi}`,
+  `Hardware: ${b.hardware.system}`,
+  `          ${b.hardware.gpus}, ${b.hardware.memory}`,
+  `What was computed: ${b.whatWasComputed}`,
+  `Total study compute: ${b.studyCompute.gpuYears} GPU-years ` +
+    `(${b.studyCompute.coreYears} core-years)`,
+  `Benchmark run: N=${b.benchmarkRun.N} = ${b.benchmarkRun.factors.join(' x ')} ` +
+    `(${b.benchmarkRun.bits}-bit) — ~${b.benchmarkRun.shorGpuSeconds}s per run on the supercomputer`
+];
+display(lines.join('\n'));
+</cell>
+
+<cell type="markdown">
+## 4. Run it here — the same computation, in your browser
+
+The next cell drives the **same** `FraqtlSession` the catalog benchmark entry drives (`math.FraqtlSession.auto()` → `session.run(N)`), on the same math backend, through the same seam. The factors it returns are bit-identical to the entry's. We time the live run with `performance.now()` (the human-facing wall-clock — never part of any byte-stable comparison).
+</cell>
+
+<cell type="js" lane="math" id="run" out="run">
+// THE DOGFOOD: drive the SAME computation as the catalog entry.
+// math.FraqtlSession.auto() is the exact object the entry's run(sdk) uses.
+const { math, display } = caps;
+const b = math.benchmarks.qftBaseline;
+// N comes from the baseline authority's benchmarkRun — the SAME semiprime the
+// supercomputer factored. No inlined literal (value lives in the authority).
+const N = b.benchmarkRun.N;
+const session = math.FraqtlSession.auto();
+
+const t0 = performance.now();
+const result = session.run(N);          // identical path to the entry
+const elapsedMs = (typeof result.elapsed_ms === 'number')
+  ? result.elapsed_ms
+  : (performance.now() - t0);
+
+const run = {
+  N,
+  factors: result.factors,
+  successful: result.successful,
+  post_reason: result.post_reason,
+  elapsedMs,
+  backend: math.activeMathBackend       // DERIVED
+};
+display(run);
+return { run };
+</cell>
+
+<cell type="js" lane="math" id="verify" in="run">
+// The AC assertion: factors match the baseline authority's factors,
+// bit-identical to the catalog entry. Renders PASS/FAIL plainly.
+const { math, display } = caps;
+const run = inputs.run;
+const b = math.benchmarks.qftBaseline;
+const expected = b.benchmarkRun.factors;          // from the single authority
+const got = (run.factors || []).slice().sort((x, y) => x - y);
+const want = expected.slice().sort((x, y) => x - y);
+const ok = got.length === want.length && got.every((v, i) => v === want[i]);
+
+const el = document.createElement('div');
+el.style.cssText =
+  'font:600 0.95rem/1.5 system-ui,sans-serif;padding:10px 14px;border-radius:6px;margin:4px 0;' +
+  (ok
+    ? 'background:#0f2417;border:1px solid #1f5a36;color:#7ee2a8;'
+    : 'background:#2a0c0c;border:1px solid #5a1f1f;color:#ff8a8a;');
+el.textContent = ok
+  ? `FACTORS VERIFIED on ${run.backend}: ${run.N} = ${run.factors.join(' x ')} ` +
+    `— bit-identical to the catalog benchmark entry and to the supercomputer's result.`
+  : `MISMATCH: got [${run.factors}], expected [${expected}] on ${run.backend}.`;
+display(el);
+</cell>
+
+<cell type="js" lane="math" id="comparison" in="run">
+// THE COMPARISON BAR + LIVE COMPUTE-TIME MULTIPLE. Baseline figures read from
+// math.benchmarks.qftBaseline ONLY. The metric is CORE TIME vs CORE TIME:
+// the study's total compute (594 core-years) against this tab's single-core
+// run time (elapsedMs — the TIMING channel, human-facing, excluded from any
+// byte-stable comparison). DOM built directly.
+const { math, display } = caps;
+const run = inputs.run;
+const b = math.benchmarks.qftBaseline;
+const coreYears = b.studyCompute.coreYears;
+const gpuYears = b.studyCompute.gpuYears;
+const bits = b.benchmarkRun.bits;
+const browserMs = run.elapsedMs;                    // live single-core time (TIMING)
+const browserSecs = browserMs / 1000;
+
+const coreYearsSecs = coreYears * 365.25 * 86400;   // core-years → core-seconds
+const speedup = coreYearsSecs / Math.max(browserSecs, 1e-9);
+// Humanize the multiple (~8.3e13 → "~83 trillion×")
+function fmtTimes(x) {
+  const units = [['quadrillion', 1e15], ['trillion', 1e12], ['billion', 1e9], ['million', 1e6]];
+  for (const [name, v] of units) {
+    if (x >= v) { const n = x / v; return `~${n >= 100 ? Math.round(n) : n.toFixed(1)} ${name}×`; }
+  }
+  return `~${Math.round(x).toLocaleString()}×`;
+}
+
+const wrap = document.createElement('div');
+wrap.style.cssText = 'font:0.85rem/1.4 system-ui,sans-serif;color:#ddd;margin:6px 0;max-width:680px;';
+
+const head = document.createElement('div');
+head.style.cssText = 'font-weight:600;color:#fff;margin-bottom:8px;font-size:0.95rem;';
+head.textContent = `${bits}-bit QFT period extraction — compute time, this run vs. the supercomputer`;
+wrap.appendChild(head);
+
+function bar(label, valueText, fillPct, color) {
+  const row = document.createElement('div');
+  row.style.cssText = 'margin:6px 0;';
+  const lab = document.createElement('div');
+  lab.style.cssText = 'display:flex;justify-content:space-between;margin-bottom:2px;';
+  const l = document.createElement('span'); l.textContent = label;
+  const v = document.createElement('span'); v.style.color = '#aaa'; v.textContent = valueText;
+  lab.appendChild(l); lab.appendChild(v); row.appendChild(lab);
+  const track = document.createElement('div');
+  track.style.cssText = 'background:#1a1a1a;border-radius:4px;height:18px;overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.style.cssText =
+    `background:${color};height:100%;width:${Math.max(fillPct, 0.6)}%;border-radius:4px;transition:width .3s;`;
+  track.appendChild(fill); row.appendChild(track);
+  return row;
+}
+
+const maxLog = Math.log10(Math.max(coreYearsSecs, browserSecs, 1) + 1);
+const shorPct = (Math.log10(coreYearsSecs + 1) / maxLog) * 100;
+const browserPct = (Math.log10(browserSecs + 1) / maxLog) * 100;
+
+wrap.appendChild(bar(
+  `Supercomputer (${b.hardware.gpus}) — total study compute`,
+  `${coreYears} core-years`, shorPct, '#c0584f'
+));
+wrap.appendChild(bar(
+  `This browser tab (${run.backend}) — one core`,
+  `~${browserSecs < 1 ? browserMs.toFixed(0) + 'ms' : browserSecs.toFixed(2) + 's'}`,
+  browserPct, '#4f9fc0'
+));
+
+const foot = document.createElement('div');
+foot.style.cssText = 'margin-top:10px;color:#bbb;font-size:0.8rem;line-height:1.5;';
+foot.innerHTML =
+  `Compute-time multiple on this hardware: <b style="color:#7ee2a8;">${fmtTimes(speedup)}</b> ` +
+  `(<b>${coreYears} core-years</b> ÷ <b>${browserSecs < 1 ? browserMs.toFixed(0) + ' ms' : browserSecs.toFixed(2) + ' s'}</b>). ` +
+  `The published study consumed <b>${gpuYears} GPU-years (${coreYears} core-years)</b> of compute; ` +
+  `this run finished in <b>${browserSecs < 1 ? browserMs.toFixed(0) + ' ms' : browserSecs.toFixed(2) + ' s'}</b> ` +
+  `on a single browser-tab core. <span style="color:#888;">(Live single-core time — the TIMING channel, human-facing, excluded from any byte-stable comparison.)</span>`;
+wrap.appendChild(foot);
+
+display(wrap);
+</cell>
+
+<cell type="markdown">
+## If the QFT is classically efficient, "quantum advantage" evaporates
+
+The factorization above ran the QFT period-extraction step — the one part of Shor's algorithm believed to require a quantum computer — deterministically, in polynomial time, in this browser tab. The classical setup and post-processing stages are common to both paths. With the QFT step neutralized, the relevant factoring frontier is classical (GNFS and friends), which remains informationally near-optimal. Internet security does not rest on the unavailability of qubit hardware.
+
+*Same computation, two surfaces:* this notebook and the catalog benchmark entry drive the identical `FraqtlSession` through the identical shim seam — the factors are bit-identical. Reference: Willsch et al., *Mathematics* 2023, 11, 4222 (see the baseline cell for the full citation, surfaced from the SDK).
+</cell>
+
+</frqtl-notebook>

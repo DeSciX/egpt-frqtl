@@ -1,0 +1,49 @@
+<frqtl-notebook version="1" title="Atomic Model — stable orbits without quantum numbers">
+
+<cell type="markdown">
+# Atomic Model
+
+**Stable orbits emerge — no electron shells, no quantum numbers.**
+
+Particles collide and merge into stable bound structures that persist for thousands of ticks. There are no electron shells, no principal quantum numbers, no Bohr radius — only leaf Frames making local greedy choices and the single-occupancy collision rule.
+
+**Why this is impossible (classically):** Stable atomic orbits require quantized energy levels — continuous mechanics predicts spiral decay (the classical electron should radiate and crash into the nucleus). Here the bound structures stay stable because the discrete 1-pixel-per-tick rule and emergent momentum conservation forbid the spiral.
+
+The experiment setup is **real, editable user code**: the module cell `./setups/atomic-model.js` is a thin adapter over the CANONICAL setup factory (`lib/frqtl/objects/setup/setupAtomicModel.js`, the SAME construction the standalone Gallery exhibit and any experiment page drive) — it builds the proton/atom frame hierarchy and the orbiting electron from `Frame`/`Charge`/`Rectangle`. The **canvas cell** below DECLARES that module (`setup="./setups/atomic-model.js#setupAtomicModel"`) plus its config; the shim synthesizes and runs the builder boilerplate. Nothing runs on load — click **Run** on the canvas (or **Run All**).
+
+*New to FRQTL? Start with **Hello, FRQTL** (`getting-started-hello-frqtl`) for the `caps.frqtl` setup-module + declarative-canvas basics this notebook assumes.*
+
+**Edit the physics:** open the `./setups/atomic-model.js` tab and pass an option override to the canonical factory — e.g. change the adapter's `_setupAtomicModel(universe, options)` call to `_setupAtomicModel(universe, Object.assign({ quarksPerProton: 12, includeElectron: false }, options))` — then re-Run. The emergent bound structure changes because you edited the construction, not a label.
+</cell>
+
+<cell type="module" name="./setups/atomic-model.js">
+/* setupAtomicModel — THIN ADAPTER over the canonical setup factory
+ * (WS gym-controls-as-sugar Bite 0: this cell used to hand-copy the physics —
+ * a divergent fork of lib/frqtl/objects/setup/setupAtomicModel.js that had
+ * already drifted onto a stale `universe.init(...)` positional-argument call the
+ * engine now FAIL-LOUDs on, and was missing the canonical wave-walk
+ * init option (`brownianMotion: false`). The canonical factory is imported by BARE SPECIFIER (a relative
+ * path here would 404 — see lib/shim/notebook/frqtl-setups-importmap.js); this
+ * cell only bridges the notebook builder's `(frqtl, universe, options)` call
+ * shape to the factory's `(universe, options)` shape — ZERO physics here. The
+ * canonical factory reads the rect from `universe.universe_rect`, its owner.
+ */
+import { setupAtomicModel as _setupAtomicModel } from '@frqtl/setups/atomic-model';
+
+export function setupAtomicModel(frqtl, universe, options) {
+    options = options || {};
+    return _setupAtomicModel(universe, options);
+}
+</cell>
+
+<cell type="canvas" id="c-atom-canvas" setup="./setups/atomic-model.js#setupAtomicModel" stage="480x480" seed="42"></cell>
+
+<cell type="markdown">
+## What you are seeing
+
+A dense central structure (the "nucleus") forms as particles merge, with lighter quanta settling into persistent surrounding orbits rather than collapsing inward. The stability is emergent — no force law holds the orbit together.
+
+The simulation runs live in your browser on the compiled FRQTL (WASM) engine. The same canonical sugar objects (`Frame`, `Charge`, `Rectangle`) and `FrqtlApp` drive the standalone Gallery exhibit and this notebook cell — the difference is only that here the *assembly* is editable user code in the `./setups/atomic-model.js` tab, not an opaque system fetch.
+</cell>
+
+</frqtl-notebook>
