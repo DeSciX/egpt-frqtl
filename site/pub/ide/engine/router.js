@@ -18,11 +18,12 @@
  *    dist/experiments/{id}/ page context they were computed for, whereas CDN_PROFILE's
  *    absolute bases resolve correctly from ANY host page (a claude.ai Artifact iframe has
  *    no such anchor point in the dist tree at all).
- *  - `STATIC_PROFILE` — the SAME dist layout, resolved to same-origin ABSOLUTE paths
- *    anchored at a `base` (default `/pub`), with the math + notebook lanes co-served under
- *    the SAME origin (self-contained no-backend site served at `/` — ws-egpt-frqtl-site-
- *    deploy). Like CDN_PROFILE it is a DISTINCT profile (its math/notebook bases point
- *    SAME-ORIGIN, not at the cross-origin jsdelivr egpt-math-sdk that CDN_PROFILE uses).
+ *  - `STATIC_PROFILE` — the SAME dist layout, anchored at the site's `./pub` directory
+ *    RELATIVE TO THE DOCUMENT, with the math + notebook lanes co-served in the same tree
+ *    (self-contained no-backend site served under ANY path prefix — the DeSciX platform
+ *    serves it at /<env>/<app_id>/site/). Like CDN_PROFILE it is a DISTINCT profile (its
+ *    math/notebook bases point SAME-ORIGIN, not at the cross-origin jsdelivr egpt-math-sdk
+ *    that CDN_PROFILE uses).
  *
  * Profile parity is asserted at module load time: all four profiles MUST cover the same
  * non-private path keys or an error is thrown (prevents dev/dist/cdn/static divergence).
@@ -293,14 +294,20 @@ var CDN_PROFILE = buildCdnProfile(CDN_BASE);
 
 // ── STATIC_PROFILE (self-contained same-origin static host — ws-egpt-frqtl-site-deploy) ──
 //
-// The React FraqtlIde deployed as a dumb-static, no-backend, WASM-only site served
-// at `/` (DeSciX CodeSite / any GCS-backed host — no fraqtlServe, no serveLocalhost).
+// The React FraqtlIde deployed as a dumb-static, no-backend, WASM-only site (DeSciX
+// CodeSite / any GCS-backed host — no fraqtlServe, no serveLocalhost). The host serves the
+// site under a path PREFIX it chooses (/<env>/<app_id>/site/ on the platform, /p/<app_id>/
+// under `descix serve`), so the sdk payload's location is known only RELATIVE TO THE
+// DOCUMENT: STATIC_SDK_DIR. That literal is the ONE derivation of the static base:
+//   - STATIC_PROFILE = buildStaticProfile(STATIC_SDK_DIR) — document-relative values, for
+//     consumers that resolve against the document themselves (the build-time import map
+//     baked into index.html; import-map addresses resolve against the document URL).
+//   - engineRouter({mode:'static'}) = buildStaticProfile(staticSdkBase(document.baseURI)) —
+//     the same directory made ABSOLUTE at runtime, because a relative URL handed to
+//     import(), an iframe inside an experiment page, or Monaco's loader would resolve
+//     against the wrong anchor (the importing module, not the document).
 // buildStaticProfile(base) mirrors buildCdnProfile's SHAPE but anchors EVERY base —
-// engine, vendor, experiments, ide/shim, AND the math + notebook lanes — at the SAME
-// same-origin absolute `base` (default '/pub'), so every resolved URL is a root-
-// absolute same-origin path that resolves identically from `/`, `/?preset=ide`,
-// `/?preset=author`, etc. (fixes the observed Monaco 404 where DEV_CORE_PROFILE
-// resolved '/frqtl/assets/vendor/monaco/vs' with no backend to serve it).
+// engine, vendor, experiments, ide/shim, AND the math + notebook lanes — at that ONE base.
 //
 // THE DELIBERATE DIVERGENCE FROM CDN_PROFILE (architect design §A.3 / §E flag 4):
 // CDN_PROFILE's math + notebook bases are hardwired CROSS-ORIGIN at CDN_MATH_BASE
@@ -329,7 +336,7 @@ function buildStaticProfile(base) {
         // Four-way parity companion to DEV_CORE/DIST/CDN 'experiments/'. On the static
         // host, resolve('experiments/{id}/index.html') → base + '/experiments/{id}/...'.
         'experiments/':           base + '/experiments/',
-        // WASM pkg — same-origin absolute into the co-served frqtl-sdk dist.
+        // WASM pkg — into the co-served frqtl-sdk dist.
         // window._egptWasmPkgUrl still overrides FIRST (wasm-load-browser.js).
         '__wasmPkgUrl':           base + '/fat/pkg-web/egpt_wasm.js',
         // Math + notebook lanes anchored SAME-ORIGIN into the co-served payload —
@@ -350,9 +357,29 @@ function buildStaticProfile(base) {
     };
 }
 
-// The default static profile — base '/pub' (the deploy layout's sdk subpath).
-// Same pattern as CDN_PROFILE = buildCdnProfile(CDN_BASE).
-var STATIC_PROFILE = buildStaticProfile('/pub');
+// The static deploy's sdk payload directory, relative to the site's document. The ONLY
+// place the static base is spelled; scripts/assemble-static-deploy.mjs places the payload
+// there, and every static URL is derived from it.
+var STATIC_SDK_DIR = './pub';
+
+/**
+ * The static profile's absolute base for a document: STATIC_SDK_DIR resolved against the
+ * document's base URI (e.g. 'https://h/prod/app/site/index.html?preset=author' →
+ * 'https://h/prod/app/site/pub'). FAILS LOUD without a base URI — a static URL has no
+ * meaning until it is anchored to the document that serves the site.
+ * @param {string} documentBaseURI
+ * @returns {string}
+ */
+function staticSdkBase(documentBaseURI) {
+    if (!documentBaseURI) {
+        throw new Error('[engineRouter] mode:"static" resolves against the document — no document.baseURI here. ' +
+            'Outside a browser pass opts.documentBaseURI (the URL of the directory serving the static site).');
+    }
+    return new URL(STATIC_SDK_DIR, documentBaseURI).href;
+}
+
+// The document-relative static profile — Same pattern as CDN_PROFILE = buildCdnProfile(CDN_BASE).
+var STATIC_PROFILE = buildStaticProfile(STATIC_SDK_DIR);
 
 // Parity assertion: all FOUR profiles must cover identical non-private keys.
 // Private keys begin with '__'.
@@ -416,10 +443,11 @@ var _assertProfileParity = (function () {
  *   `'dist'` uses the flat `sdk/frqtl-sdk/dist` layout, same-origin RELATIVE paths.
  *   `'cdn'` uses the SAME dist layout resolved to ABSOLUTE jsdelivr URLs (static
  *   hosting with no server — ws-artifact-showcase).
- *   `'static'` uses the SAME dist layout resolved to same-origin ABSOLUTE paths
- *   anchored at `opts.base` (default `'/pub'`), with the math + notebook lanes
- *   co-served under the SAME origin (self-contained no-backend site served at `/`
- *   — ws-egpt-frqtl-site-deploy).
+ *   `'static'` uses the SAME dist layout resolved to ABSOLUTE URLs under the site's
+ *   `./pub` directory, anchored at the document (`opts.documentBaseURI`, default
+ *   `document.baseURI`), with the math + notebook lanes co-served in the same tree —
+ *   so the site works under any path prefix. `opts.base` THROWS in this mode: the static
+ *   base is derived, never supplied.
  * @param {'wasm'} [opts.engine='wasm']
  *   Physics engine. FRQTL is WASM-only; an explicit `'js'` throws (archived).
  * @param {string} [opts.wasmPkgUrl]
@@ -435,13 +463,13 @@ var _assertProfileParity = (function () {
  * @param {string} [opts.mathBackend]
  *   Override the math backend id. `'wasm'` is normalized to `'wasm-math'`. Falls
  *   back to `?mathBackend=` URL param then the profile default (`'js-reference'`).
+ * @param {string} [opts.documentBaseURI]
+ *   **`mode:'static'` ONLY.** The document URL the static site is served from (default
+ *   `document.baseURI`). Supplied only outside a browser (the deploy assembler, tests) —
+ *   e.g. `resolve('assets/vendor/monaco/vs')` with `'https://h/prod/app/site/'` →
+ *   `'https://h/prod/app/site/pub/js/lib/monaco/vs'`.
  * @param {string} [opts.base]
- *   **`mode:'cdn'` and `mode:'static'`.** For `mode:'static'` this is the
- *   same-origin absolute prefix every resolved URL is anchored at (default
- *   `'/pub'`, the deploy layout's sdk subpath) — e.g. `resolve('assets/vendor/
- *   monaco/vs')` → `'/pub/js/lib/monaco/vs'`. For `mode:'cdn'` (below) it is the
- *   pre-publish local-CDN-mirror override.
- *   **`mode:'cdn'` ONLY (the paragraph below).** Override the CDN base every resolved URL is anchored
+ *   **`mode:'cdn'` ONLY.** Override the CDN base every resolved URL is anchored
  *   at (default: the module-level `CDN_BASE`, i.e. the REAL published jsdelivr
  *   URL). FOR THE PRE-PUBLISH LOCAL-CDN-MIRROR HARNESS AND TESTS ONLY
  *   (`sdk/frqtl-sdk/scripts/serve-local-cdn-mirror.mjs`,
@@ -485,12 +513,17 @@ export function engineRouter(opts) {
         throw new Error('[engineRouter] JS reference engine archived — FRQTL is WASM-only. ' +
             'Remove engine:"js"; the only FRQTL physics engine is the compiled Rust/WASM engine.');
     }
+    if (mode === 'static' && opts.base) {
+        throw new Error('[engineRouter] mode:"static" takes no opts.base — the static base is derived from the ' +
+            'document (STATIC_SDK_DIR against document.baseURI). Remove base:' + JSON.stringify(opts.base) + '.');
+    }
     var profile  = mode === 'dist'
         ? DIST_PROFILE
         : (mode === 'cdn'
             ? (opts.base ? buildCdnProfile(opts.base) : CDN_PROFILE)
             : (mode === 'static'
-                ? (opts.base ? buildStaticProfile(opts.base) : buildStaticProfile('/pub'))
+                ? buildStaticProfile(staticSdkBase(opts.documentBaseURI ||
+                    (typeof document !== 'undefined' ? document.baseURI : '')))
                 : DEV_CORE_PROFILE));
 
     // Resolve the WASM pkg URL.
@@ -515,7 +548,13 @@ export function engineRouter(opts) {
                 return replacement + tail;
             }
         }
-        // Fallback: origin-relative frqtl path
+        // Fallback: the dev-core /frqtl mount serves lib/frqtl 1:1. Every other profile maps a
+        // FLATTENED or re-anchored tree, where a root-absolute '/frqtl/' guess is a silent 404
+        // — so an unmapped path there fails loud and names the profile key to add.
+        if (profile !== DEV_CORE_PROFILE) {
+            throw new Error('[engineRouter] mode:"' + mode + '" has no profile prefix for "' + relPath + '". ' +
+                'Add the prefix to every profile in lib/shim/engine/router.js (profile parity).');
+        }
         return '/frqtl/' + relPath;
     }
 
@@ -617,4 +656,4 @@ export function engineRouter(opts) {
 }
 
 // Export profiles for the sdk build to consume.
-export { DEV_CORE_PROFILE, DIST_PROFILE, CDN_PROFILE, STATIC_PROFILE, CDN_SDK_VERSION, CDN_MATH_SDK_VERSION, CDN_BASE, CDN_MATH_BASE, buildCdnProfile, buildStaticProfile };
+export { DEV_CORE_PROFILE, DIST_PROFILE, CDN_PROFILE, STATIC_PROFILE, STATIC_SDK_DIR, CDN_SDK_VERSION, CDN_MATH_SDK_VERSION, CDN_BASE, CDN_MATH_BASE, buildCdnProfile, buildStaticProfile, staticSdkBase };

@@ -195,8 +195,8 @@ test('(c) every GAME_LAYER_SCRIPTS path exists on disk under lib/frqtl/', () => 
 // AuthorView.jsx holds the RAW frqtl-relative paths as
 // `EXTRA_SCRIPT_PATHS = OBJECT_SCRIPTS.concat(RUNNER_SCRIPTS)` and resolves each
 // through the threaded engineRouter.resolve at inject time (never a hardcoded
-// '../../' + p dev-tree literal, which resolves to /pub/objects/objects/X.js on a
-// dumb static host). This gate reads AuthorView.jsx itself — the same
+// '../../' + p dev-tree literal, which resolves to a pub/objects/objects/X.js path the
+// static dist does not have). This gate reads AuthorView.jsx itself — the same
 // derivation check the renderer manifest applies to the SDK ESM entry — so a
 // re-typed list fails here rather than drifting from the roster.
 // ─────────────────────────────────────────────────────────────────────────────
