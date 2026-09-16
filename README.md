@@ -101,7 +101,6 @@ workspace, API URL and environment in use). Always dry-run first.
 |---|---|
 | Site | `descix site upload --dry-run`, then `descix site upload` |
 | One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
-| App assets | `descix app sync-assets` — reads `assets/system_instructions.md`, `assets/app_description.md`, `assets/icon.png` |
 
 - `descix site upload` uses `.descix/manifests/site.json`. Its only source is `site` with an
   explicit include allowlist (`index.html`, `app-assets/**`, `pub/**`), so `assets/`, `kb/`,
@@ -109,8 +108,9 @@ workspace, API URL and environment in use). Always dry-run first.
   never add a source whose path is `.` or a repo-root directory. SiteWalker traps: an empty
   `include` matches everything, `exclude` is tested **before** `include`, and a bare-name directory
   exclude matches that name at any depth.
-- KB manifests set `ref: "main"`: `descix kb corpus sync` reads committed `main`, so a refreshed
-  or edited `kb/` directory reaches its KB only after it is committed and pushed to `main`.
+- `descix kb corpus sync` reads KB files from the working tree; the manifest `ref` only names the
+  commit recorded as provenance. Sync from a clean checkout of `main` (`git status` empty) so the
+  content you sync is the content that commit holds.
 
 ## Plugin
 
