@@ -67,8 +67,8 @@ scripts/refresh-kb.sh <FRAQTL checkout>/.corpus-out/frqtl_sdk frqtl_sdk
 ```
 
 The first argument is the directory FRAQTL `make publish-corpus` writes for that corpus,
-`.corpus-out/<KB>/` at the root of the FRAQTL checkout — a gitignored build artifact, and the only
-copy of the corpus outside this repo.
+`.corpus-out/<corpus>/` at the root of the FRAQTL checkout — a gitignored build artifact. The corpus
+and KB names are the same today (`General`, `frqtl_sdk`).
 The destination is read from `.descix/manifests/<KB>.json`. Every markdown file in the input must
 open with the publish-corpus `GENERATED` stamp (source path, commit sha, commit date); the per-file
 stamps are recorded under the KB's key in `.descix/kb-provenance.json`, with non-markdown files
