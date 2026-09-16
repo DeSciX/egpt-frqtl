@@ -1,2 +1,6 @@
 node_modules/
 .DS_Store
+
+# per-developer DeSciX config and credentials — never tracked (CEO ruling 2026-09-16)
+.descix/workspace.json
+.descix/wallet.json
