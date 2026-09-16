@@ -54,6 +54,7 @@ import {
     DIST_PROFILE,
     CDN_PROFILE,
     STATIC_PROFILE,
+    STATIC_SDK_DIR,
     CDN_SDK_VERSION,
     CDN_MATH_SDK_VERSION,
     CDN_BASE,
@@ -160,65 +161,64 @@ test('router: CDN_PROFILE resolves the SAME dist sub-path as DIST_PROFILE for ev
     }
 });
 
-test('router: mode=static returns same-origin absolute /pub URLs', () => {
-    const r = engineRouter({ mode: 'static', engine: 'wasm' });
-    const BASE = '/pub';
+test('router: mode=static anchors every URL at the site ./pub directory of the DOCUMENT, under any path prefix', () => {
+    // The platform serves the site under /<env>/<app_id>/site/; a root host serves it at /.
+    // Both anchors must yield the site's own ./pub — a root-absolute '/pub' passes the root
+    // case and 404s under the prefix, so the prefix case is the one that can fail.
+    for (const [doc, BASE] of [
+        ['https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/index.html?preset=author', 'https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/pub'],
+        ['http://127.0.0.1:5583/p/egpt-frqtl/', 'http://127.0.0.1:5583/p/egpt-frqtl/pub'],
+        ['http://127.0.0.1:5583/', 'http://127.0.0.1:5583/pub'],
+    ]) {
+        const r = engineRouter({ mode: 'static', engine: 'wasm', documentBaseURI: doc });
 
-    // Every base is same-origin absolute-from-root under /pub.
-    assert.equal(r.wasmPkgUrl, BASE + '/fat/pkg-web/egpt_wasm.js');
-    assert.equal(r.resolve('assets/vendor/monaco/vs'), BASE + '/js/lib/monaco/vs',
-        'the observed Monaco 404 fix: monaco resolves same-origin under /pub, not /frqtl');
-    assert.equal(r.resolve('compat/egpt-engine.js'), BASE + '/js/compat/egpt-engine.js');
-    assert.equal(r.resolve('compat/providers/wasm-engine.js'), BASE + '/js/compat/wasm-engine.js');
-    assert.equal(r.resolve('objects/setup/setupDoubleSlit.js'), BASE + '/js/game/setup/setupDoubleSlit.js');
-    // Rectangle — the sole spatial-rect authority, shipped from the game layer.
-    assert.equal(r.resolve('objects/geometry/Rectangle.js'), BASE + '/js/game/geometry/Rectangle.js');
-    // General experiments/ key resolves a whole experiment-page path same-origin
-    // under /pub; experiments/_shared/ still wins first-match (regression guard).
-    assert.equal(r.resolve('experiments/tunnel-lab/index.html'), BASE + '/experiments/tunnel-lab/index.html');
-    assert.equal(r.resolve('experiments/_shared/engine-boot.js'), BASE + '/experiments/_shared/engine-boot.js');
-    assert.ok(r.bootSrc().startsWith(BASE + '/'), 'bootSrc must resolve under /pub');
+        assert.equal(r.wasmPkgUrl, BASE + '/fat/pkg-web/egpt_wasm.js');
+        assert.equal(r.resolve('assets/vendor/monaco/vs'), BASE + '/js/lib/monaco/vs');
+        assert.equal(r.resolve('compat/egpt-engine.js'), BASE + '/js/compat/egpt-engine.js');
+        assert.equal(r.resolve('compat/providers/wasm-engine.js'), BASE + '/js/compat/wasm-engine.js');
+        assert.equal(r.resolve('objects/setup/setupDoubleSlit.js'), BASE + '/js/game/setup/setupDoubleSlit.js');
+        assert.equal(r.resolve('objects/geometry/Rectangle.js'), BASE + '/js/game/geometry/Rectangle.js');
+        // General experiments/ key; experiments/_shared/ still wins first-match.
+        assert.equal(r.resolve('experiments/empty/index.html'), BASE + '/experiments/empty/index.html');
+        assert.equal(r.resolve('experiments/_shared/engine-boot.js'), BASE + '/experiments/_shared/engine-boot.js');
+        assert.ok(r.bootSrc().startsWith(BASE + '/'), 'bootSrc must resolve under the site ./pub');
 
-    // The DELIBERATE divergence from CDN: math + notebook lanes are SAME-ORIGIN
-    // under /pub (co-served), NOT cross-origin jsdelivr.
-    assert.equal(r.mathSdkUrl, BASE + '/egpt-math-sdk/index.js');
-    assert.equal(r.mathWasmUrl, BASE + '/egpt-math-sdk/wasm/egpt_math_sdk_wasm_bg.wasm');
-    assert.equal(r.mathWasmModuleUrl, BASE + '/egpt-math-sdk/wasm/egpt_math_sdk_wasm.js');
-    // Notebooks ride the frqtl-sdk dist's OWN copy, NOT under egpt-math-sdk (§A.3/§B.1).
-    assert.equal(r.notebookBase, BASE + '/notebooks');
-    assert.equal(r.vendorBase, BASE + '/vendor');
-    for (const s of r.engineScripts()) {
-        if (s.src !== '') {
-            assert.ok(s.src.startsWith(BASE + '/'), `engineScripts() entry not same-origin /pub: ${s.src}`);
+        // Math + notebook lanes are SAME-ORIGIN in the co-served tree, NOT cross-origin jsdelivr.
+        assert.equal(r.mathSdkUrl, BASE + '/egpt-math-sdk/index.js');
+        assert.equal(r.mathWasmUrl, BASE + '/egpt-math-sdk/wasm/egpt_math_sdk_wasm_bg.wasm');
+        assert.equal(r.mathWasmModuleUrl, BASE + '/egpt-math-sdk/wasm/egpt_math_sdk_wasm.js');
+        assert.equal(r.notebookBase, BASE + '/notebooks');
+        assert.equal(r.vendorBase, BASE + '/vendor');
+        for (const s of [...r.engineScripts(), ...r.gameScripts()]) {
+            assert.ok(s.src.startsWith(BASE + '/'), `script not under the site ./pub: ${s.src}`);
         }
     }
-    for (const s of r.gameScripts()) {
-        assert.ok(s.src.startsWith(BASE + '/'), `gameScripts() entry not same-origin /pub: ${s.src}`);
-    }
+});
 
-    // opts.base override — a non-empty base re-anchors EVERY resolved URL (the
-    // empty-string case is deliberately falsy → falls back to '/pub', mirroring
-    // buildCdnProfile's `opts.base ?` guard).
-    const rAlt = engineRouter({ mode: 'static', base: '/app/pub' });
-    assert.equal(rAlt.resolve('compat/egpt-engine.js'), '/app/pub/js/compat/egpt-engine.js');
-    assert.equal(rAlt.notebookBase, '/app/pub/notebooks');
-    assert.equal(rAlt.mathSdkUrl, '/app/pub/egpt-math-sdk/index.js');
+test('router: mode=static FAILS LOUD on a supplied base, a missing document, and an unmapped path', () => {
+    assert.throws(() => engineRouter({ mode: 'static', base: '/pub', documentBaseURI: 'http://h/' }),
+        /takes no opts\.base/);
+    assert.equal(typeof document, 'undefined', 'this test runs where no document exists');
+    assert.throws(() => engineRouter({ mode: 'static' }), /resolves against the document/);
+    const r = engineRouter({ mode: 'static', documentBaseURI: 'http://h/prod/app/site/' });
+    assert.throws(() => r.resolve('unmapped/thing.js'), /no profile prefix for "unmapped\/thing\.js"/);
+    // dev-core keeps its 1:1 /frqtl mount fallback.
+    assert.equal(engineRouter({ mode: 'dev-core' }).resolve('unmapped/thing.js'), '/frqtl/unmapped/thing.js');
 });
 
 test('router: STATIC_PROFILE resolves the SAME dist sub-path as DIST_PROFILE for every shared key', () => {
-    // STATIC_PROFILE serves the identical physical sdk/frqtl-sdk/dist/ tree as
-    // DIST_PROFILE — it is DIST_PROFILE's relative '../../' navigation re-expressed
-    // as a same-origin '/pub' join. Strip '../../' from DIST and '/pub/' from STATIC:
-    // the remaining sub-path must be identical for every non-private (shared) key.
-    // (The private math/notebook lanes DIVERGE by design — not asserted here.)
-    const BASE = '/pub';
+    // STATIC_PROFILE serves the identical physical sdk/frqtl-sdk/dist/ tree as DIST_PROFILE,
+    // re-anchored at the document-relative STATIC_SDK_DIR. Strip '../../' from DIST and
+    // STATIC_SDK_DIR + '/' from STATIC: the remaining sub-path must be identical for every
+    // non-private (shared) key. (The private math/notebook lanes DIVERGE by design.)
+    assert.equal(STATIC_SDK_DIR, './pub', 'the deploy layout places the sdk payload at ./pub');
     for (const key of nonPrivateKeys(DIST_PROFILE)) {
         const distTarget = DIST_PROFILE[key];
         const staticTarget = STATIC_PROFILE[key];
         assert.ok(distTarget.startsWith('../../'), `DIST_PROFILE['${key}'] expected to start with '../../': ${distTarget}`);
-        assert.ok(staticTarget.startsWith(BASE + '/'), `STATIC_PROFILE['${key}'] expected to start with '/pub/': ${staticTarget}`);
+        assert.ok(staticTarget.startsWith(STATIC_SDK_DIR + '/'), `STATIC_PROFILE['${key}'] expected to start with '${STATIC_SDK_DIR}/': ${staticTarget}`);
         const distSubPath = distTarget.slice('../../'.length);
-        const staticSubPath = staticTarget.slice((BASE + '/').length);
+        const staticSubPath = staticTarget.slice((STATIC_SDK_DIR + '/').length);
         assert.equal(staticSubPath, distSubPath, `dist sub-path mismatch for key '${key}': dist='${distSubPath}' static='${staticSubPath}'`);
     }
 });

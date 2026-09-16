@@ -866,8 +866,8 @@ function _ensureMathSdk(opts) {
  * MathBackendRegistry BEFORE selecting it.
  *
  * WHY (root cause of the static/public wasm-math failure): the WASM-only PUBLISH
- * entry (sdk/egpt-math-sdk `dist-entry.js`, served at `/pub/egpt-math-sdk/index.js`
- * in the static build) registers its wasm provider ONLY into its private facade
+ * entry (sdk/egpt-math-sdk `dist-entry.js`, served at the site's
+ * `./pub/egpt-math-sdk/index.js` in the static build) registers its wasm provider ONLY into its private facade
  * slot (`wasm-facade.js` `_setActiveWasmProvider`). To keep the JS math core OUT
  * of the published bundle (CEO 2026-07-10 WASM-only publish rule) it deliberately
  * NEVER imports `MathBackendProvider.js`, so it CANNOT register into the registry

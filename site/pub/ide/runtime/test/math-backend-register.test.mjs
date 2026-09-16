@@ -3,7 +3,7 @@
  * FAILURE (ws-egpt-frqtl-site-deploy).
  *
  * ROOT CAUSE guarded: in the WASM-only PUBLISH build, the egpt-math-sdk dist
- * entry (`dist-entry.js`, served at `/pub/egpt-math-sdk/index.js`) registers its
+ * entry (`dist-entry.js`, served at the site's `./pub/egpt-math-sdk/index.js`) registers its
  * wasm provider ONLY into its own private facade slot — it never imports
  * `MathBackendProvider.js` (WASM-only publish rule), so `wasm-math` was never in
  * the `MathBackendRegistry` the Runtime uses. `_applyBackendSelection` →

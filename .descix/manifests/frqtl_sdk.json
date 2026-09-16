@@ -1,0 +1,14 @@
+{
+  "kb_name": "frqtl_sdk",
+  "sync_mode": "local",
+  "_purpose": "Adopted consumer KB. kb/frqtl_sdk is a copy of a FRAQTL `make publish-corpus` output dir, written only by `scripts/refresh-kb.sh <output-dir> frqtl_sdk`, which records its provenance in .descix/kb-provenance.json. Never hand-edit it.",
+  "sources": [
+    {
+      "path": "kb/frqtl_sdk",
+      "ref": "main",
+      "tier": 1,
+      "doc_type": "sdk-docs",
+      "syncignore": []
+    }
+  ]
+}

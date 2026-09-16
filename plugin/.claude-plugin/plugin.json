@@ -1,0 +1,25 @@
+{
+  "name": "frqtl",
+  "version": "0.1.0",
+  "description": "FRQTL Lab \u2014 adopt the FRQTL builder or experiment-designer role and run visual physics experiments with the published @descix/frqtl-sdk. Personas, method, and recipes are served live by the egpt-frqtl app over the DeSciX MCP connector; this plugin is the thin adopter.",
+  "author": {
+    "name": "Essam Abadir",
+    "url": "https://github.com/eabadir"
+  },
+  "license": "DeSciX Community License v1.0",
+  "keywords": [
+    "frqtl",
+    "physics",
+    "simulation",
+    "visual-experiment",
+    "descix",
+    "sdk",
+    "double-slit"
+  ],
+  "agents": [
+    "./agents/frqtl-builder.agent.md",
+    "./agents/frqtl-designer.agent.md"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}
