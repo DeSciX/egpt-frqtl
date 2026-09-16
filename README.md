@@ -108,9 +108,10 @@ workspace, API URL and environment in use). Always dry-run first.
   never add a source whose path is `.` or a repo-root directory. SiteWalker traps: an empty
   `include` matches everything, `exclude` is tested **before** `include`, and a bare-name directory
   exclude matches that name at any depth.
-- `descix kb corpus sync` reads KB files from the working tree; the manifest `ref` only names the
-  commit recorded as provenance. Sync from a clean checkout of `main` (`git status` empty) so the
-  content you sync is the content that commit holds.
+- `descix kb corpus sync` reads KB files from the working tree, but takes each tracked file's blob
+  sha — its chunk id and the key the delta sync compares — from the manifest `ref`; a tracked file
+  edited but not committed is treated as unchanged. Sync from a clean checkout of `main`
+  (`git status` empty).
 
 ## Plugin
 
