@@ -1,0 +1,14 @@
+{
+  "kb_name": "Personas",
+  "sync_mode": "local",
+  "_purpose": "Authored egpt-frqtl developer-plane KB. kb/Personas is edited in place in this repo.",
+  "sources": [
+    {
+      "path": "kb/Personas",
+      "ref": "main",
+      "tier": 1,
+      "doc_type": "role-knowledge",
+      "syncignore": []
+    }
+  ]
+}

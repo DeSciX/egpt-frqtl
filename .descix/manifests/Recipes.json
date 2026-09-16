@@ -1,0 +1,14 @@
+{
+  "kb_name": "Recipes",
+  "sync_mode": "local",
+  "_purpose": "Authored egpt-frqtl developer-plane KB. kb/Recipes is edited in place in this repo.",
+  "sources": [
+    {
+      "path": "kb/Recipes",
+      "ref": "main",
+      "tier": 1,
+      "doc_type": "role-knowledge",
+      "syncignore": []
+    }
+  ]
+}

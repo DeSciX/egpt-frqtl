@@ -1,0 +1,69 @@
+{
+  "General": {
+    "path": "kb/General",
+    "upstream_repo": "FRAQTL",
+    "sources": [
+      {
+        "file": "getting-started.md",
+        "upstream_repo": "FRAQTL",
+        "source": "FRAQTL/docs/public/general/getting-started.md",
+        "source_sha": "a8704a24",
+        "committed": "2026-08-26"
+      }
+    ],
+    "unstamped_files": [],
+    "host_rewrites_dev_to_prod": 3,
+    "file_count": 1,
+    "tree_sha256": "fa19d48c109df187440035304fff258bbf049a7530054db5caaeddda2bea0a19",
+    "refreshed_by_script": "scripts/refresh-kb.sh"
+  },
+  "frqtl_sdk": {
+    "path": "kb/frqtl_sdk",
+    "upstream_repo": "FRAQTL",
+    "sources": [
+      {
+        "file": "COMPOSE_AND_CAPTURE.md",
+        "upstream_repo": "FRAQTL",
+        "source": "FRAQTL/docs/public/frqtl-sdk/COMPOSE_AND_CAPTURE.md",
+        "source_sha": "33a406f3",
+        "committed": "2026-09-09"
+      },
+      {
+        "file": "DSE_WORKED_EXAMPLE.md",
+        "upstream_repo": "FRAQTL",
+        "source": "FRAQTL/docs/public/frqtl-sdk/DSE_WORKED_EXAMPLE.md",
+        "source_sha": "f13e9915",
+        "committed": "2026-08-05"
+      },
+      {
+        "file": "FRQTL_VISUAL_CODING_GUIDE.md",
+        "upstream_repo": "FRAQTL",
+        "source": "FRAQTL/docs/public/frqtl-sdk/FRQTL_VISUAL_CODING_GUIDE.md",
+        "source_sha": "308aa71e",
+        "committed": "2026-07-28"
+      },
+      {
+        "file": "HUMAN_GUIDE.md",
+        "upstream_repo": "FRAQTL",
+        "source": "FRAQTL/docs/public/frqtl-sdk/HUMAN_GUIDE.md",
+        "source_sha": "1843e422",
+        "committed": "2026-08-05"
+      },
+      {
+        "file": "THE_MINIMAL_SIM.md",
+        "upstream_repo": "FRAQTL",
+        "source": "FRAQTL/docs/public/frqtl-sdk/THE_MINIMAL_SIM.md",
+        "source_sha": "4ea73627",
+        "committed": "2026-09-10"
+      }
+    ],
+    "unstamped_files": [
+      "FRQTL_VISUAL_CODING_GUIDE.jsonl",
+      "minimal-sim.html"
+    ],
+    "host_rewrites_dev_to_prod": 0,
+    "file_count": 7,
+    "tree_sha256": "1d1c062cb51223d4e9b5f62dbb12a39c9165b575cb6db005c25db41e6a9d6ed5",
+    "refreshed_by_script": "scripts/refresh-kb.sh"
+  }
+}

@@ -1,77 +1,130 @@
 # egpt-frqtl — PROD app
 
-The DeSciX PROD home for the FRQTL IDE. Self-contained by design: no cross-site linking, and no
-FRAQTL-monorepo-only route survives in the bundle. **PROD is deliberately not a mirror of DEV.**
+The DeSciX PROD home for the FRQTL IDE, its knowledge bases and its Claude Code plugin. The app
+is served at **https://egpt-frqtl.descix.net/**; its MCP connector is **https://descix.net/mcp**.
+
+Self-contained by design: no cross-site linking, and no FRAQTL-monorepo-only route survives in the
+bundle. **PROD is deliberately not a mirror of DEV.**
 
 ## Layout
 
 ```
-site/index.html      the IDE entry
-site/app-assets/*    hashed React chunks (vite owns this namespace)
-site/pub/*           engine, vendor, experiments, ide, notebooks, math SDK
+site/                          the static IDE bundle — the ONLY directory uploaded as the site
+  index.html                   IDE entry
+  app-assets/*                 hashed React chunks (vite owns this namespace)
+  pub/*                        engine, vendor, experiments, ide, notebooks, math SDK
+kb/
+  General/                     adopted — FRAQTL `make publish-corpus` output, never hand-edited
+  frqtl_sdk/                   adopted — FRAQTL `make publish-corpus` output, never hand-edited
+  HowToSee/                    authored here — method corpus
+  Personas/                    authored here — frqtl-sdk-builder, frqtl-experiment-designer
+  Recipes/                     authored here — dse-planar, dse-composed
+plugin/                        Claude Code plugin `frqtl` (install string frqtl@egpt)
+scripts/
+  refresh-site.sh              replace site/ from a FRAQTL .deploy-static bundle
+  refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
+  lib/tree.sh                  the tree fingerprint both refresh scripts use
+.descix/
+  manifests/site.json          site publish allowlist
+  manifests/<KB>.json          one KB manifest per kb/<KB> directory
+  site-provenance.json         written by scripts/refresh-site.sh
+  kb-provenance.json           written by scripts/refresh-kb.sh
+  workspace.json, wallet.json  per-developer config and credentials — gitignored, never committed
+  sync-state/                  per-developer KB sync state — gitignored
 ```
 
-The two namespaces are **disjoint**. Serving the sdk dist at root collides with the IDE's own
+`site/`'s two namespaces are **disjoint**. Serving the sdk dist at root collides with the IDE's own
 `index.html`.
 
-## Provenance of the bundle in `site/`
+## Refreshing content
 
-| | |
+Provenance is read from the artifact's bytes by the refresh scripts, never typed by hand. Both
+scripts exit non-zero and change nothing when the input fails a check.
+
+### Site
+
+```
+scripts/refresh-site.sh <.deploy-static directory>
+```
+
+The argument is the `.deploy-static/` directory FRAQTL `make static-deploy` assembles and
+browser-verifies at the root of a FRAQTL checkout. The script
+refuses a non-directory, a directory without `index.html`, and an `index.html` without exactly one
+`data-frqtl-site-build="<git sha>"` attribute. On success it replaces `site/` and writes
+`.descix/site-provenance.json`:
+
+```
+{ upstream_repo, upstream_sha, file_count, tree_sha256, refreshed_by_script }
+```
+
+A `site/` with no `.descix/site-provenance.json` beside it has no recorded provenance.
+
+### Adopted KBs
+
+```
+scripts/refresh-kb.sh <publish-corpus output directory> General
+scripts/refresh-kb.sh <publish-corpus output directory> frqtl_sdk
+```
+
+The first argument is the directory FRAQTL `make publish-corpus` writes for that corpus: the
+`adopted-general` output for `General`, the `adopted-sdk` output for `frqtl_sdk`.
+The destination is read from `.descix/manifests/<KB>.json`. Every markdown file must open with the
+publish-corpus `GENERATED` stamp (source path, commit sha, commit date); the per-file stamps are
+recorded under the KB's key in `.descix/kb-provenance.json`, with non-markdown files listed as
+`unstamped_files`. Links to `dev.descix.net` are rewritten to `descix.net` and the count is
+recorded as `host_rewrites_dev_to_prod`.
+
+`HowToSee`, `Personas` and `Recipes` are edited in place in `kb/`.
+
+### Tree fingerprint
+
+`tree_sha256` is the sha256 of the sorted `sha256  ./path` listing of every file in the tree
+(`scripts/lib/tree.sh::tree_sha256`):
+
+```
+cd site && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+**`-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
+spaces (`particles which did not go through a slit at all.png`). A plain `find | xargs shasum`
+splits on whitespace, silently skips that file, and yields a fingerprint that cannot detect a change
+to it.
+
+## Deploying
+
+Run from the repo root with a PROD `.descix/workspace.json` (`descix config show` prints the
+workspace, API URL and environment in use). Always dry-run first.
+
+| What | Command |
 |---|---|
-| Built from | FRAQTL `main` @ `79647e003f176aba3bd0c98bbf6b8ef156d05fb7` |
-| Build tree state | 3 tracked modifications, all `.claude/agent-memory/*/MEMORY.md`; **zero build inputs dirty** |
-| Recipe | `docs/internal/process/STATIC_IDE_DEPLOY.md` — `make static-deploy` |
-| Invocation | `sdk/egpt-math-sdk: npm run build` · `sdk/frqtl-sdk: node build.js` · `apps/ide: VITE_FRQTL_STATIC=1 npx vite build` · `node scripts/assemble-static-deploy.mjs` |
-| Static flag | `VITE_FRQTL_STATIC=1` — baked at build time, never a URL param |
-| Files | 706 |
-| Bundle tree sha256 | `7828d00659b1df689bf401b28aee88221b5e2df6c1320238b7beea26a74fdd42` |
-| Publish set | identical to the `site/` tree — 706 files, computed with the CLI's own `loadSiteManifest` + `walkSite` |
+| Site | `descix site upload --dry-run`, then `descix site upload` |
+| One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
+| App assets | `descix app sync-assets` — reads `assets/system_instructions.md`, `assets/app_description.md`, `assets/icon.png` |
 
-`BUNDLE_TREE_SHA256` is the sha256 of the sorted `path + sha256` listing of every file under
-`site/`, so it moves if any file's content or path changes:
+- `descix site upload` uses `.descix/manifests/site.json`. Its only source is `site` with an
+  explicit include allowlist (`index.html`, `app-assets/**`, `pub/**`), so `assets/`, `kb/`,
+  `plugin/`, `scripts/` and `.descix/` are never uploaded. Site URLs are non-expiring and unsigned;
+  never add a source whose path is `.` or a repo-root directory. SiteWalker traps: an empty
+  `include` matches everything, `exclude` is tested **before** `include`, and a bare-name directory
+  exclude matches that name at any depth.
+- KB manifests set `ref: "main"`: `descix kb corpus sync` reads committed `main`, so a refreshed
+  or edited `kb/` directory reaches its KB only after it is committed and pushed to `main`.
+
+## Plugin
+
+`plugin/` is the `frqtl` Claude Code plugin: two loader skills (`/frqtl-builder`,
+`/frqtl-designer`), the same two seats as agents, and the `descix` HTTP connector at
+`https://descix.net/mcp`. Validate before publishing:
 
 ```
-cd site && find . -type f -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+claude plugin validate --strict plugin
 ```
-
-**`-print0 | sort -z | xargs -0` is load-bearing, not style.** This bundle contains a filename with
-spaces (`pub/images/particles which did not go through a slit at all.png`). A plain
-`find | xargs shasum` splits on whitespace, silently skips that file, and yields a hash over 705 of
-706 files — a fingerprint that cannot detect a change to the file it dropped. An earlier revision of
-this README published exactly that broken recipe and the wrong hash it produced.
-
-### Reproducibility
-
-Rebuilt from the same ref, independently, after the first build: **706 files, tree sha256
-`7828d00659b1df689bf401b28aee88221b5e2df6c1320238b7beea26a74fdd42` — byte-for-byte identical.**
-What is committed here equals what rebuilds from `79647e0`.
-
-## How this bundle was verified before it landed here
-
-`scripts/verify-static-deploy.sh` served the assembled bundle on a **dumb static file server**
-(`python3 -m http.server` — no vite, no SPA rewrite, because the deploy target is a GCS bucket)
-and ran four browser tests, all passing:
-
-- `/` opens CODE view, zero asset 404s, import-map present
-- `/?preset=ide&notebook=frqtl-qft-benchmark` — QFT opens, every math cell runs OK on `wasm-math`, zero 404s
-- `/?preset=author` opens STUDIO, default experiment iframe under `/pub`, zero 404s
-- `/?preset=compare` folds to CODE (public audience gate)
-
-The assembler runs its own negative controls: `pub/js/compat/js-engine.js` and `pub/js/EGPTfrqtl.js`
-must be **absent** and were reported CLEAN.
 
 ## Two traps this repo exists to stop repeating
 
-1. **Never upload `apps/ide/dist/`.** It is half a site — no `/pub` payload, and a bare `vite build`
-   leaves it in DEV-CORE mode with every engine/monaco/notebook/math URL resolving at `/frqtl/…`
-   and `/egpt-src/…`, which nothing serves on a backend-less host. Nothing in the built bytes
-   announces which mode they are. That is how the wrong bundle reached PROD and served a dead shell.
+1. **Never refresh `site/` from `apps/ide/dist/`.** It is half a site — no `/pub` payload, and a
+   bare `vite build` leaves it in DEV-CORE mode with every engine/monaco/notebook/math URL resolving
+   at `/frqtl/…` and `/egpt-src/…`, which nothing serves on a backend-less host.
 2. **A stale `.deploy-static/` looks exactly like a fresh one.** The assembly directory is
-   gitignored and survives between builds; check file dates, not the directory's.
-
-## Publishing
-
-`.descix/manifests/site.json` is an explicit **allowlist**. Site URLs are non-expiring and
-unsigned, so the publish set is enumerated rather than inherited. SiteWalker traps: an empty
-`include` matches everything, `exclude` is tested **before** `include`, and directory excludes name
-the bare directory with no glob suffix.
+   gitignored and survives between builds. Compare the `data-frqtl-site-build` sha the script
+   reports against the FRAQTL ref you meant to ship.

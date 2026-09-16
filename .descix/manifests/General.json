@@ -1,0 +1,14 @@
+{
+  "kb_name": "General",
+  "sync_mode": "local",
+  "_purpose": "Adopted consumer KB. kb/General is a copy of a FRAQTL `make publish-corpus` output dir, written only by `scripts/refresh-kb.sh <output-dir> General`, which records its provenance in .descix/kb-provenance.json. Never hand-edit it.",
+  "sources": [
+    {
+      "path": "kb/General",
+      "ref": "main",
+      "tier": 1,
+      "doc_type": "documentation",
+      "syncignore": []
+    }
+  ]
+}

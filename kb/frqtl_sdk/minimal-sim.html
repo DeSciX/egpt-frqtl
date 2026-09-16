@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<!-- The Minimal Sim's OWN page. THE_MINIMAL_SIM.md §2's "no build step at all"
+     example calls `bootScene('mount', ...)` — this is the page that creates the
+     `mount` element that call names, so the guide's browser example is a page a
+     reader can actually open (double-click / file://; the import is an absolute
+     CDN URL and bootScene injects the engine + game layer as classic scripts, so
+     there is no build step and no local server required). It runs §3's packaged
+     "sun" one-liner (the SphereEmitter form, with the two knobs that reproduce
+     the hand-rolled loop above it: emitEveryTicks:1, is2D:true) — the same
+     scene the hand-rolled tick-fn produces, per "same universe, same primitives,
+     same physics, same picture." -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRQTL — The Minimal Sim</title>
+<style>
+  html,body{margin:0;padding:0;background:#050507;color:#c9c9c9;font-family:ui-monospace,Menlo,Consolas,monospace;}
+  #status{text-align:center;font-size:12px;color:#888;padding:10px 0 4px;}
+  #mount{width:600px;height:400px;margin:0 auto 24px;position:relative;}
+</style>
+</head>
+<body>
+<div id="status" data-role="frqtl-scene-status">booting FRQTL sun…</div>
+<div id="mount" data-role="frqtl-scene-mount"></div>
+<script type="module">
+  import { bootScene } from 'https://cdn.jsdelivr.net/npm/@descix/frqtl-sdk/dist/esm/index.js';
+
+  var statusEl = document.getElementById('status');
+  var tickCount = 0;
+
+  bootScene('mount', function (u, opts) {
+      u.init(u.universe_rect, 0, { wavelengthScale: 1 });
+      // THE_MINIMAL_SIM.md §3's packaged form, verbatim.
+      new SphereEmitter([300, 200], {
+          preset: 'spherical', R: 24, burstSize: 20, emitEveryTicks: 1, is2D: true
+      }).addTo(u);
+      return {};
+  }, {
+      onTick: function () {
+          tickCount++;
+          if (tickCount % 20 === 0) { statusEl.textContent = 'FRQTL sun — live — tick ' + tickCount; }
+      }
+  }).then(function () {
+      statusEl.textContent = 'FRQTL sun — live';
+      window.__frqtlScene = true;   // realm-assertion hook
+  }).catch(function (err) {
+      statusEl.textContent = 'FRQTL sun boot FAILED — see console.';
+      if (window.console && console.error) { console.error('[frqtl-minimal-sim]', err); }
+  });
+</script>
+</body>
+</html>

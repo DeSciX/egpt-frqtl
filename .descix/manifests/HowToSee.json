@@ -1,0 +1,14 @@
+{
+  "kb_name": "HowToSee",
+  "sync_mode": "local",
+  "_purpose": "Authored egpt-frqtl developer-plane KB. kb/HowToSee is edited in place in this repo.",
+  "sources": [
+    {
+      "path": "kb/HowToSee",
+      "ref": "main",
+      "tier": 1,
+      "doc_type": "role-knowledge",
+      "syncignore": []
+    }
+  ]
+}
