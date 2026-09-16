@@ -18,7 +18,7 @@ kb/
   frqtl_sdk/                   adopted — FRAQTL `make publish-corpus` output, never hand-edited
   HowToSee/                    authored here — method corpus
   Personas/                    authored here — frqtl-sdk-builder, frqtl-experiment-designer
-  Recipes/                     authored here — dse-planar, dse-composed
+  Recipes/                     authored here — dse-planar
 plugin/                        Claude Code plugin `frqtl` (install string frqtl@egpt)
 scripts/
   refresh-site.sh              replace site/ from a FRAQTL .deploy-static bundle
@@ -68,10 +68,12 @@ scripts/refresh-kb.sh <publish-corpus output directory> frqtl_sdk
 
 The first argument is the directory FRAQTL `make publish-corpus` writes for that corpus: the
 `adopted-general` output for `General`, the `adopted-sdk` output for `frqtl_sdk`.
-The destination is read from `.descix/manifests/<KB>.json`. Every markdown file must open with the
-publish-corpus `GENERATED` stamp (source path, commit sha, commit date); the per-file stamps are
-recorded under the KB's key in `.descix/kb-provenance.json`, with non-markdown files listed as
-`unstamped_files`. Links to `dev.descix.net` are rewritten to `descix.net` and the count is
+The destination is read from `.descix/manifests/<KB>.json`. Every markdown file in the input must
+open with the publish-corpus `GENERATED` stamp (source path, commit sha, commit date); the per-file
+stamps are recorded under the KB's key in `.descix/kb-provenance.json`, with non-markdown files
+listed as `unstamped_files`, and stripped from the files written to `kb/`. Provenance lives only in
+`kb-provenance.json`: the script fails if an input markdown file has no stamp or if any stamp text
+survives in the output. Links to `dev.descix.net` are rewritten to `descix.net` and the count is
 recorded as `host_rewrites_dev_to_prod`.
 
 `HowToSee`, `Personas` and `Recipes` are edited in place in `kb/`.

@@ -7,14 +7,14 @@
         "file": "getting-started.md",
         "upstream_repo": "FRAQTL",
         "source": "FRAQTL/docs/public/general/getting-started.md",
-        "source_sha": "a8704a24",
-        "committed": "2026-08-26"
+        "source_sha": "2f33ea45",
+        "committed": "2026-09-16"
       }
     ],
     "unstamped_files": [],
-    "host_rewrites_dev_to_prod": 3,
+    "host_rewrites_dev_to_prod": 2,
     "file_count": 1,
-    "tree_sha256": "fa19d48c109df187440035304fff258bbf049a7530054db5caaeddda2bea0a19",
+    "tree_sha256": "1069605145f52892da5231ad50db89bf618e3bb018e5a173ae87996bc908d206",
     "refreshed_by_script": "scripts/refresh-kb.sh"
   },
   "frqtl_sdk": {
@@ -39,8 +39,8 @@
         "file": "FRQTL_VISUAL_CODING_GUIDE.md",
         "upstream_repo": "FRAQTL",
         "source": "FRAQTL/docs/public/frqtl-sdk/FRQTL_VISUAL_CODING_GUIDE.md",
-        "source_sha": "308aa71e",
-        "committed": "2026-07-28"
+        "source_sha": "2f33ea45",
+        "committed": "2026-09-16"
       },
       {
         "file": "HUMAN_GUIDE.md",
@@ -63,7 +63,7 @@
     ],
     "host_rewrites_dev_to_prod": 0,
     "file_count": 7,
-    "tree_sha256": "1d1c062cb51223d4e9b5f62dbb12a39c9165b575cb6db005c25db41e6a9d6ed5",
+    "tree_sha256": "ad388abad227617cbe3643984b04b506a89396d94d4cc28f2d6244086b808b85",
     "refreshed_by_script": "scripts/refresh-kb.sh"
   }
 }
