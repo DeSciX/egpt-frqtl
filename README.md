@@ -62,12 +62,13 @@ A `site/` with no `.descix/site-provenance.json` beside it has no recorded prove
 ### Adopted KBs
 
 ```
-scripts/refresh-kb.sh <publish-corpus output directory> General
-scripts/refresh-kb.sh <publish-corpus output directory> frqtl_sdk
+scripts/refresh-kb.sh <FRAQTL checkout>/.corpus-out/General General
+scripts/refresh-kb.sh <FRAQTL checkout>/.corpus-out/frqtl_sdk frqtl_sdk
 ```
 
-The first argument is the directory FRAQTL `make publish-corpus` writes for that corpus: the
-`adopted-general` output for `General`, the `adopted-sdk` output for `frqtl_sdk`.
+The first argument is the directory FRAQTL `make publish-corpus` writes for that corpus,
+`.corpus-out/<KB>/` at the root of the FRAQTL checkout — a gitignored build artifact, and the only
+copy of the corpus outside this repo.
 The destination is read from `.descix/manifests/<KB>.json`. Every markdown file in the input must
 open with the publish-corpus `GENERATED` stamp (source path, commit sha, commit date); the per-file
 stamps are recorded under the KB's key in `.descix/kb-provenance.json`, with non-markdown files
