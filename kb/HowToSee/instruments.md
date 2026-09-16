@@ -1,8 +1,6 @@
 # Instruments — match the instrument to the quantity, and stamp everything
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §4–§5 @ `335bbc15`; Unkamon
-> `docs/physics/ppc-vla-prototype-design.md` §3 @ `6c6b0e11`+2026-08-07 revision.
 
 Before capturing, ask what quantity your claim is about. Getting this wrong sends
 experiments into tick-sweeping expeditions that cannot succeed.

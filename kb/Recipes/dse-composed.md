@@ -1,17 +1,9 @@
-<!-- PROMOTED TO CATALOG 2026-08-07 per CEO voice pass. Authored by the vibe-builder
-     robot proxy (Sonnet seat) in the L3 clean-room run, ws-frqtl-vibe-h2-run round 3.
-     R8 questions OPEN — designer iteration boarded (ws-frqtl-dse-composed-iteration).
-     Run record: docs/design/vibe-run-2026-08-07/ -->
-
 # dse-composed — a double-slit apparatus composed object-by-object
 
-Author: vibe-builder (frqtl-sdk-builder persona). Session: 2026-08-07, round 3
-(resumed after an infra-terminated session; round 3 itself started fresh — no
-prior round-3 recipe existed to build on). SDK: `@descix/frqtl-sdk@0.1.8`, real
-`./eyes` (`openHostedEyes`, Playwright-backed). Scene:
-`clean-room/run/scene-composed-dse.js`. Capture: `clean-room/run/look-composed.cjs`.
+Author: frqtl-sdk-builder persona, 2026-08-07. SDK: `@descix/frqtl-sdk@0.1.8`, real
+`./eyes` (`openHostedEyes`, Playwright-backed).
 
-Unlike `dse-planar` (the served recipe I read against in rounds 1-2), this
+Unlike `dse-planar` (the served recipe), this
 apparatus is **mine**: every object, every coordinate, every constant below was
 placed by hand via the published `exp.addObject(kind, config)` registry — not a
 factory (`setupDoubleSlit`), not the served recipe's numbers. Where I borrowed a
@@ -83,8 +75,7 @@ as the primary instrument — the composite's own on-canvas histogram is.
 ## R7 landed arms — the ground truth I actually built and captured
 
 ### Iteration timeline (every wall, fixed or explained, never hidden)
-1. **First narrow capture** (pre-existing from the terminated session,
-   `composed-composite.png`, distance=220 target=[270,200,0]): emitter cloud +
+1. **First narrow capture** (`composed-composite.png`, distance=220 target=[270,200,0]): emitter cloud +
    barrier + one visible gap, **pure black past the barrier**.
 2. **Widened camera** (`composed-composite-wide-buggy-oneslit.png`,
    distance=420 target=[300,200,0]): full 600×400 stage visible. This **ruled
@@ -207,21 +198,4 @@ reported plainly (see R8), not smoothed over.
    off.
 3. **No SDK gaps were hit this round.** Both walls encountered (the closed
    second slit, the mis-placed detector) were self-authored construction
-   mistakes, not package defects — fixed in-persona, not filed to
-   `gap-filler`. Worth naming explicitly since rounds 1-2 both ended in a
-   filed SDK gap; this round did not.
-
-## Files
-- `clean-room/run/scene-composed-dse.js` — the composed scene (buildExperiment
-  module), with the full iteration history in its own header comments.
-- `clean-room/run/look-composed.cjs` — the capture driver (pre-flight, iteration
-  log, and the two final `setPose` framings).
-- `clean-room/run/probe-transmission.cjs`, `probe-colprofile.cjs`,
-  `probe-detector-band.cjs` — the camera-free `getStill('field')` numeric
-  probes used to corroborate what the composite showed by eye.
-- `clean-room/run/composed-composite-wide.png`,
-  `clean-room/run/composed-composite-detector-zone.png` — final evidence
-  (fixed geometry, moved detector, tick=2400).
-- `clean-room/run/composed-composite-wide-buggy-oneslit.png`,
-  `clean-room/run/composed-composite-buggy-oneslit.png` — kept deliberately as
-  the "before" evidence for the iteration story in R7.
+   mistakes, not package defects — fixed in-persona.

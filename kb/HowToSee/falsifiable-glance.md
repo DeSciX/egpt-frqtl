@@ -1,8 +1,6 @@
 # The falsifiable glance — two arms, one value apart, one named pixel
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §3 @ `335bbc15`; FRAQTL dispatch rules E1–E8
-> @ `17b5526c`; distilled 2026-08-07.
 
 ## Step 1 — Name the prediction in PIXELS, before you build
 

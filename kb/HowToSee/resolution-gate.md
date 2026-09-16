@@ -1,7 +1,6 @@
 # The resolution gate — structure below the grain does not exist
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §2.2 @ `335bbc15`; distilled 2026-08-07.
 
 A pixel is the smallest unit of space; a tick the smallest unit of time. Structure has
 a fixed size **in units of λ**, so shrinking λ shrinks the structure in pixels until it

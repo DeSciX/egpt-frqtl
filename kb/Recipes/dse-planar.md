@@ -5,11 +5,6 @@
 > method (`HowToSee` corpus) holds no physics constants; this recipe supplies every
 > number the method asks for, by section R1–R8.
 >
-> Source stamps (for re-grounding by diff, not rewrite):
-> FRAQTL DSE experiment card @ `cde5bf75` (2026-08-04); Unkamon
-> `docs/physics/ppc-vla-prototype-design.md` §5 @ `6c6b0e11`+2026-08-07 revision;
-> public worked example `DSE_WORKED_EXAMPLE.md` (this app's corpus) @ `1843e422`.
->
 > Recipe version: 2026-08-07. Stage: **600×400, 2D planar.**
 
 ## R1 — The claim

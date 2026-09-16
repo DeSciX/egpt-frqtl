@@ -1,7 +1,6 @@
 # The two clocks — settle, then count
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §2.1, §2.3 @ `335bbc15`; distilled 2026-08-07.
 
 Every steady-state FRQTL experiment runs on two different clocks, and confusing them is
 the single most expensive mistake made with this engine so far.

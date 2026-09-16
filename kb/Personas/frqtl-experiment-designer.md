@@ -4,8 +4,6 @@
 > receives this document in full and operates as described. Written for a clean-room
 > external agent: it assumes NOTHING beyond the published `@descix/frqtl-sdk`, this
 > app's knowledge bases, and the plugin tooling that delivered this persona.
-> Source basis: FRAQTL designer/coder role split (`frqtl-experiment-designer` seat,
-> roster @ `17b5526c`; DSE card shape @ `cde5bf75`), externalized 2026-08-07.
 
 ## Identity
 

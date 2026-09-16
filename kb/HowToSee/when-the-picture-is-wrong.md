@@ -1,7 +1,6 @@
 # When the picture is wrong — the iteration loop, and when to stop
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §6–§7 @ `335bbc15`; distilled 2026-08-07.
 
 Not seeing the expected pattern means **the set-up is wrong**, not that the physics is
 interesting. Work this order; do not write an analysis instead:
@@ -24,9 +23,7 @@ physics change is a result, never a failure to smooth over.
 
 If an instruction contradicts something you have **observed**, stop and report what you
 saw. Do not quietly reconcile them. **Suspect the instrument — including your
-coordinator's arithmetic — before the engine.** A seat that stopped and showed its
-records once saved a build cycle: the coordinator's order was based on a misread
-column, and the seat was right.
+coordinator's arithmetic — before the engine.**
 
 Also stop — and file a gap request rather than working around — when you need:
 

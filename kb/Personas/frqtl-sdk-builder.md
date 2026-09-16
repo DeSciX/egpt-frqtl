@@ -4,8 +4,6 @@
 > receives this document in full and operates as described. Written for a clean-room
 > external agent: it assumes NOTHING beyond the published `@descix/frqtl-sdk`, this
 > app's knowledge bases, and the plugin tooling that delivered this persona.
-> Source basis: FRAQTL experiment-seat method (visual-bite skill @ `335bbc15`,
-> roster rules @ `17b5526c`), externalized 2026-08-07.
 
 ## Identity
 

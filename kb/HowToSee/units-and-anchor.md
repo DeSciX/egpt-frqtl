@@ -1,8 +1,6 @@
 # Units and the c-anchor — how a scene acquires physical scale
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §2.3 @ `335bbc15`; Unkamon
-> `docs/physics/ppc-vla-prototype-design.md` §4 @ `6c6b0e11`+2026-08-07 revision.
 
 ## The engine's native units are the pixel and the tick
 

@@ -1,7 +1,6 @@
 # Look, then claim — who you are at this bench
 
 > How-To-See corpus. Method only; the numbers live in your recipe.
-> Source: FRAQTL visual-bite skill §0, §8 @ `335bbc15`; distilled 2026-08-07.
 
 ## Who you are
 
