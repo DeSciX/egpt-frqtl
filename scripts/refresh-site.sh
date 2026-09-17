@@ -5,7 +5,7 @@
 #
 # The bundle's build sha is read from the data-frqtl-site-build attribute in its
 # index.html. A bundle without it is refused: provenance is read from the bytes,
-# never typed by hand.
+# never typed by hand. A bundle carrying KNOWN_FAILING.json is refused too.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -21,6 +21,8 @@ SRC=$1
 SRC=$(cd "$SRC" && pwd)
 [ -f "$SRC/index.html" ] || die "$SRC/index.html is missing — not an assembled static bundle"
 [ "$SRC" != "$SITE" ] || die "source is site/ itself"
+# A bundle that still ships pages the assembler knows are broken is not deployable.
+[ ! -e "$SRC/KNOWN_FAILING.json" ] || die "$SRC/KNOWN_FAILING.json is present — the bundle ships known-failing pages: $(jq -c '[.. | .path? // empty]' "$SRC/KNOWN_FAILING.json" 2>/dev/null || cat "$SRC/KNOWN_FAILING.json"); land their fixes in FRAQTL and rebuild"
 
 builds=$(grep -oE 'data-frqtl-site-build="[^"]*"' "$SRC/index.html" | sed -E 's/^data-frqtl-site-build="(.*)"$/\1/' | sort -u || true)
 [ -n "$builds" ] || die "$SRC/index.html carries no data-frqtl-site-build attribute — rebuild the bundle with FRAQTL \`make static-deploy\` at a ref that stamps it"
