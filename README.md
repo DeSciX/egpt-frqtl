@@ -50,7 +50,9 @@ scripts/refresh-site.sh <.deploy-static directory>
 The argument is the `.deploy-static/` directory FRAQTL `make static-deploy` assembles and
 browser-verifies at the root of a FRAQTL checkout. The script
 refuses a non-directory, a directory without `index.html`, and an `index.html` without exactly one
-`data-frqtl-site-build="<git sha>"` attribute. On success it replaces `site/` and writes
+`data-frqtl-site-build="<git sha>"` attribute. It also refuses a bundle containing
+`KNOWN_FAILING.json`, which the FRAQTL assembler writes while it ships pages it knows are broken.
+On success it replaces `site/` and writes
 `.descix/site-provenance.json`:
 
 ```
