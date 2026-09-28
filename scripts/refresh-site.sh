@@ -5,7 +5,17 @@
 #
 # The bundle's build sha is read from the data-frqtl-site-build attribute in its
 # index.html. A bundle without it is refused: provenance is read from the bytes,
-# never typed by hand. A bundle carrying KNOWN_FAILING.json is refused too.
+# never typed by hand.
+#
+# TWO refusals, two facts, both read from the bundle itself:
+#   KNOWN_FAILING.json   present  → the bundle ships surfaces known to fail with no
+#                                  mechanical detector (FRAQTL scripts/_known-failing.mjs).
+#   VERIFICATION.json    missing, stale, or not all-GREEN → the bundle was never verified,
+#                                  or was verified RED, or the record belongs to a DIFFERENT
+#                                  build than the one being published. FRAQTL's
+#                                  scripts/verify-static-deploy.sh writes it on every run and
+#                                  leaves .deploy-static/ on disk when a phase goes RED, so
+#                                  without this check a failed verification publishes silently.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -29,6 +39,19 @@ builds=$(grep -oE 'data-frqtl-site-build="[^"]*"' "$SRC/index.html" | sed -E 's/
 [ "$(printf '%s\n' "$builds" | wc -l | tr -d ' ')" -eq 1 ] || die "$SRC/index.html carries conflicting data-frqtl-site-build values: $(echo $builds)"
 printf '%s' "$builds" | grep -qE '^[0-9a-f]{7,40}$' || die "data-frqtl-site-build=\"$builds\" is not a git sha"
 UPSTREAM_SHA=$builds
+
+# The verification record must exist, belong to THIS build, and be GREEN in every phase.
+VERIFICATION="$SRC/VERIFICATION.json"
+[ -f "$VERIFICATION" ] || die "$VERIFICATION is missing — this bundle was never browser-verified; run FRAQTL \`make static-deploy\` (step 5 writes the record)"
+jq -e . "$VERIFICATION" >/dev/null 2>&1 || die "$VERIFICATION is not valid JSON"
+VERIFIED_BUILD=$(jq -r '.build // empty' "$VERIFICATION")
+[ -n "$VERIFIED_BUILD" ] || die "$VERIFICATION names no build — cannot tell which bundle was verified"
+[ "$VERIFIED_BUILD" = "$UPSTREAM_SHA" ] || die "$VERIFICATION records build $VERIFIED_BUILD but this bundle is stamped $UPSTREAM_SHA — the record is STALE; re-verify this bundle"
+PHASES=$(jq -r 'del(.build, .verified_at, .instrument) | to_entries[] | "\(.key)=\(.value)"' "$VERIFICATION")
+[ -n "$PHASES" ] || die "$VERIFICATION records no phase verdicts"
+NOT_GREEN=$(printf '%s\n' "$PHASES" | grep -v '=GREEN$' || true)
+[ -z "$NOT_GREEN" ] || die "$VERIFICATION is not all-GREEN ($(printf '%s' "$NOT_GREEN" | tr '\n' ' ')) — the bundle failed browser verification; land the fixes in FRAQTL and re-verify"
+echo "verification record OK: build $VERIFIED_BUILD, $(printf '%s' "$PHASES" | tr '\n' ' ')"
 
 replace_tree "$SRC" "$SITE"
 
