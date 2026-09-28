@@ -16,10 +16,16 @@
 #                                  scripts/verify-static-deploy.sh writes it on every run and
 #                                  leaves .deploy-static/ on disk when a phase goes RED, so
 #                                  without this check a failed verification publishes silently.
+#                                  Read: `build` and `phases` ({<phase>: "GREEN"|...}). The
+#                                  verdicts are the members of `phases` ONLY, each exactly "GREEN";
+#                                  a record without a non-empty `phases` object is refused
+#                                  (scripts/lib/verification.sh::check_verification; controls:
+#                                  scripts/test/verification-record.sh).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/scripts/lib/tree.sh"
+. "$ROOT/scripts/lib/verification.sh"
 
 UPSTREAM_REPO="FRAQTL"
 SITE="$ROOT/site"
@@ -41,17 +47,7 @@ printf '%s' "$builds" | grep -qE '^[0-9a-f]{7,40}$' || die "data-frqtl-site-buil
 UPSTREAM_SHA=$builds
 
 # The verification record must exist, belong to THIS build, and be GREEN in every phase.
-VERIFICATION="$SRC/VERIFICATION.json"
-[ -f "$VERIFICATION" ] || die "$VERIFICATION is missing — this bundle was never browser-verified; run FRAQTL \`make static-deploy\` (step 5 writes the record)"
-jq -e . "$VERIFICATION" >/dev/null 2>&1 || die "$VERIFICATION is not valid JSON"
-VERIFIED_BUILD=$(jq -r '.build // empty' "$VERIFICATION")
-[ -n "$VERIFIED_BUILD" ] || die "$VERIFICATION names no build — cannot tell which bundle was verified"
-[ "$VERIFIED_BUILD" = "$UPSTREAM_SHA" ] || die "$VERIFICATION records build $VERIFIED_BUILD but this bundle is stamped $UPSTREAM_SHA — the record is STALE; re-verify this bundle"
-PHASES=$(jq -r 'del(.build, .verified_at, .instrument) | to_entries[] | "\(.key)=\(.value)"' "$VERIFICATION")
-[ -n "$PHASES" ] || die "$VERIFICATION records no phase verdicts"
-NOT_GREEN=$(printf '%s\n' "$PHASES" | grep -v '=GREEN$' || true)
-[ -z "$NOT_GREEN" ] || die "$VERIFICATION is not all-GREEN ($(printf '%s' "$NOT_GREEN" | tr '\n' ' ')) — the bundle failed browser verification; land the fixes in FRAQTL and re-verify"
-echo "verification record OK: build $VERIFIED_BUILD, $(printf '%s' "$PHASES" | tr '\n' ' ')"
+check_verification "$SRC/VERIFICATION.json" "$UPSTREAM_SHA"
 
 replace_tree "$SRC" "$SITE"
 

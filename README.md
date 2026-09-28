@@ -52,8 +52,9 @@ browser-verifies at the root of a FRAQTL checkout. The script
 refuses a non-directory, a directory without `index.html`, and an `index.html` without exactly one
 `data-frqtl-site-build="<git sha>"` attribute. It also refuses a bundle containing
 `KNOWN_FAILING.json`, which the FRAQTL assembler writes while it ships pages it knows are broken,
-and a bundle whose `VERIFICATION.json` is missing, records a different build than the stamp, or is
-not GREEN in every phase — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
+and a bundle whose `VERIFICATION.json` is missing, records a different build than the stamp, or does
+not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (the reader reads
+`build` and `phases` only) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
 On success it replaces `site/` and writes

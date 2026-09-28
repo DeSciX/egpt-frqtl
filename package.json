@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test": "bash scripts/test/verification-record.sh"
+  },
   "dependencies": {
     "@descix/cli": "^1.0.9"
   }
