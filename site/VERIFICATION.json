@@ -1,7 +1,11 @@
 {
-  "build": "1a7d0cbf",
+  "build": "9588d86f",
   "root": "GREEN",
   "prefix": "GREEN",
-  "verified_at": "2026-09-28T05:14:04Z",
-  "instrument": "scripts/verify-static-deploy.sh"
+  "verified_at": "2026-09-28T08:13:21Z",
+  "instrument": {
+    "script": "scripts/verify-static-deploy.sh",
+    "urls": "scripts/verify-static-deploy-urls.mjs",
+    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js"]
+  }
 }

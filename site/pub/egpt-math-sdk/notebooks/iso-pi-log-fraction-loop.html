@@ -38,13 +38,11 @@ function ppfOf(n) {
   const L = bitLengthBigInt(n) - 1;
   return { L, offset: n - (1n << BigInt(L)) };
 }
+// Canonical-string render: the static EGPTReal.toCanonicalStr(v) owns the form
+// (the linear projection, "num" or "num/den"). No copy of the formatter lives here.
 function renderValue(v) {
   if (v == null) return String(v);
-  if (typeof v._getPPFRationalParts === 'function') {
-    const { numerator, denominator } = v._getPPFRationalParts();
-    if (denominator === 1n || denominator === -1n) return String(denominator < 0n ? -numerator : numerator);
-    return `${numerator}/${denominator}`;
-  }
+  if (typeof v._getPPFRationalParts === 'function') return EGPTReal.toCanonicalStr(v);
   return String(v);
 }
 function canonicalFractionToL1Position(H) {

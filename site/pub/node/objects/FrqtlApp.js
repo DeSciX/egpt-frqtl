@@ -2105,6 +2105,87 @@
     };
 
     /**
+     * firstTick({ deadlineMs }) — a promise for the FIRST tick this runner DELIVERS after the
+     * call, bounded by a liveness deadline measured on the runner's OWN clock.
+     *
+     * READINESS IS THE RUNNER'S. A host (the SDK's bootScene/bootDoubleSlit tail, a hosted-eyes
+     * driver, a recipe bundle) that wants to know "is this scene live" awaits this instead of
+     * deriving its own answer from `start()` having returned — `start()` schedules a frame; it
+     * delivers nothing. The promise resolves from `_notifyTickListeners` (a tick that RAN), so
+     * a universe that throws in `doTick()` never resolves it.
+     *
+     * THE DEADLINE RUNS ONLY WHILE THE DOCUMENT IS VISIBLE. The tick clock is
+     * requestAnimationFrame (`_makeFrame`), which browsers suspend in a hidden document — a
+     * background tab, a minimised window, an offscreen cross-origin iframe (the claude.ai
+     * artifact case). A wall-clock bound would expire on a HEALTHY runner that was merely
+     * hidden, and a gate that fires on correct behaviour trains everyone to ignore it. So the
+     * countdown PAUSES on `visibilitychange` → hidden (remaining time kept) and resumes when
+     * visible; a runner started hidden waits, however long, for its first visible frame.
+     *
+     * On expiry — `deadlineMs` of VISIBLE time with no delivered tick — the runner STOPS itself
+     * (a loop whose ticks throw would otherwise raise an uncaught error on every frame forever)
+     * and the promise REJECTS naming the runner, its seed, its canvas and the deadline. Never a
+     * resolve: a scene that never ticked is not live, and no caller may be told it is.
+     *
+     * @param {{deadlineMs:number}} opts — `deadlineMs` is REQUIRED (> 0): a promise with no bound
+     *   hangs forever on a dead clock, and a hang is silence. FAIL-LOUD on an absent/invalid value.
+     * @returns {Promise<object>} resolves with the first delivered TickData.
+     */
+    FrqtlApp.prototype.firstTick = function (opts) {
+        var deadlineMs = opts && opts.deadlineMs;
+        if (typeof deadlineMs !== 'number' || !isFinite(deadlineMs) || deadlineMs <= 0) {
+            throw new Error('[FrqtlApp.firstTick] opts.deadlineMs must be a positive number of ms (got ' +
+                String(deadlineMs) + '). A first-tick wait with no bound hangs forever on a dead tick clock.');
+        }
+        var self = this;
+        var doc = (typeof document !== 'undefined') ? document : null;
+        return new Promise(function (resolve, reject) {
+            var settled = false;
+            var timer = null;
+            var remainingMs = deadlineMs;
+            var armedAt = 0;
+            var unsubscribe = null;
+            function isVisible() { return !doc || doc.visibilityState === 'visible'; }
+            function disarm() {
+                if (timer === null) { return; }
+                clearTimeout(timer);
+                timer = null;
+                remainingMs = Math.max(0, remainingMs - (Date.now() - armedAt));
+            }
+            function settle() {
+                settled = true;
+                disarm();
+                if (unsubscribe) { unsubscribe(); }
+                if (doc) { doc.removeEventListener('visibilitychange', onVisibility); }
+            }
+            function expire() {
+                timer = null;
+                if (settled) { return; }
+                settle();
+                self.stop();
+                reject(new Error('[FrqtlApp.firstTick] the runner (window._frqtlApp, FrqtlApp seed ' +
+                    self._seed + ', canvas ' + self.canvas_rect.w + 'x' + self.canvas_rect.h + ') was started ' +
+                    'but delivered no tick within ' + deadlineMs + ' ms of visible time — the scene is NOT ' +
+                    'live; the runner has been stopped. A per-frame error in the tick loop (see the page ' +
+                    'console) or a held tick clock (runner.ticksSuspended) is the usual cause.'));
+            }
+            function arm() {
+                if (settled || timer !== null || !isVisible()) { return; }
+                armedAt = Date.now();
+                timer = setTimeout(expire, remainingMs);
+            }
+            function onVisibility() { if (isVisible()) { arm(); } else { disarm(); } }
+            unsubscribe = self.addTickListener(function (tickData) {
+                if (settled) { return; }
+                settle();
+                resolve(tickData);
+            });
+            if (doc) { doc.addEventListener('visibilitychange', onVisibility); }
+            arm();
+        });
+    };
+
+    /**
      * removeTickListener(fn) — drop a previously-added tick listener. No-op if absent.
      * @param {Function} fn
      */

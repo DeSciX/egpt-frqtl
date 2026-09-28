@@ -12,10 +12,10 @@
  * `lib/frqtl/experiments/_shared/stack-boot.js`). Rather than duplicating that
  * discipline as a second implementation, this module ORCHESTRATES it: it
  * injects the SAME classic `<script>` tags — resolved through `engineRouter`,
- * never hand-derived — in the SAME canonical order stack-boot.js uses (see
- * `lib/shim/engine/game-layer-manifest.js` for the full canonical list; the
- * arrays below are the double-slit experiment's actual dependency SUBSET of
- * it), then exposes ONE promise-returning function per showcased experiment.
+ * never hand-derived — in the SAME canonical order stack-boot.js uses, drawn
+ * from the manifest owners (`lib/shim/engine/{shim-contract,renderer-layer,
+ * game-layer}-manifest.js`), then exposes ONE promise-returning function per
+ * showcased experiment.
  *
  * WHY THIS SHAPE (not a "real" ESM rewrite of the engine/game layer):
  *   - A new op-program behavior is data, never new engine code (root CLAUDE.md
@@ -30,8 +30,8 @@
  *     -2026-07-10.md §1 — the captured CSP; §3a "showcase shortcut").
  *   - This entry never touches `stack-boot.js` (confirmed dist-incompatible —
  *     see `.claude/agent-memory/frqtl-impl-server/CANONICAL.md` §CRITICAL) —
- *     it is a bespoke, MINIMAL subset built for exactly what
- *     `setupDoubleSlit` needs, resolved through `engineRouter({mode:'cdn'})`.
+ *     it injects the same manifest-owned lists itself, resolved through
+ *     `engineRouter({mode:'cdn'})`.
  *
  * Exports:
  *   bootDoubleSlit(mountEl, opts?) → Promise<{ runner, setupResult }>
@@ -52,8 +52,13 @@
  *     function is also accepted). It injects the FULL canonical game layer +
  *     BOTH renderer providers + the FX/render-effect layers (via the superset
  *     `buildScriptListsFull`), so no scene is missing a dependency. Same
- *     FAIL-LOUD discipline as `bootDoubleSlit`. `bootDoubleSlit` is left
- *     UNCHANGED (the proven 2D p5 subset).
+ *     FAIL-LOUD discipline as `bootDoubleSlit`; both end in the ONE runner
+ *     tail `startSketch` (world step → parts → engine init gate → start →
+ *     resolve on the runner's first tick), never a second boot sequence.
+ *
+ *   BOOT_SCENE_RESERVED_KEYS / splitSceneOpts(opts) → { boot, setup }
+ *     The one table of keys `bootScene` itself owns, and the one splitter
+ *     every caller (and test) consumes — the factory bag is what is left.
  *
  *   bootRecipe(mountEl, recipeSource, opts?) → Promise<{ runner, recipeContext, retainedRenderRows }>
  *     The standalone-bundle counterpart of `bootScene`: boots a
@@ -134,11 +139,9 @@ function resolveMount(mountEl) {
     return mountEl;
 }
 
-// ── The canonical script lists — a DELIBERATE SUBSET of stack-boot.js's full
-// canonical order (see lib/shim/engine/game-layer-manifest.js for the shared-
-// game-layer superset this is drawn from): excludes the controls/Tube/OvenBox/
-// circuit/three.js groups the double-slit setup factory never touches. Every
-// URL is resolved through engineRouter — NEVER hand-derived. ───────────────
+// ── The canonical script lists — stack-boot.js's full canonical order, drawn
+// from the manifest owners. Every URL is resolved through engineRouter — NEVER
+// hand-derived. ─────────────────────────────────────────────────────────────
 
 // lib/shim contract scripts (ast-schema, frame-data, page-params,
 // field-descriptor, controls x2, rpc) — the CANONICAL list is
@@ -168,72 +171,38 @@ function buildShimContractScripts(router) {
  * lib/shim/engine/test/router.test.mjs "every ARTIFACT-SHOWCASE injectSequence
  * URL exists on disk"). Pure given `router` — no DOM/browser access.
  *
+ * All three lists are `buildScriptListsFull`'s — the manifest owners' lists,
+ * consumed, never re-typed — plus the ONE per-experiment setup factory
+ * (objects/setup/setupDoubleSlit.js) appended to GAME. This entry used to carry
+ * its own hand-copied "double-slit subset" of the RENDERER and GAME rosters, and
+ * both drifted as the manifests grew (compat/renderer/display-slot.js, c32239a8;
+ * objects/schema/valueNormalizer.js): dist/artifact/double-slit.html then died
+ * at boot on every load, unmeasured, because that page's import map is the
+ * jsdelivr pin and nothing local ever loaded it.
+ *
  * @param {import('../ide/engine/router.js').EngineRouter} router
  * @returns {{ENGINE: Array<{src:string}>, RENDERER: Array<{src:string}>, GAME: Array<{src:string}>}}
  */
 export function buildScriptLists(router) {
-    var ENGINE = [
-        { src: router.resolve('assets/vendor/chroma.min.js') },
-        { src: router.resolve('objects/geometry/Rectangle.js') },
-        { src: router.resolve('compat/providers/wasm-engine.js') },
-        { src: router.resolve('compat/providers/wasm-load-browser.js') },
-        { src: router.resolve('compat/egpt-engine.js') }
-    ].concat(buildShimContractScripts(router));
-    // ^ ast-schema.js / frame-data/index.js (needed by actionCompiler at
-    //   LargeObject construction time and by RenderShape.js/RenderMesh.js at
-    //   THEIR OWN module-eval time, respectively) ride inside this concat —
-    //   along with page-params/field-descriptor/controls/rpc, which the
-    //   double-slit setup does not need but are cheap, small, and loading the
-    //   canonical list IN FULL means a future manifest addition is picked up
-    //   automatically with no matching edit required here.
-
-    var RENDERER = [
-        { src: router.resolve('objects/constants/LightColor.js') },
-        { src: router.resolve('compat/renderer/RenderShape.js') },
-        { src: router.resolve('compat/renderer/RenderMesh.js') },
-        { src: router.resolve('compat/renderer/FieldBuilder.js') },
-        { src: router.resolve('compat/renderer/providers/p5-provider.js') },
-        { src: router.resolve('compat/renderer/Filters.js') }
-        // three-provider.js intentionally omitted: double-slit is a 2D p5
-        // experiment (window._egptDefaultRenderer is set to 'p5' below).
-    ];
-
-    var GAME = [
-        { src: router.resolve('objects/constants/CollisionTypes.js') },
-        { src: router.resolve('objects/constants/CollisionActions.js') },
-        { src: router.resolve('objects/constants/Charge.js') },
-        { src: router.resolve('objects/geometry/Rectangle.js') },
-        { src: router.resolve('objects/geometry/SlabFace.js') },
-        { src: router.resolve('objects/objects/actionCompiler.js') },
-        { src: router.resolve('objects/objects/emitterProgram.js') },
-        { src: router.resolve('objects/objects/LargeObject.js') },
-        { src: router.resolve('objects/objects/QuantumEmitter.js') },
-        { src: router.resolve('objects/objects/PointSource.js') },
-        { src: router.resolve('objects/objects/DetectorWall.js') },
-        { src: router.resolve('objects/objects/SlitScreen.js') },
-        { src: router.resolve('objects/objects/SlitLightSource.js') },
-        { src: router.resolve('objects/schema/index.js') },
-        { src: router.resolve('objects/ObjectFactory.js') },
-        { src: router.resolve('objects/FrqtlApp.js') },
-        { src: router.resolve('objects/Experiment.js') },
-        { src: router.resolve('objects/RecipeContext.js') },
-        // Per-experiment setup factory — NOT part of the shared game layer (same
-        // "data-page-scripts" idiom every canonical experiment page uses).
-        { src: router.resolve('objects/setup/setupDoubleSlit.js') }
-    ];
-
-    return { ENGINE: ENGINE, RENDERER: RENDERER, GAME: GAME };
+    var full = buildScriptListsFull(router);
+    // Per-experiment setup factory — NOT part of the shared game layer (the
+    // "data-page-scripts" idiom every canonical experiment page uses; bootScene
+    // injects the ONE it was asked for after the GAME sequence the same way).
+    var GAME = full.GAME.concat([{ src: router.resolve('objects/setup/setupDoubleSlit.js') }]);
+    return { ENGINE: full.ENGINE, RENDERER: full.RENDERER, GAME: GAME };
 }
 
 /**
- * The SUPERSET of `buildScriptLists` — the FULL canonical stack `bootScene`
- * injects so ANY setup factory works (2D or 3D, p5 or three, with shapes / FX /
- * water). Where `buildScriptLists` is the deliberate double-slit SUBSET (p5
- * only, no three, no FX layers, no full object roster), this returns:
+ * The FULL canonical stack `bootScene` injects so ANY setup factory works (2D or
+ * 3D, p5 or three, with shapes / FX / water) — and the owner of every list
+ * `buildScriptLists` (the double-slit entry) consumes:
  *
- *   ENGINE   — identical to buildScriptLists' ENGINE (chroma → Rectangle → WASM
- *              compat + the FULL shim-contract list). No superset needed: the
- *              engine layer is scene-independent.
+ *   ENGINE   — chroma → Rectangle → WASM compat + the FULL shim-contract list
+ *              (ast-schema / frame-data are needed by actionCompiler and by
+ *              RenderShape/RenderMesh at module-eval time; page-params /
+ *              field-descriptor / controls / rpc ride along — loading the
+ *              canonical list IN FULL means a manifest addition is picked up
+ *              with no matching edit here). Scene-independent.
  *   RENDERER — the FULL renderer stack: RENDERER_LAYER_SCRIPTS from
  *              lib/shim/engine/renderer-layer-manifest.js (the SAME single
  *              authority stack-boot.js's RENDERER phase mirrors — never a
@@ -302,9 +271,7 @@ function bootEngine(router) {
     return window.EGPTEngine.create({ backend: 'wasm', wasmPkgUrl: router.wasmPkgUrl });
 }
 
-// ── Renderer boot (p5-only — the double-slit showcase is 2D). Mirrors
-// render-boot.js's default (no-override) branch exactly: the p5 provider is
-// synchronously ready the instant its script has loaded. ───────────────────
+// ── THE DISPLAY SLOT — shared by both renderer boots below. ───────────────
 
 /**
  * Register the booted provider into THE DISPLAY SLOT — the ONE answer to "which provider
@@ -320,14 +287,6 @@ function registerDisplay(provider) {
             '(it heads the RENDERER script list). FAIL-LOUD, not a fallback.');
     }
     return window.FrqtlDisplay.set(provider, window._egptRenderer);
-}
-
-function bootRenderer() {
-    if (!window._egptRendererProviders || !window._egptRendererProviders.p5) {
-        throw new Error('[frqtl-sdk esm] p5-provider.js did not install window._egptRendererProviders.p5.');
-    }
-    window._egptRenderer = 'p5';
-    registerDisplay(window._egptRendererProviders.p5.makeProvider());
 }
 
 // ── p5 global-mode boot (mirrors every canonical experiment page's own
@@ -387,7 +346,7 @@ export async function bootDoubleSlit(mountEl, opts) {
         await injectSequence(lists.ENGINE);
         await bootEngine(router);
         await injectSequence(lists.RENDERER);
-        bootRenderer();
+        bootP5Renderer(router);
         await injectSequence(lists.GAME);
     } catch (err) {
         paintError(host, 'FRQTL ARTIFACT BOOT FAILED', String((err && err.stack) || err));
@@ -395,45 +354,193 @@ export async function bootDoubleSlit(mountEl, opts) {
     }
 
     var wavelength = opts.wavelength !== undefined ? opts.wavelength : 64;
-    var canvasSize = opts.canvasSize !== undefined ? opts.canvasSize : 480;
-    var seed       = opts.seed !== undefined ? opts.seed : 42;
-    var onTick     = typeof opts.onTick === 'function' ? opts.onTick : function () {};
 
     window._egptDefaultRenderer = 'p5';
 
+    return startSketch({
+        host: host,
+        canvasHost: canvasHost,
+        router: router,
+        label: 'ARTIFACT',
+        canvasSize: opts.canvasSize !== undefined ? opts.canvasSize : 480,
+        seed: opts.seed !== undefined ? opts.seed : 42,
+        onTick: typeof opts.onTick === 'function' ? opts.onTick : function () {},
+        setupFn: window.setupDoubleSlit,
+        setupOpts: { wavelength: wavelength },
+        render: undefined
+    });
+}
+
+// ── The ONE runner tail — bootDoubleSlit and bootScene both end here ──────────
+//
+// Construct the runner → the factory's WORLD step (when it exports one) → the
+// factory (the PART step) → the engine's own init gate → start → resolve on the
+// runner's FIRST TICK. Two entries, one sequence. The sequence used to be
+// re-derived in each entry and the copies drifted: bootScene forwarded its own
+// reserved keys into the factory's strict option validator, and ran no world
+// step at all — the universe was never init'd, `doTick()` threw on every
+// animation frame, and the promise had already resolved (measured 2026-09-28,
+// dist/artifact/sun.html on 0.3.0).
+//
+// THE WORLD STEP IS THE SKETCH'S (docs/internal/engine/THE_MINIMAL_SIM.md:
+// world.init() FIRST → CONSTRUCT parts → WIRE → RUN). A factory that constructs
+// a PART exports its implied world as `factory.initWorld(universe, opts)` —
+// the same export lib/frqtl/experiments/sphere-emitter-3d/index.html's sketch
+// and the composite factories (setupHalfAdder, setupTraceCircuit) consume; a
+// factory that owns its world (setupDoubleSlit) exports none and inits inside.
+// This tail derives NO universe.init argument of its own — it consumes the
+// factory's export, or nothing.
+//
+// READINESS IS THE RUNNER'S, NEVER THIS FILE'S SAY-SO. The promise resolves
+// from `runner.firstTick(...)` — FrqtlApp's own promise for its first DELIVERED
+// tick, whose deadline runs only while the document is visible (the tick clock
+// is requestAnimationFrame, which a hidden document suspends). This tail holds
+// no readiness logic of its own: it awaits the runner. Before start, the
+// engine's own gate is asked: reading `universe.fundamentalDimension` goes
+// through EGPTUniverse._ensureInit, so a raw (never-init'd) world throws the
+// engine's own "init() must be called" error HERE — overlay + rejection —
+// instead of uncaught on every frame. A started runner that delivers no tick
+// within FIRST_TICK_DEADLINE_MS of visible time is stopped by the runner and
+// the promise rejects naming the runner and the deadline.
+
+var FIRST_TICK_DEADLINE_MS = 15000;
+
+/**
+ * @param {object} spec
+ * @param {HTMLElement} spec.host - the mount (overlay target).
+ * @param {HTMLElement} spec.canvasHost - the canvas parent created by the entry.
+ * @param {EngineRouter} spec.router
+ * @param {string} spec.label - 'ARTIFACT' | 'SCENE' — the overlay title stem.
+ * @param {number} spec.canvasSize
+ * @param {number} spec.seed
+ * @param {Function} spec.onTick
+ * @param {Function} spec.setupFn - the setup factory (a PART constructor, or a
+ *   self-world-owning factory).
+ * @param {object} spec.setupOpts - the factory's bag — ALREADY split from the
+ *   entry's own keys (see splitSceneOpts); passed verbatim to BOTH the factory's
+ *   `initWorld` (when exported) and the factory.
+ * @param {object|undefined} spec.render - one-shot `runner.setRenderOptions` batch.
+ * @returns {Promise<{runner:object, setupResult:object}>}
+ */
+function startSketch(spec) {
+    var host = spec.host;
+    var label = spec.label;
     return new Promise(function (resolve, reject) {
-        bootP5(router, function () {
+        // p5 global-mode is the boot trigger for BOTH renderers (the canonical
+        // experiment-page pattern): p5 auto-invokes window.setup once loaded, and
+        // for the three renderer FrqtlApp.createCanvas delegates to the three
+        // provider (p5's own canvas is never created) while the runner owns its
+        // own RAF loop — so loading p5 as the trigger is harmless and matches how
+        // every 3D experiment page boots.
+        bootP5(spec.router, function () {
+            var runner;
+            var setupResult;
             try {
-                var runner = new window.FrqtlApp({
-                    canvasParentId: canvasHost.id,
-                    canvasW: canvasSize,
-                    canvasH: canvasSize,
-                    seed: seed,
-                    onTick: onTick
+                runner = new window.FrqtlApp({
+                    canvasParentId: spec.canvasHost.id,
+                    canvasW: spec.canvasSize,
+                    canvasH: spec.canvasSize,
+                    seed: spec.seed,
+                    onTick: spec.onTick
                 });
                 runner.createCanvas();
-                var setupResult = runner.setup(window.setupDoubleSlit, { wavelength: wavelength });
-                runner.start();
-                resolve({ runner: runner, setupResult: setupResult });
+                if (typeof spec.setupFn.initWorld === 'function') {
+                    spec.setupFn.initWorld(runner.universe, spec.setupOpts);     // 1. WORLD (the factory's own export)
+                }
+                setupResult = runner.setup(spec.setupFn, spec.setupOpts);     // 2. PARTS
+                void runner.universe.fundamentalDimension;                     // 3. the ENGINE's init gate (throws on a raw world)
             } catch (err) {
-                paintError(host, 'FRQTL ARTIFACT SETUP FAILED', String((err && err.stack) || err));
+                paintError(host, 'FRQTL ' + label + ' SETUP FAILED', String((err && err.stack) || err));
                 reject(err);
+                return;
             }
+            try {
+                runner.start();                                                // 4. RUN
+                if (spec.render !== undefined) {
+                    runner.setRenderOptions(spec.render);
+                }
+            } catch (err) {
+                runner.stop();
+                paintError(host, 'FRQTL ' + label + ' SETUP FAILED', String((err && err.stack) || err));
+                reject(err);
+                return;
+            }
+            // 5. LIVE = the runner's first tick. Taken AFTER start()/setRenderOptions have
+            // succeeded, in the SAME task: requestAnimationFrame never runs a callback
+            // synchronously, so no tick can be delivered before this listener exists —
+            // and a boot that failed above leaves no pending wait behind to expire later
+            // and overwrite the correct SETUP FAILED overlay with NEVER TICKED.
+            var live = runner.firstTick({ deadlineMs: FIRST_TICK_DEADLINE_MS });
+            live.then(function () {
+                resolve({ runner: runner, setupResult: setupResult });
+            }, function (err) {
+                var named = new Error('[frqtl-sdk esm] ' + label.toLowerCase() + ': FIRST_TICK_DEADLINE_MS = ' +
+                    FIRST_TICK_DEADLINE_MS + ' ms — ' + String((err && err.message) || err));
+                paintError(host, 'FRQTL ' + label + ' NEVER TICKED', String(named.stack || named));
+                reject(named);
+            });
         }).catch(function (err) {
-            paintError(host, 'FRQTL ARTIFACT BOOT FAILED (p5)', String((err && err.stack) || err));
+            paintError(host, 'FRQTL ' + label + ' BOOT FAILED (p5)', String((err && err.stack) || err));
             reject(err);
         });
     });
 }
 
-// ── Generalized renderer boot (p5 OR three) — the bootScene counterpart of
-// bootDoubleSlit's p5-only `bootRenderer()`. Mirrors render-boot.js's provider
+// ── bootScene's own keys — ONE table, ONE splitter ───────────────────────────
+//
+// Every key below is read by `bootScene` itself and is NEVER a factory option.
+// The factory bag is whatever is left, so an author writes preset/is2D/… beside
+// canvasSize/seed/render in one flat object (the corpus record and
+// src/artifact/sun.html do exactly that) and the factory's strict option
+// validator only ever sees its own vocabulary. `is2D` is deliberately NOT here:
+// it is a factory option (setupSphereEmitter3D.OPTIONS) that the renderer
+// selector also reads from the factory bag.
+
+/** @type {string[]} */
+export var BOOT_SCENE_RESERVED_KEYS = ['base', 'canvasSize', 'seed', 'render', 'renderer', 'onTick', 'setup'];
+
+/**
+ * Split a `bootScene` opts bag into the entry's own keys and the factory's bag.
+ *
+ * - `opts.setup` ABSENT: `setup` = every non-reserved top-level key.
+ * - `opts.setup` PRESENT: it IS the factory bag, verbatim; any OTHER non-reserved
+ *   top-level key is a throw (it would otherwise be silently dropped — the
+ *   silent-drop class this table exists to end).
+ *
+ * @param {object} [opts]
+ * @returns {{boot:object, setup:object}}
+ */
+export function splitSceneOpts(opts) {
+    opts = opts || {};
+    var boot = {};
+    var setup = {};
+    for (var k in opts) {
+        if (!Object.prototype.hasOwnProperty.call(opts, k)) { continue; }
+        if (BOOT_SCENE_RESERVED_KEYS.indexOf(k) !== -1) { boot[k] = opts[k]; } else { setup[k] = opts[k]; }
+    }
+    if (boot.setup !== undefined) {
+        if (boot.setup === null || typeof boot.setup !== 'object') {
+            throw new Error('[frqtl-sdk esm] bootScene: opts.setup must be the factory\'s options object (got ' +
+                typeof boot.setup + ').');
+        }
+        var stray = Object.keys(setup);
+        if (stray.length) {
+            throw new Error('[frqtl-sdk esm] bootScene: opts.setup is the factory bag, so the top-level key(s) ' +
+                stray.join(', ') + ' would be silently dropped. Move them into opts.setup, or drop opts.setup ' +
+                'and keep everything at the top level (reserved keys: ' + BOOT_SCENE_RESERVED_KEYS.join(', ') + ').');
+        }
+        setup = boot.setup;
+    }
+    return { boot: boot, setup: setup };
+}
+
+// ── Renderer boot (p5 OR three), shared by both entries. Mirrors render-boot.js's provider
 // selection MINUS the PageParams/`?renderer=`/`?egpt3D=` URL machinery this
 // fixed-selection ESM entry does not need. p5 is synchronously ready once its
 // provider script has loaded; three needs its runtime fetched first. ─────────
 
 /**
- * Boot the p5 provider (mirrors bootRenderer()/render-boot.js's default branch).
+ * Boot the p5 provider (mirrors render-boot.js's default branch).
  * @param {EngineRouter} router
  */
 function bootP5Renderer(router) {
@@ -479,16 +586,18 @@ function bootThreeRenderer(router) {
 }
 
 /**
- * Resolve which renderer a scene uses. `opts.renderer` wins when supplied
- * ('p5'|'three'); otherwise a 3D scene (`opts.is2D === false`) picks three and
- * everything else picks p5 (the 2D default). FAIL-LOUD on an unknown value.
- * @param {object} opts
+ * Resolve which renderer a scene uses. `boot.renderer` wins when supplied
+ * ('p5'|'three'); otherwise a 3D scene (`setup.is2D === false` — a FACTORY
+ * option, read from the factory bag) picks three and everything else picks p5
+ * (the 2D default). FAIL-LOUD on an unknown value.
+ * @param {object} boot - the entry's own keys (splitSceneOpts().boot)
+ * @param {object} setup - the factory bag (splitSceneOpts().setup)
  * @returns {'p5'|'three'}
  */
-function selectRenderer(opts) {
-    var r = opts.renderer;
+function selectRenderer(boot, setup) {
+    var r = boot.renderer;
     if (r === undefined || r === null) {
-        r = (opts.is2D === false) ? 'three' : 'p5';
+        r = (setup.is2D === false) ? 'three' : 'p5';
     }
     if (r !== 'p5' && r !== 'three') {
         throw new Error('[frqtl-sdk esm] bootScene: unknown opts.renderer "' + r + '" (expected "p5" | "three").');
@@ -524,10 +633,13 @@ var _SETUP_NAME_RE = /^[A-Za-z0-9_]+$/;
  * @param {number} [opts.seed=42] - RNG seed (FrqtlApp).
  * @param {(tickData:object, setupResult:object)=>void} [opts.onTick] - Per-tick callback.
  * @param {object} [opts.setup] - The exact options bag handed to the setup
- *   factory. When OMITTED, the WHOLE `opts` object is passed through (so a caller
- *   can put `preset`, `is2D`, `chargeMode`, `emissionBoxSide`, `fundamentalDimension`,
- *   … at the top level — the sun example does exactly this). When PRESENT it is
- *   authoritative and the top-level keys are NOT forwarded.
+ *   factory. When OMITTED, every key NOT in `BOOT_SCENE_RESERVED_KEYS` is the
+ *   factory bag (so `preset`, `is2D`, `chargeMode`, `emissionBoxSide`,
+ *   `fundamentalDimension`, … sit at the top level beside `canvasSize`/`seed`/
+ *   `render` — the sun example does exactly this — and the entry's own keys never
+ *   reach the factory's strict option validator). When PRESENT it is the factory
+ *   bag verbatim, and any other non-reserved top-level key is a THROW (never a
+ *   silent drop). The split is `splitSceneOpts(opts)`, exported.
  * @param {object} [opts.render] - Optional one-shot render block applied after
  *   start as ONE `runner.setRenderOptions(render)` batch (e.g. `shape:'sphere'`,
  *   `godrays:0.8`, `glowIntensity:1.6`, `renderBaseCanvas:false`,
@@ -552,7 +664,6 @@ var _SETUP_NAME_RE = /^[A-Za-z0-9_]+$/;
  *   });
  */
 export async function bootScene(mountEl, setup, opts) {
-    opts = opts || {};
     var host = resolveMount(mountEl);
     host.innerHTML = '';
     var canvasHost = document.createElement('div');
@@ -560,13 +671,16 @@ export async function bootScene(mountEl, setup, opts) {
     canvasHost.id = 'frqtl-scene-canvas-' + Math.random().toString(36).slice(2);
     host.appendChild(canvasHost);
 
-    var router = engineRouter({ mode: 'cdn', engine: 'wasm', base: opts.base });
-    var lists = buildScriptListsFull(router);
-
+    var split;
+    var router;
+    var lists;
     var renderer;
     var setupFn;
     try {
-        renderer = selectRenderer(opts);
+        split = splitSceneOpts(opts);
+        router = engineRouter({ mode: 'cdn', engine: 'wasm', base: split.boot.base });
+        lists = buildScriptListsFull(router);
+        renderer = selectRenderer(split.boot, split.setup);
 
         await injectSequence(lists.ENGINE);
         await bootEngine(router);
@@ -605,46 +719,21 @@ export async function bootScene(mountEl, setup, opts) {
         throw err;
     }
 
-    var canvasSize = opts.canvasSize !== undefined ? opts.canvasSize : 480;
-    var seed       = opts.seed !== undefined ? opts.seed : 42;
-    var onTick     = typeof opts.onTick === 'function' ? opts.onTick : function () {};
-    // The options bag handed to the setup factory: opts.setup when supplied,
-    // else the whole opts object (so top-level preset/is2D/… reach the factory).
-    var setupOpts  = opts.setup !== undefined ? opts.setup : opts;
+    var boot = split.boot;
 
     window._egptDefaultRenderer = renderer;
 
-    return new Promise(function (resolve, reject) {
-        // p5 global-mode is the boot trigger for BOTH renderers (the canonical
-        // experiment-page pattern): p5 auto-invokes window.setup once loaded, and
-        // for the three renderer FrqtlApp.createCanvas delegates to the
-        // three provider (p5's own canvas is never created) while the runner owns
-        // its own RAF loop — so loading p5 as the trigger is harmless and matches
-        // how every 3D experiment page boots.
-        bootP5(router, function () {
-            try {
-                var runner = new window.FrqtlApp({
-                    canvasParentId: canvasHost.id,
-                    canvasW: canvasSize,
-                    canvasH: canvasSize,
-                    seed: seed,
-                    onTick: onTick
-                });
-                runner.createCanvas();
-                var setupResult = runner.setup(setupFn, setupOpts);
-                runner.start();
-                if (opts.render !== undefined) {
-                    runner.setRenderOptions(opts.render);
-                }
-                resolve({ runner: runner, setupResult: setupResult });
-            } catch (err) {
-                paintError(host, 'FRQTL SCENE SETUP FAILED', String((err && err.stack) || err));
-                reject(err);
-            }
-        }).catch(function (err) {
-            paintError(host, 'FRQTL SCENE BOOT FAILED (p5)', String((err && err.stack) || err));
-            reject(err);
-        });
+    return startSketch({
+        host: host,
+        canvasHost: canvasHost,
+        router: router,
+        label: 'SCENE',
+        canvasSize: boot.canvasSize !== undefined ? boot.canvasSize : 480,
+        seed: boot.seed !== undefined ? boot.seed : 42,
+        onTick: typeof boot.onTick === 'function' ? boot.onTick : function () {},
+        setupFn: setupFn,
+        setupOpts: split.setup,
+        render: boot.render
     });
 }
 

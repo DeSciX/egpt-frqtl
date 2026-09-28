@@ -7,6 +7,11 @@ export function arenaBreakToBigint(n: bigint): string;
 
 export function arenaBreakToJsNumber(n: bigint): string;
 
+/**
+ * PORT of `EGPTReal#breakSymbolicToString()` (core/EGPTReal.js), which returns
+ * `this.toMathString()` — the symbolic "(s) * H(b)" form for a scaled vector,
+ * "num[/den]" for a rational. Never the projection.
+ */
 export function arenaBreakToString(n: bigint): string;
 
 export function arenaCmp(a: bigint, b: bigint): number;
@@ -91,8 +96,9 @@ export function internStr(canonical_str: string): bigint;
 export function internV2(bytes: Uint8Array): bigint;
 
 /**
- * Materialize the value at `handle` as a canonical string ("num" or "num/den").
- * Scaled values materialize as their LINEAR PROJECTION (consistent with equals).
+ * Materialize the value at `handle` as the JS reference's canonical string —
+ * byte-for-byte `EGPTReal.toCanonicalStr(h)`: the UNREDUCED linear projection
+ * (see `ArenaVal::js_canonical_str`).
  */
 export function materializeStr(handle: bigint): string;
 
@@ -163,7 +169,6 @@ export interface InitOutput {
     readonly arenaStats: () => [number, number];
     readonly arenaSub: (a: bigint, b: bigint) => [bigint, number, number];
     readonly arenaToAtomRoot: (a: bigint) => [number, number, number, number];
-    readonly arenaToMathString: (a: bigint) => [number, number, number, number];
     readonly arenaToPpfFull: (a: bigint) => [number, number, number, number];
     readonly arenaToPrimeAtoms: (a: bigint) => [number, number, number, number];
     readonly internStr: (a: number, b: number) => [bigint, number, number];
@@ -172,6 +177,7 @@ export interface InitOutput {
     readonly materializeV2: (a: bigint) => [number, number, number, number];
     readonly releaseHandle: (a: bigint) => [number, number];
     readonly resetScope: () => void;
+    readonly arenaToMathString: (a: bigint) => [number, number, number, number];
     readonly bridge_version: () => [number, number];
     readonly poly_add_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly poly_div_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];

@@ -203,8 +203,8 @@ var DIST_PROFILE = {
 // lib/shim/engine/test/router.test.mjs asserts them against the two
 // package.json#version fields so a forgotten bump fails `make verify`, not a
 // silent stale-CDN-URL bug.
-var CDN_SDK_VERSION = '0.2.0';       // sdk/frqtl-sdk/package.json#version (0.2.0 is the node/browser PARITY CORE: exports["."] carries a `node` condition — import/require — and a `default` browser condition resolving ONE symbol contract, `./boot` is added, and `./node` is REMOVED; that removal is what makes it a breaking bump. Bumped with the npm publish)
-var CDN_MATH_SDK_VERSION = '0.1.3';  // sdk/egpt-math-sdk/package.json#version (0.1.3 scaled-vector op-contract — ws-egpt-math-rust-ops 2026-07-16: bench 157/157, 0 gaps)
+var CDN_SDK_VERSION = '0.3.0';       // sdk/frqtl-sdk/package.json#version — bound by router.test.mjs; bumped with each npm publish (0.3.0 ships FrqtlVision.record and dimension-on-demand)
+var CDN_MATH_SDK_VERSION = '0.2.0';  // sdk/egpt-math-sdk/package.json#version — bound by router.test.mjs; bumped with each npm publish (0.2.0 ships the notebook-scoped arena)
 
 var CDN_BASE = 'https://cdn.jsdelivr.net/npm/@descix/frqtl-sdk@' + CDN_SDK_VERSION + '/dist';
 var CDN_MATH_BASE = 'https://cdn.jsdelivr.net/npm/@descix/egpt-math-sdk@' + CDN_MATH_SDK_VERSION + '/dist';

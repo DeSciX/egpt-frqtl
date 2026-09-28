@@ -82,13 +82,6 @@ var MathBackendRegistrationError = class extends Error {
     this.name = "MathBackendRegistrationError";
   }
 };
-function _localEgptRealToCanonicalStr(h) {
-  const { numerator, denominator } = h._getPPFRationalParts();
-  if (denominator === 1n || denominator === -1n) {
-    return String(denominator < 0n ? -numerator : numerator);
-  }
-  return `${numerator}/${denominator}`;
-}
 function unwrap(result, opName) {
   if (!result || !result.ok) {
     const msg = result?.error ?? "wasm-result-unknown-error";
@@ -124,7 +117,13 @@ function extractHandle(h, opName) {
       return packHandle(h.e, h.h);
     }
     if (typeof h._getPPFRationalParts === "function") {
-      const str = _localEgptRealToCanonicalStr(h);
+      const cls = h.constructor;
+      if (!cls || typeof cls.toCanonicalStr !== "function") {
+        throw new TypeError(
+          `WasmMathBackendProvider.${opName}: EGPTReal-shaped handle whose class has no static toCanonicalStr \u2014 the canonical form is owned by EGPTReal.toCanonicalStr (core/EGPTReal.js); this provider carries no copy of it.`
+        );
+      }
+      const str = cls.toCanonicalStr(h);
       const r = _wasmFacade.internStr(str);
       const packed = unwrap(r, opName + ".d2-intern");
       return packed;
@@ -1422,13 +1421,23 @@ var EGPTReal = class _EGPTReal {
     this._handle = _p("divide").divide(this._handle, _p("fromBigInt").fromBigInt(s));
     return this;
   }
-  /** true iff the canonical rational is a whole integer (no `/` in canonical form). @returns {boolean} */
+  /**
+   * PORT of dev-core `EGPTReal#isInteger()`: `numerator % denominator === 0n`
+   * over `_getPPFRationalParts()` — the UNREDUCED projection (√2 = (1/2)·H(2)
+   * projects to 2/2 and is an integer by this test, exactly as in dev-core).
+   * Never a `/`-in-the-string check: the canonical string is not reduced.
+   * @returns {boolean}
+   */
   isInteger() {
-    return !this.toCanonicalStr().includes("/");
+    const { numerator, denominator } = this.getRationalParts();
+    if (denominator === 0n) throw new Error("Invalid rational with zero denominator");
+    return numerator % denominator === 0n;
   }
   /**
-   * The canonical rational as `{ numerator, denominator }` bigints — DERIVED by
-   * parsing `toCanonicalStr()` ("num" or "num/den"), the published facade output.
+   * The rational parts `{ numerator, denominator }` bigints — DERIVED by parsing
+   * `toCanonicalStr()` ("num" or "num/den"), which is byte-for-byte dev-core
+   * `EGPTReal.toCanonicalStr(v)`: the UNREDUCED projection (scalar·base), so
+   * these parts equal dev-core `_getPPFRationalParts()` (e.g. {2n, 2n} for √2).
    * This is the plain rational value (num/den), NOT the PPF log2-encode internals
    * ({N, offset}); the latter stays gapped (`toPPF`). Faced modules (EGPTStat,
    * EGPTStatData) that read `.getRationalParts()`/`._getPPFRationalParts()` route here.

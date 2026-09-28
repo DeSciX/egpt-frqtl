@@ -60,6 +60,9 @@ export function arenaBreakToJsNumber(n) {
 }
 
 /**
+ * PORT of `EGPTReal#breakSymbolicToString()` (core/EGPTReal.js), which returns
+ * `this.toMathString()` — the symbolic "(s) * H(b)" form for a scaled vector,
+ * "num[/den]" for a rational. Never the projection.
  * @param {bigint} n
  * @returns {string}
  */
@@ -755,8 +758,9 @@ export function internV2(bytes) {
 }
 
 /**
- * Materialize the value at `handle` as a canonical string ("num" or "num/den").
- * Scaled values materialize as their LINEAR PROJECTION (consistent with equals).
+ * Materialize the value at `handle` as the JS reference's canonical string —
+ * byte-for-byte `EGPTReal.toCanonicalStr(h)`: the UNREDUCED linear projection
+ * (see `ArenaVal::js_canonical_str`).
  * @param {bigint} handle
  * @returns {string}
  */

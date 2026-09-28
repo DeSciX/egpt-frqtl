@@ -130,13 +130,26 @@ test('(d) the SDK ESM entry DERIVES its renderer list from the manifest', () => 
     assert.match(src, /RENDERER_LAYER_SCRIPTS\.map\(/,
         'buildScriptListsFull must MAP the manifest — a re-typed renderer list is the ' +
         'roster-mirror drift that dropped RenderFamily.js from the dist');
-    // The full-stack builder must not re-list renderer paths by hand. The ONE
-    // sanctioned hand list is buildScriptLists' deliberate double-slit p5 SUBSET,
-    // so we scope this to the buildScriptListsFull body.
-    const fullBody = src.slice(src.indexOf('export function buildScriptListsFull'));
-    assert.equal(/router\.resolve\('compat\/renderer\//.test(fullBody), false,
-        'buildScriptListsFull must not hand-resolve any compat/renderer/ path — ' +
-        'the manifest is the single authority for the RENDERER phase');
+    // NO hand-resolved roster path anywhere in the entry. A hand-copied subset of a
+    // manifest is the drift class that killed dist/artifact/double-slit.html (#76): the
+    // RENDERER phase gained display-slot.js in the manifest and the entry's private p5
+    // list never learned. So every literal the entry resolves itself is checked against
+    // BOTH manifests: nothing under compat/renderer/ (the RENDERER phase is manifest-owned
+    // in full), and nothing under objects/ except the per-experiment objects/setup/ append
+    // and the ENGINE phase's Rectangle.js — the one engine-phase dependency (it must load
+    // before wasm-engine.js) that no manifest owns yet, allowed exactly once.
+    const handResolved = [...src.matchAll(/router\.resolve\('([^']+)'/g)].map((m) => m[1]);
+    assert.ok(handResolved.length > 0, 'the entry resolves at least one literal path through the router');
+    const rendererHand = handResolved.filter((p) => p.startsWith('compat/renderer/'));
+    assert.deepEqual(rendererHand, [],
+        'esm/index.js must not hand-resolve any compat/renderer/ path anywhere — the manifest ' +
+        'is the single authority for the RENDERER phase (found: ' + rendererHand.join(', ') + ')');
+    const ENGINE_PHASE_ALLOWANCE = 'objects/geometry/Rectangle.js';
+    const objectsHand = handResolved.filter((p) => p.startsWith('objects/') && !p.startsWith('objects/setup/'));
+    assert.deepEqual(objectsHand, [ENGINE_PHASE_ALLOWANCE],
+        'esm/index.js may hand-resolve under objects/ only the per-experiment objects/setup/ append ' +
+        'and the ENGINE phase\'s ' + ENGINE_PHASE_ALLOWANCE + ' (once) — every other game-layer path ' +
+        'comes from GAME_LAYER_SCRIPTS (found: ' + objectsHand.join(', ') + ')');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
