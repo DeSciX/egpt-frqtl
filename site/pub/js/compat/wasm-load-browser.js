@@ -32,9 +32,41 @@
  *   clone fine) and hand the glue raw bytes — see the inline comment at the
  *   `wasmModule.default(...)` call site for the full trace. Regression test:
  *   wasm-load-browser.test.mjs.
+ *
+ * Package content identity:
+ *   The self-fetched bytes ARE the executing binary, so this is where its identity is
+ *   taken: `loadedWasmSha256()` is the sha256 hex of the `.wasm` instantiated — the same
+ *   definition `published/<id>/PINNED.json` records as `engine.wasmSha256`. The capture
+ *   instrument pins it as `build.wasmSha256`; the serving URL is never identity (the same
+ *   bytes from two origins regenerate one scene). Gate: scene-identity-origin.test.mjs.
  */
 (function () {
     'use strict';
+
+    /** sha256 hex of the last binary this loader instantiated; null before any load. */
+    var _loadedWasmSha256 = null;
+
+    /**
+     * sha256 hex of `bytes` via `crypto.subtle`, or null where the page has none (a
+     * non-secure origin). Null there cannot mint a false identity: `RenderStages.sceneHash`
+     * refuses to hash without the same `crypto.subtle`, so no scene id exists in that page.
+     */
+    async function _sha256Hex(bytes) {
+        var subtle = (typeof globalThis !== 'undefined' && globalThis.crypto)
+            ? globalThis.crypto.subtle : null;
+        if (!subtle || typeof subtle.digest !== 'function') { return null; }
+        var view = new Uint8Array(await subtle.digest('SHA-256', bytes));
+        var hex = '';
+        for (var i = 0; i < view.length; i++) {
+            hex += (view[i] < 16 ? '0' : '') + view[i].toString(16);
+        }
+        return hex;
+    }
+
+    /** @returns {string|null} sha256 hex of the instantiated `.wasm`, or null. */
+    function loadedWasmSha256() {
+        return _loadedWasmSha256;
+    }
 
     /**
      * Load the WASM web bundle and return the WasmUniverse constructor.
@@ -134,6 +166,7 @@
         // the glue's non-deprecated `{module_or_path: bytes}` calling
         // convention (a bare positional BufferSource also works, but trips
         // the glue's own "using deprecated parameters" console.warn).
+        var wasmSha256 = null;   // no self-fetched bytes (no init export) ⇒ honestly unknown
         if (typeof wasmModule.default === 'function') {
             var wasmBgUrl = new URL('egpt_wasm_bg.wasm', resolvedPkgUrl).href;
             var wasmResponse = await fetch(String(wasmBgUrl));
@@ -144,6 +177,7 @@
                 );
             }
             var wasmBytes = await wasmResponse.arrayBuffer();
+            wasmSha256 = await _sha256Hex(wasmBytes);
             await wasmModule.default({ module_or_path: wasmBytes });
         }
 
@@ -151,6 +185,7 @@
         if (!WasmUniverse) {
             throw new Error('[wasm-load-browser] WasmUniverse not found in loaded WASM module.');
         }
+        _loadedWasmSha256 = wasmSha256;
 
         return { WasmUniverse: WasmUniverse };
     }
@@ -192,10 +227,12 @@
     // ── Dual-mode publish ────────────────────────────────────────────────
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { load: load, loadAndSetReadyPromise: loadAndSetReadyPromise };
+        module.exports = { load: load, loadAndSetReadyPromise: loadAndSetReadyPromise,
+                           loadedWasmSha256: loadedWasmSha256 };
     }
     if (typeof window !== 'undefined') {
-        window._WasmLoadBrowser = { load: load, loadAndSetReadyPromise: loadAndSetReadyPromise };
+        window._WasmLoadBrowser = { load: load, loadAndSetReadyPromise: loadAndSetReadyPromise,
+                                    loadedWasmSha256: loadedWasmSha256 };
     }
 
 })();

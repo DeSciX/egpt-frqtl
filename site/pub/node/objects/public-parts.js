@@ -60,9 +60,8 @@
         { name: 'Tunnel',            module: 'objects/Tunnel.js',             key: 'Tunnel' },
         { name: 'Trace',             module: 'objects/Trace.js',              key: 'Trace' },
 
-        // ── The eyes / recording parts (module.exports IS the symbol) ───────
+        // ── The eyes (module.exports IS the symbol) ─────────────────────────
         { name: 'CameraPath',        module: 'objects/CameraPath.js',         key: null },
-        { name: 'FlightRecorder',    module: 'objects/FlightRecorder.js',     key: null },
         { name: 'FrqtlVision',       module: 'objects/FrqtlVision.js',        key: null },
 
         // ── The primitives' companions ──────────────────────────────────────

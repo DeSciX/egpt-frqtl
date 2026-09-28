@@ -78,12 +78,14 @@ function enumerateRendererSourceFiles() {
 
 // ── Parse stack-boot.js's RENDERER array — same _u('...') extraction as ─────
 //    game-layer-manifest.test.mjs's parseStackBootGamePaths, applied to the
-//    RENDERER block instead of GAME.
+//    RENDERER block instead of GAME. R2 (ws-stackboot-dev-map SEAM RULING) made
+//    the list LAZY — `function _rendererList() { return [...]; }`, called from
+//    inside the boot chain, not a top-level `var`.
 function parseStackBootRendererPaths() {
     const src = readFileSync(STACK_BOOT, 'utf8');
-    const m = src.match(/var\s+RENDERER\s*=\s*\[([\s\S]*?)\];/);
+    const m = src.match(/function\s+_rendererList\s*\(\s*\)\s*\{\s*return\s*\[([\s\S]*?)\];\s*\}/);
     if (!m) {
-        throw new Error('[test] Could not find `var RENDERER = [...]` block in stack-boot.js');
+        throw new Error('[test] Could not find `function _rendererList() { return [...]; }` block in stack-boot.js');
     }
     const block = m[1];
     const paths = [];
@@ -132,7 +134,7 @@ test('every window.* install under compat/renderer/ has a stack-boot.js RENDERER
 
 test('every stack-boot.js RENDERER path exists on disk', () => {
     const src = readFileSync(STACK_BOOT, 'utf8');
-    const m = src.match(/var\s+RENDERER\s*=\s*\[([\s\S]*?)\];/);
+    const m = src.match(/function\s+_rendererList\s*\(\s*\)\s*\{\s*return\s*\[([\s\S]*?)\];\s*\}/);
     const block = m[1];
     // RENDERER entries mix _u('compat/renderer/...') and _u('objects/constants/...')
     // (LightColor.js) — resolve every _u('...') argument relative to lib/frqtl/,

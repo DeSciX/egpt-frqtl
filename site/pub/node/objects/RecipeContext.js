@@ -377,6 +377,25 @@
         return fns.length - 1;
     };
 
+    // ── render(bag) ──────────────────────────────────────────────────────────────
+
+    /**
+     * Name the recipe's LOOK in one call — a pure ferry to `runner.setRenderOptions(bag)`.
+     *
+     *   exp.render({ shape: 'sphere', godrays: 0.8, glowIntensity: 1.6 });
+     *
+     * Every key is a capability the renderer declares (`exp.runner.renderCapabilities()`);
+     * a typo'd key or an out-of-range value throws and applies nothing. Called before the
+     * renderer attaches, the bag is validated when it does. Zero physics.
+     *
+     * @param {Object<string, *>} bag
+     * @returns {RecipeContext} this
+     */
+    RecipeContext.prototype.render = function (bag) {
+        this._runner.setRenderOptions(bag);
+        return this;
+    };
+
     // ── build(buildFn) ──────────────────────────────────────────────────────────
 
     /**

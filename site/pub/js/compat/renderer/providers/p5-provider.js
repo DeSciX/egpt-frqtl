@@ -886,7 +886,9 @@
                     physicsW:  _width,
                     physicsH:  _height,
                     filtersApplied: _filters.map(function (f) { return f.name; }),
-                    renderBaseCanvas: _lastRenderBaseCanvas
+                    renderBaseCanvas: _lastRenderBaseCanvas,
+                    // The TickData these canvas pixels were drawn from → `renderedTick`.
+                    composited: _lastTickData
                 });
                 return Promise.resolve(bag);
             },
@@ -900,10 +902,14 @@
     // ── Export ──────────────────────────────────────────────────────────────
 
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { makeP5Provider: makeP5Provider };
+        module.exports = { makeP5Provider: makeP5Provider, _renderCapabilitiesP5: _renderCapabilitiesP5 };
     } else {
         if (!window._egptRendererProviders) { window._egptRendererProviders = {}; }
-        window._egptRendererProviders.p5 = { makeProvider: makeP5Provider };
+        window._egptRendererProviders.p5 = {
+            makeProvider: makeP5Provider,
+            // Static capability descriptors — see three-provider.js's registration.
+            renderCapabilities: _renderCapabilitiesP5
+        };
     }
 
 })();

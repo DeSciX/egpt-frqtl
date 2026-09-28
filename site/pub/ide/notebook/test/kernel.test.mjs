@@ -38,8 +38,13 @@ function makeStubBus() {
 // It records how many times each cell id was run (to prove no-auto-run).
 function makeStubRuntime() {
     const runLog = [];
+    // `scopeLog` records the ORDER of scope boundaries against cell runs, so a
+    // test can assert WHERE the boundary sits — not merely that it happened.
+    const scopeLog = [];
     return {
         runLog,
+        scopeLog,
+        resetMathScope() { scopeLog.push('reset@' + runLog.length); },
         runCell(spec) {
             runLog.push(spec.id);
             // Evaluate the cell body as `(inputs) => ({...})` for realistic outputs.
@@ -86,7 +91,8 @@ describe('NotebookKernel — binding store + versioning', function () {
         const bus = makeStubBus();
         const sentinel = { __encoding: true, payload: [1, 2, 3] };
         const rt = {
-            runCell(spec) { return Promise.resolve({ outputs: { enc: sentinel }, ok: true, error: null }); }
+            runCell(spec) { return Promise.resolve({ outputs: { enc: sentinel }, ok: true, error: null }); },
+            resetMathScope() {}
         };
         const kernel = new NotebookKernel(nb([
             { id: 'p', lane: 'math', in: [], out: ['enc'], body: '' }
@@ -421,6 +427,76 @@ describe('NotebookKernel.runAll — sequencer over runCell (no new executor)', f
 
 });
 
+/* ── FRAQTL issue #67 — WHERE the math value scope begins and ends ───────────
+ * The scope rule, gated at the kernel's own level (the value model it costs is
+ * gated against the built dist in arena-scope-across-cells.test.mjs). These
+ * assert the PLACEMENT of the boundary against the run log, not merely that a
+ * reset happened — a per-cell reset would still "happen". */
+describe('NotebookKernel — math scope boundary placement (#67)', function () {
+
+    const TWO = [
+        { id: 'p', type: 'js', lane: 'math', in: [], out: ['v'], body: 'return { v: 1 };' },
+        { id: 'c', type: 'js', lane: 'math', in: ['v'], out: [], body: 'return {};' }
+    ];
+
+    test('runAll ends the scope exactly ONCE, BEFORE the first cell', async function () {
+        const rt = makeStubRuntime();
+        const kernel = new NotebookKernel(nb(TWO), { runtime: rt, bus: makeStubBus() });
+        await kernel.runAll();
+        assert.deepStrictEqual(rt.runLog, ['p', 'c'], 'both cells ran');
+        assert.deepStrictEqual(rt.scopeLog, ['reset@0'],
+            'one boundary, before cell 1 — a per-cell reset would read reset@1/reset@2');
+        kernel.dispose();
+    });
+
+    test('a single-cell run NEVER ends the scope (its output must outlive the cell)', async function () {
+        const rt = makeStubRuntime();
+        const kernel = new NotebookKernel(nb(TWO), { runtime: rt, bus: makeStubBus() });
+        await kernel.runCell('p');
+        await kernel.runCell('c');
+        assert.deepStrictEqual(rt.scopeLog, [], 'a cell is not a run');
+        kernel.dispose();
+    });
+
+    test('dispose ends the scope and drops the bindings together', function () {
+        const rt = makeStubRuntime();
+        const kernel = new NotebookKernel(nb(TWO), { runtime: rt, bus: makeStubBus() });
+        kernel.commitViewOutputs('p', { v: 9 });
+        assert.strictEqual(kernel.getBinding('v').value, 9);
+        kernel.dispose();
+        assert.deepStrictEqual(rt.scopeLog, ['reset@0']);
+        assert.strictEqual(kernel.getBinding('v'), null, 'the two facts move together');
+    });
+
+    test('a runtime missing resetMathScope is rejected at CONSTRUCTION, naming it', function () {
+        // FAIL-LOUD placement matters: without this the failure is a bare TypeError
+        // thrown mid-runAll from inside resetScope(), AFTER the binding store was
+        // already cleared, naming nothing canonical.
+        assert.throws(
+            () => new NotebookKernel(nb(TWO), { runtime: { runCell() {} }, bus: makeStubBus() }),
+            /resetMathScope/,
+            'the boundary that bounds the arena must be named at the injection point'
+        );
+        assert.throws(
+            () => new NotebookKernel(nb(TWO), { runtime: { resetMathScope() {} }, bus: makeStubBus() }),
+            /runCell/
+        );
+    });
+
+    test('runAll clears the store first — a leftover binding cannot satisfy an input', async function () {
+        const rt = makeStubRuntime();
+        // 'ghostIn' is declared by no cell's out, so only a leftover could supply it.
+        const kernel = new NotebookKernel(nb([
+            { id: 'c', type: 'js', lane: 'math', in: ['ghostIn'], out: [], body: 'return {};' }
+        ]), { runtime: rt, bus: makeStubBus() });
+        kernel.commitViewOutputs('ghost', { ghostIn: 1 });
+        const summary = await kernel.runAll();
+        assert.strictEqual(summary.ok, false);
+        assert.match(summary.error, /not yet produced/);
+        kernel.dispose();
+    });
+});
+
 describe('NotebookKernel — module set (WS-NOTEBOOK-IMPORT B2)', function () {
 
     test('moduleSet() collects type="module" cells keyed by name, read live from body', function () {
@@ -441,7 +517,8 @@ describe('NotebookKernel — module set (WS-NOTEBOOK-IMPORT B2)', function () {
     test('runCell threads moduleSet() into the runtime spec.modules', async function () {
         let seenModules = null;
         const rt = {
-            runCell(spec) { seenModules = spec.modules; return Promise.resolve({ outputs: {}, ok: true, error: null }); }
+            runCell(spec) { seenModules = spec.modules; return Promise.resolve({ outputs: {}, ok: true, error: null }); },
+            resetMathScope() {}
         };
         const kernel = new NotebookKernel(nb([
             { type: 'module', name: './setups/wave.js', body: 'export const a = 1;' },

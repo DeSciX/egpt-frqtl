@@ -47,17 +47,21 @@ const { RENDERER_LAYER_SCRIPTS } = await import(
 );
 
 /**
- * Extract the `_u('...')` paths from stack-boot.js's `var RENDERER = [...]`.
- * Comment-stripped: a commented-out `_u('…')` row is not a loaded script.
+ * Extract the `_u('...')` paths from stack-boot.js's
+ * `function _rendererList() { return [...]; }` (R2, ws-stackboot-dev-map SEAM RULING —
+ * lazy list, called from inside the boot chain rather than a top-level `var`, so a
+ * missing-map throw rejects into the chain's one .catch instead of aborting at
+ * script-parse time). Comment-stripped: a commented-out `_u('…')` row is not a
+ * loaded script.
  */
 function parseStackBootRendererPaths() {
     const src = stripJsComments(readFileSync(
         pathResolve(LIB_DIR, 'frqtl/experiments/_shared/stack-boot.js'),
         'utf8'
     ));
-    const block = src.match(/var\s+RENDERER\s*=\s*\[([\s\S]*?)\];/);
+    const block = src.match(/function\s+_rendererList\s*\(\s*\)\s*\{\s*return\s*\[([\s\S]*?)\];\s*\}/);
     if (!block) {
-        throw new Error('[test] Could not find `var RENDERER = [...]` block in stack-boot.js');
+        throw new Error('[test] Could not find `function _rendererList() { return [...]; }` block in stack-boot.js');
     }
     const paths = [];
     const re = /_u\('([^']+)'\)/g;

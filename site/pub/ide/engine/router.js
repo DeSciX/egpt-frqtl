@@ -56,6 +56,13 @@ import { GAME_LAYER_SCRIPTS } from './game-layer-manifest.js';
 var DEV_CORE_PROFILE = {
     'assets/vendor/':         '/frqtl/assets/vendor/',
     'assets/render/':         '/frqtl/assets/render/',
+    // External-geometry fixtures (lib/frqtl/assets/models/, e.g. flamingo-draco.glb) —
+    // a DISTINCT prefix from assets/vendor/ (a vendored LIBRARY dir) because it is asset
+    // DATA a page's own render.mesh call resolves, never library code. Added B4b so the
+    // mesh-demo / single-source-interference pages resolve it through the router instead
+    // of a hardcoded '/frqtl/assets/models/...' literal (the ONE path authority — see
+    // module docstring).
+    'assets/models/':         '/frqtl/assets/models/',
     // 'compat/providers/' MUST be listed BEFORE the general 'compat/' key below —
     // resolve() takes the FIRST matching prefix in insertion order, and a more
     // specific prefix must win over a broader one (ws-artifact-showcase Bite A2
@@ -126,6 +133,10 @@ var DEV_CORE_PROFILE = {
 var DIST_PROFILE = {
     'assets/vendor/':         '../../js/lib/',
     'assets/render/':         '../../js/consumers/',
+    // External-geometry fixtures — own dist subdir (js/models/), a peer of js/lib
+    // (vendor libraries) and js/consumers (renderers): build.js ships
+    // lib/frqtl/assets/models/ there verbatim (§4-way parity companion below).
+    'assets/models/':         '../../js/models/',
     // 'compat/providers/' MUST precede the general 'compat/' key (first-match-wins
     // prefix order) — ws-artifact-showcase Bite A2 architect gate 2026-07-10.
     // build.js FLATTENS lib/frqtl/compat/providers/{wasm-engine,wasm-load-browser}.js
@@ -235,6 +246,9 @@ function buildCdnProfile(base) {
     return {
         'assets/vendor/':         base + '/js/lib/',
         'assets/render/':         base + '/js/consumers/',
+        // External-geometry fixtures — same dist subdir as DIST_PROFILE (js/models/),
+        // just resolved via this profile's `base`.
+        'assets/models/':         base + '/js/models/',
         // 'compat/providers/' MUST precede the general 'compat/' key below —
         // resolve() takes the FIRST matching prefix in insertion order (architect
         // gate, ws-artifact-showcase Bite A2, 2026-07-10 — tester found this
@@ -306,6 +320,10 @@ var CDN_PROFILE = buildCdnProfile(CDN_BASE);
 //     the same directory made ABSOLUTE at runtime, because a relative URL handed to
 //     import(), an iframe inside an experiment page, or Monaco's loader would resolve
 //     against the wrong anchor (the importing module, not the document).
+//   - engineRouter({mode:'static', documentRelative:true}) = STATIC_PROFILE itself — the router
+//     form of the document-relative values, for a BUILD-TIME consumer that emits URLs the
+//     document resolves (the baked import map), so it resolves paths through the SAME
+//     first-match resolve() as every other router instead of reading raw profile keys.
 // buildStaticProfile(base) mirrors buildCdnProfile's SHAPE but anchors EVERY base —
 // engine, vendor, experiments, ide/shim, AND the math + notebook lanes — at that ONE base.
 //
@@ -324,6 +342,9 @@ function buildStaticProfile(base) {
     return {
         'assets/vendor/':         base + '/js/lib/',
         'assets/render/':         base + '/js/consumers/',
+        // External-geometry fixtures — same dist subdir as DIST_PROFILE (js/models/),
+        // just resolved via this profile's `base`.
+        'assets/models/':         base + '/js/models/',
         // 'compat/providers/' MUST precede the general 'compat/' key (first-match-wins
         // prefix order) — SAME flattening as DIST/CDN: build.js drops the 'providers/'
         // segment, landing wasm-engine/wasm-load-browser alongside
@@ -463,6 +484,11 @@ var _assertProfileParity = (function () {
  * @param {string} [opts.mathBackend]
  *   Override the math backend id. `'wasm'` is normalized to `'wasm-math'`. Falls
  *   back to `?mathBackend=` URL param then the profile default (`'js-reference'`).
+ * @param {boolean} [opts.documentRelative]
+ *   **`mode:'static'` ONLY.** Resolve against STATIC_PROFILE's DOCUMENT-RELATIVE values
+ *   (`./pub/...`) instead of anchoring at a document — for a build-time consumer whose output
+ *   the document itself resolves (the static import map baked into index.html). Throws with
+ *   any other mode, or together with `opts.documentBaseURI`.
  * @param {string} [opts.documentBaseURI]
  *   **`mode:'static'` ONLY.** The document URL the static site is served from (default
  *   `document.baseURI`). Supplied only outside a browser (the deploy assembler, tests) —
@@ -517,13 +543,22 @@ export function engineRouter(opts) {
         throw new Error('[engineRouter] mode:"static" takes no opts.base — the static base is derived from the ' +
             'document (STATIC_SDK_DIR against document.baseURI). Remove base:' + JSON.stringify(opts.base) + '.');
     }
+    if (opts.documentRelative && mode !== 'static') {
+        throw new Error('[engineRouter] opts.documentRelative applies only to mode:"static" (got mode:"' + mode + '").');
+    }
+    if (opts.documentRelative && opts.documentBaseURI) {
+        throw new Error('[engineRouter] opts.documentRelative and opts.documentBaseURI are exclusive — a ' +
+            'document-relative router is anchored at no document.');
+    }
     var profile  = mode === 'dist'
         ? DIST_PROFILE
         : (mode === 'cdn'
             ? (opts.base ? buildCdnProfile(opts.base) : CDN_PROFILE)
             : (mode === 'static'
-                ? buildStaticProfile(staticSdkBase(opts.documentBaseURI ||
-                    (typeof document !== 'undefined' ? document.baseURI : '')))
+                ? (opts.documentRelative
+                    ? STATIC_PROFILE
+                    : buildStaticProfile(staticSdkBase(opts.documentBaseURI ||
+                        (typeof document !== 'undefined' ? document.baseURI : ''))))
                 : DEV_CORE_PROFILE));
 
     // Resolve the WASM pkg URL.
@@ -585,6 +620,45 @@ export function engineRouter(opts) {
 
     function p5Src() {
         return resolve('assets/vendor/p5.min.js');
+    }
+
+    // The browser projection of THIS router's profile — the SAME shape
+    // spliceEnginePathMap (lib/shim/engine/experiment-page-map.js) bakes/injects into a
+    // served page's window._egptEnginePathMap. One accessor, no profile leak: nothing
+    // outside router.js ever touches a raw profile object (ws-stackboot-dev-map SEAM
+    // RULING R1).
+    function browserPathMap() {
+        return buildBrowserPathMap(profile);
+    }
+
+    // Idempotent, cross-injector-safe precondition setter for a PROGRAMMATIC host that
+    // injects stack-boot.js into a page it already owns (GraphicsPane.boot(),
+    // ensureEngineStack()) — the third host class (stack-boot.js's own docstring).
+    // Such a host must set window._egptEnginePathMap from ITS OWN router BEFORE the tag
+    // executes, same precondition discipline it already applies to
+    // _egptWasmPkgUrl/_egptDefaultEngine. Two routers on one page is a HOST BUG, not a
+    // silent merge: present + byte-identical → no-op; present + DIFFERENT → throw
+    // (naming both this router's mode and the map already on the page); absent → set.
+    // Never set-if-absent-only — a stale map from an earlier/different host is exactly
+    // the silent-fallback class this whole bite exists to close.
+    function ensureBrowserPathMap() {
+        if (typeof window === 'undefined') {
+            throw new Error('[engineRouter] ensureBrowserPathMap() runs only in a browser (no window here).');
+        }
+        var map = browserPathMap();
+        var json = JSON.stringify(map);
+        var existing = window._egptEnginePathMap;
+        if (existing !== undefined) {
+            if (JSON.stringify(existing) === json) { return map; }   // equal → no-op
+            throw new Error(
+                '[engineRouter] window._egptEnginePathMap is already set to a DIFFERENT map than ' +
+                'mode:"' + mode + '" projects (existing=' + JSON.stringify(existing) + ', this router=' +
+                json + '). Two routers/injectors on one page is a host bug — only ONE host may set ' +
+                'this page\'s engine path map.'
+            );
+        }
+        window._egptEnginePathMap = map;   // absent → set
+        return map;
     }
 
     // Resolve the math SDK URL:
@@ -651,8 +725,40 @@ export function engineRouter(opts) {
         mathWasmModuleUrl: mathWasmModuleUrl,
         mathBackend:       mathBackend,
         notebookBase:      notebookBase,
-        vendorBase:        vendorBase
+        vendorBase:        vendorBase,
+        browserPathMap:       browserPathMap,
+        ensureBrowserPathMap: ensureBrowserPathMap
     };
+}
+
+/**
+ * Project a router profile to the browser `window._egptEnginePathMap` contract: the
+ * PUBLIC (non-`__`) prefix→replacement keys ONLY, in the profile's own insertion order
+ * (first-match-wins is order-sensitive — `compat/providers/` MUST precede `compat/`,
+ * `experiments/_shared/` MUST precede `experiments/`, and `shim/` MUST be present so
+ * stack-boot's `_u('shim/...')` routes correctly).
+ *
+ * This is the ONE projection every host that serves a classic experiment page consumes —
+ * `sdk/frqtl-sdk/build.js` (DIST_PROFILE, baked into the built page at build time) and
+ * `lib/server/mounts.js` (DEV_CORE_PROFILE, spliced into the served page at request time,
+ * ws-stackboot-dev-map). Both call THIS function on the profile object router.js already
+ * owns — never a hand-written literal map — so dev/dist/cdn/static can never drift from
+ * the profiles above by a second derivation (the schema-mirror-drift anti-pattern).
+ *
+ * `lib/frqtl/experiments/_shared/stack-boot.js` `_resolve()` and
+ * `lib/components/graphics-render/index.js` `_url()` are the two `window._egptEnginePathMap`
+ * READERS; this is the one WRITER-shape they both consume.
+ *
+ * @param {object} profile - a router profile object (e.g. DEV_CORE_PROFILE, DIST_PROFILE).
+ * @returns {object} plain prefix→replacement object (private `__` keys omitted).
+ */
+export function buildBrowserPathMap(profile) {
+    const map = {};
+    for (const k of Object.keys(profile)) {
+        if (k.indexOf('__') === 0) continue;   // omit private (__wasmPkgUrl, __distOmit, __math*, ...)
+        map[k] = profile[k];
+    }
+    return map;
 }
 
 // Export profiles for the sdk build to consume.

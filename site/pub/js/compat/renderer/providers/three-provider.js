@@ -42,7 +42,7 @@
         'attribute vec3  aColor;',
         'attribute float aAlpha;',
         'attribute float aSize;',           // voxel dimension (frame rect.w) — R4-C smoke puff size
-        'attribute float aSmoke;',          // per-frame smoke flag (1 = this frame renders as a puff; smokeLayerMin gate)
+        'attribute float aSmoke;',          // per-frame smoke flag (1 = this frame renders as a puff)
         'uniform float uPersp;',            // 1 in 3D (perspective): attenuate point size by depth
         'uniform float uSmoke;',            // 0 = off; >0 = puff size scale per voxel-dimension px (R4-C)
         'varying vec3  vColor;',
@@ -405,7 +405,8 @@
                 constraint: { min: 0, max: 16, integer: false },
                 description: 'Smoke-puff layer intensity (per-dim greyscale+soft paint gate).'
             })
-        ]).concat(common.filterRenderCapabilities(normalizeFieldDescriptor, FiltersRef));
+        ]).concat(common.meshRenderCapabilities(normalizeFieldDescriptor))
+          .concat(common.filterRenderCapabilities(normalizeFieldDescriptor, FiltersRef));
 
         return caps;
     }
@@ -477,25 +478,14 @@
             _camera.updateProjectionMatrix();
         }
 
-        // ── 3D surface-mesh field layer (modular; created lazily on first use) ──
-        // The density heightfield (the SAME FieldBuilder splat the 2D water-fx uses —
-        // one field authority, no per-provider re-derivation) rendered as displaced 3D
-        // geometry the orbit camera sees. This is the 3D analogue of the screen-space
-        // water-fx shader: for dense scenes it replaces per-particle points with one
-        // terrain mesh. Created only when the field3d layer is first activated.
-        var _surfaceMesh = null, _surfaceGeo = null, _surfacePos = null;
-        var _SURF_GW = 120, _SURF_GH = 80;   // surface grid resolution (samples the field)
-        var _SURF_HEIGHT = 90;               // px of z-displacement at full field density
-
         // ── Per-dim render layers (R4-GEO, 2026-07-02 CEO geometry-aware effects design,
         // the "smoke design SETTLED" ruling) ────────────────────────────────────────
         // Replaces the old single _quantaMesh (all non-flash dims merged) + _flashMesh
         // (all flash-eligible dims merged) pair with ONE THREE.Points object per
         // POPULATED (dim, family) bucket — family 'A' (additive, the flash/hot family)
         // or 'N' (normal-blend, everything else). "Dim decides APPEARANCE, position
-        // decides OCCLUSION" (CEO ruling): a frame's dim (via its RenderTiers row, or
-        // the legacy flashLayerMax/smoke knobs when no table is declared) picks its
-        // color/alpha/blend/paint; every bucket depth-READS (so walls occlude quanta
+        // decides OCCLUSION" (CEO ruling): a frame's dim and the glow/smoke options pick
+        // its color/alpha/blend/paint; every bucket depth-READS (so walls occlude quanta
         // for real — the root-cause fix) but does NOT depth-write (translucent layers
         // never occlude each other via the z-buffer alone — that ordering is the
         // explicit camera-distance renderOrder sort in `_renderTick`, painter's
@@ -1338,14 +1328,25 @@
                 return;
             }
             if (!_meshLoader) {
-                _meshLoader = new THREE.GLTFLoader();
+                var _loader = new THREE.GLTFLoader();
                 if (typeof THREE.DRACOLoader !== 'undefined') {
+                    // ONE base for one fact: render-boot.js is the sole computer of the
+                    // three-loaders base (its own _loadMeshLoaders derives it through the
+                    // router and PUBLISHES it here) — this reads ONLY that published value,
+                    // never a second default (two defaults for one fact is the mirror; B4b).
+                    var base = typeof window !== 'undefined' && window._egptMeshLoadersBase;
+                    if (!base) {
+                        _meshFailLoud('window._egptMeshLoadersBase is unset — render-boot.js\'s ' +
+                            '_loadMeshLoaders must run (and publish it) before a mesh load can ' +
+                            'locate the DRACO decoder.');
+                        _meshCache[assetId] = { status: 'error', scene: null, norm: 1, error: 'no-loaders-base' };
+                        return;
+                    }
                     var draco = new THREE.DRACOLoader();
-                    var base = (typeof window !== 'undefined' && window._egptMeshLoadersBase) ||
-                               '/frqtl/assets/vendor/three-loaders';
                     draco.setDecoderPath(base + '/draco/');
-                    _meshLoader.setDRACOLoader(draco);
+                    _loader.setDRACOLoader(draco);
                 }
+                _meshLoader = _loader;
             }
             _meshCache[assetId] = { status: 'loading', scene: null, norm: 1, error: null };
             _meshLoader.load(
@@ -1589,60 +1590,6 @@
             _fieldTex.needsUpdate = true;
         }
 
-        // Build (once) + update the displaced surface mesh from the density heightfield.
-        // _fieldData is already current for this frame (renderTick built it because the
-        // field3d layer is a consumer). Vertices span physics-pixel XY; z = field height.
-        function _updateSurfaceMesh(tickData) {
-            if (!_fieldData) { return; }
-            if (!_surfaceMesh) {
-                // Lazy create: a GW×GH vertex grid over the canvas, two tris per cell,
-                // height-graded vertex colors (cool→warm) for depth cueing, unlit.
-                var nv = _SURF_GW * _SURF_GH;
-                _surfacePos = new Float32Array(nv * 3);
-                var colArr  = new Float32Array(nv * 3);
-                for (var r = 0; r < _SURF_GH; r++) {
-                    for (var c = 0; c < _SURF_GW; c++) {
-                        var vi = (r * _SURF_GW + c) * 3;
-                        _surfacePos[vi]     = (c / (_SURF_GW - 1)) * _width;
-                        _surfacePos[vi + 1] = (r / (_SURF_GH - 1)) * _height;
-                        _surfacePos[vi + 2] = 0;
-                    }
-                }
-                var idx = [];
-                for (var r2 = 0; r2 < _SURF_GH - 1; r2++) {
-                    for (var c2 = 0; c2 < _SURF_GW - 1; c2++) {
-                        var a = r2 * _SURF_GW + c2, b = a + 1, d = a + _SURF_GW, e = d + 1;
-                        idx.push(a, d, b,  b, d, e);
-                    }
-                }
-                _surfaceGeo = new THREE.BufferGeometry();
-                _surfaceGeo.setAttribute('position', new THREE.BufferAttribute(_surfacePos, 3));
-                _surfaceGeo.setAttribute('color',    new THREE.BufferAttribute(colArr, 3));
-                _surfaceGeo.setIndex(idx);
-                var mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
-                _surfaceMesh = new THREE.Mesh(_surfaceGeo, mat);
-                _scene.add(_surfaceMesh);
-            }
-            // Displace z from the field (bilinear-free nearest sample) + grade color by height.
-            var col = _surfaceGeo.attributes.color.array;
-            for (var r3 = 0; r3 < _SURF_GH; r3++) {
-                var fy = Math.min(_fieldFh - 1, Math.round(r3 / (_SURF_GH - 1) * (_fieldFh - 1)));
-                for (var c3 = 0; c3 < _SURF_GW; c3++) {
-                    var fx = Math.min(_fieldFw - 1, Math.round(c3 / (_SURF_GW - 1) * (_fieldFw - 1)));
-                    var h = _fieldData[fy * _fieldFw + fx] / 255;   // 0..1 density
-                    var vi2 = (r3 * _SURF_GW + c3) * 3;
-                    _surfacePos[vi2 + 2] = h * _SURF_HEIGHT;
-                    // cool (low) → warm (high): a simple legible ramp
-                    col[vi2]     = 0.25 + 0.75 * h;
-                    col[vi2 + 1] = 0.45 + 0.35 * h;
-                    col[vi2 + 2] = 0.85 - 0.55 * h;
-                }
-            }
-            _surfaceGeo.attributes.position.needsUpdate = true;
-            _surfaceGeo.attributes.color.needsUpdate    = true;
-            _surfaceGeo.computeVertexNormals();
-        }
-
         // ── Filter post-process ────────────────────────────────────────────────
 
         function _ensureQuadMesh(spec) {
@@ -1722,15 +1669,11 @@
             });
         }
 
-        // Light position in [0,1] screen UV. Priority:
-        //   1. opts.godrayLightUV = [u,v]  — explicit override (a host/Thread B knob)
-        //   2. fullness-weighted centroid of the quanta, projected via the active camera
+        // Light position in [0,1] screen UV:
+        //   1. fullness-weighted centroid of the quanta, projected via the active camera
         //      (biases toward the dense source end of a beam) — works for 2D ortho + 3D persp
-        //   3. screen centre (0.5,0.5) fallback
-        function _lightScreenPos(opts, tickData) {
-            if (opts && opts.godrayLightUV && opts.godrayLightUV.length === 2) {
-                return new THREE.Vector2(opts.godrayLightUV[0], opts.godrayLightUV[1]);
-            }
+        //   2. screen centre (0.5,0.5) when there are no quanta
+        function _lightScreenPos(tickData) {
             var fd = tickData && tickData.frameData;
             if (fd && fd.length && _vLight) {
                 var sx = 0, sy = 0, sz = 0, sw = 0;
@@ -1752,8 +1695,8 @@
         // occlusion map (dark LOs cast ray-shadows). Cost is paid ONLY when the layer is on.
         function _renderGodrays(opts, tickData) {
             _ensureGodrayResources();
-            var lp = _lightScreenPos(opts, tickData);
-            var intensity = (typeof opts.godrays === 'number') ? opts.godrays : 1.0;
+            var lp = _lightScreenPos(tickData);
+            var intensity = opts.godrays;
 
             // Pass 1: lit scene → _rtA
             _renderer.setRenderTarget(_rtA);
@@ -1860,8 +1803,7 @@
             // ── Layer gating — each layer does per-frame work ONLY when active ──
             // Modular separation: no layer's per-frame cost is paid unless that layer
             // is on AND something consumes it. The Field heightfield in particular is
-            // built ONLY when a consumer (the 2D water-fx filter OR the 3D surface mesh)
-            // is active — never unconditionally (that was one sugar object hijacking the
+            // built ONLY when a consumer (a queued filter) is active — never unconditionally (that was one sugar object hijacking the
             // render loop). Each flag comes from the render OPTIONS bag (setRenderOption).
             var opts          = options || {};
             var drawParticles = opts.renderBaseCanvas !== false;          // Particles layer
@@ -1871,24 +1813,13 @@
             // captureStill() replays (§1a.4's "as of the last completed renderTick").
             _lastOpts = Object.assign({}, opts);
             _lastRenderBaseCanvas = drawParticles;
-            var field3d       = !!opts.field3d;                           // 3D surface-mesh field layer
-            var fieldConsumed = (_filters.length > 0) || field3d;         // build field iff consumed
+            var fieldConsumed = _filters.length > 0;                      // build field iff consumed
 
             // R4-GEO / per-dim layers (2026-07-02): glow/heat/smoke + additive-vs-normal
-            // blend are now resolved PER (dim,family) BUCKET inside the points-path loop
-            // below (each bucket gets its own material/uniforms) rather than on two fixed
-            // shared materials — flashSplit/glow are still read once here since they also
-            // gate the LEGACY (non-renderTiers) per-frame classification just below.
-            var flashSplit = (typeof opts.flashLayerMax === 'number' && opts.flashLayerMax > 0) ? opts.flashLayerMax : 0;
+            // blend are resolved PER (dim,family) BUCKET inside the points-path loop below
+            // (each bucket gets its own material/uniforms).
             var glow = opts.glowIntensity;
 
-            // ── Particles — fill the buffer(s); partition flash vs primary when layered ──
-            //  smokeLayerMin — dims >= it render as PUFFS (else normal points).
-            //  smokeColor    — [r,g,b] override for smoke frames (white).
-            //  renderLayerMin— cull frames below this dimension entirely.
-            //  flashLayerMax — frames with layer < it go to the additive FLASH mesh (gold), the
-            //                  rest to the primary smoke mesh — so the two layers COEXIST.
-            //
             // ── Cube InstancedMesh path (shape='cube' + 3D only) ─────────────────────────
             // When the experiment opts in with setRenderOption('shape','cube') AND the scene
             // is 3D (_is3D), quanta render as TRUE shaded 3D cube meshes instead of flat
@@ -1915,7 +1846,7 @@
             var lc2  = LightColor;
             var rs2  = RenderShape;
             // SCENE-DEFAULT shape (opts only, no frame): the scene-wide cube gate below + the default
-            // uShape for glow-sprite buckets (tier/flash/smoke) that carry no per-frame shape. The
+            // uShape for glow-sprite buckets (glow/smoke) that carry no per-frame shape. The
             // PER-FRAME shape/mesh routing bug (Red-Team §6: the old `resolve(null,opts)` ignored a
             // frame's own render.shape/render.mesh) is fixed in the Points loop, which resolves EACH
             // frame's family via RenderFamily.resolveRenderFamily(f, opts, _is3D) — never null.
@@ -1954,7 +1885,6 @@
                 if (drawParticles && tickData && tickData.frameData) {
                     var fdC = tickData.frameData;
                     var totalC = fdC.length;
-                    var renderLayerMinC = (typeof opts.renderLayerMin === 'number') ? opts.renderLayerMin : 0;
                     var defaultColorSchemeC = opts.colorScheme || 'warmcool';
 
                     // Voxel size: the frame rect.w for the first active frame, or a sensible
@@ -1972,8 +1902,6 @@
                     var cubeCount = 0;
                     for (var ci = 0; ci < totalC; ci++) {
                         var fc = fdC[ci];
-                        var layerC = fc.layer || 0;
-                        if (layerC < renderLayerMinC) { continue; }
                         var fullnessC = fc.fullness || 0;
                         var _smC = fc.data && fc.data.string_map;
                         var renderColorC = null;
@@ -2019,47 +1947,17 @@
                     var rs = rs2;
                     var smokeOn        = (typeof opts.smoke === 'number') && opts.smoke > 0;
                     var smokeIntensity = smokeOn ? opts.smoke : 0.0;
-                    var smokeLayerMin  = (typeof opts.smokeLayerMin === 'number') ? opts.smokeLayerMin : 0;
-                    var smokeCol       = (smokeOn && opts.smokeColor && opts.smokeColor.length === 3)
-                                        ? [opts.smokeColor[0]/255, opts.smokeColor[1]/255, opts.smokeColor[2]/255] : null;
-                    var renderLayerMin = (typeof opts.renderLayerMin === 'number') ? opts.renderLayerMin : 0;
                     var defaultColorScheme = opts.colorScheme || 'warmcool';
 
-                    // ── Render-tier table (FRQTL-MAINT 2026-07-02, CEO ruling (i)) ──────────
-                    // ONE declarative per-layer-range authority for the §1 Dim->visual mapping
-                    // OPT-IN via
-                    // `opts.renderTiers` (an array of `{layerMin, layerMax, mode:
-                    // 'additive-white'|'chroma'|'greyscale', paint?, colorScheme?, alphaFloor?,
-                    // minMass?}` rows — first-match-wins by layer range). This is a provider
-                    // render OPTION (setRenderOption space, exactly like flashLayerMax/
-                    // smokeLayerMin below) — it never touches lib/shim/frame-data. ABSENT →
-                    // the legacy flashLayerMax/smokeLayerMin/smokeColor/plain-additive DECODE
-                    // below runs (byte-identical classification; only the RENDER MECHANICS —
-                    // per-dim buckets + depth-read — are new, per the CEO's "same knobs, new
-                    // behavior" rollout ruling).
-                    var renderTiers = Array.isArray(opts.renderTiers) && opts.renderTiers.length > 0 ? opts.renderTiers : null;
-                    if (renderTiers && typeof RenderTiers === 'undefined') {
-                        // FAIL LOUD (Invariant 2): opts.renderTiers was declared but the authority
-                        // module didn't load — never silently fall back to the legacy path (that
-                        // would silently discard the experiment's whole render-tier intent).
-                        throw new Error(
-                            'three-provider: opts.renderTiers is set but the canonical contract ' +
-                            'lib/frqtl/compat/renderer/RenderTiers.js (RenderTiers) is unreachable — ' +
-                            'a load-order/packaging error, not a fallback condition.'
-                        );
-                    }
-
                     // _currentShapeUniform = the SCENE-DEFAULT uShape (glow-sprite buckets that carry
-                    // no per-frame shape — tier/flash/smoke — use it). The crisp 'N' shape bucket now
+                    // no per-frame shape — glow/smoke — use it). The crisp 'N' shape bucket now
                     // carries its OWN per-frame uShape (see the family fold below), so ball vs box can
                     // COEXIST per-frame instead of sharing this one scene-wide uniform.
                     _currentShapeUniform = rs.toUniform(resolvedShape);
 
-                    // Global (non-tiered, non-flashSplit) additive-vs-normal choice — preserves
-                    // the pre-per-dim-layer behavior for experiments using NEITHER renderTiers
-                    // NOR flashLayerMax (fx-smoke, fx-godrays): the WHOLE scene is one blend
-                    // mode, driven by the glow knob exactly as before.
-                    var plainWantAdditive = (!renderTiers && !flashSplit) && (typeof glow === 'number' && glow > 0);
+                    // Scene-wide additive-vs-normal choice: glow > 0 makes the WHOLE scene one
+                    // additive blend mode.
+                    var plainWantAdditive = (typeof glow === 'number' && glow > 0);
 
                     // Per-frame render FAMILY (docs/internal/engine/RENDERER_CONTRACT.md,
                     // §per-frame render-intent resolution): each frame's
@@ -2079,8 +1977,8 @@
 
                     // ── Bucket rows into (dim, family) groups — ONE THREE object per bucket.
                     // "Dim decides APPEARANCE, position decides OCCLUSION" (CEO ruling): no
-                    // parent/leaf distinction — a frame is classified by its OWN dim's row (or
-                    // the legacy knobs) using its OWN fullness/box size.
+                    // parent/leaf distinction — a frame is classified by its OWN dim using its
+                    // OWN fullness/box size.
                     var buckets = {};   // key -> { additive, paint, uShape?, list:[{x,y,z,full,r,g,b,a,size}] }
                     function _pushTo(key, additive, paint, x, y, z, full, rgb, a, size, uShapeVariant) {
                         var b = buckets[key];
@@ -2093,18 +1991,14 @@
                         var layer = f.layer || 0;
 
                         // Per-frame render FAMILY (spec §2/§3): resolve mesh/shape from THIS frame.
-                        // A per-frame render.mesh stamp OUTRANKS shape AND the tier/color path — it
-                        // renders as a glTF clone regardless (a per-frame projectile in a renderTiers
-                        // scene). Resolved BEFORE the renderLayerMin cull, matching the scene-wide
-                        // useMesh branch (which lays out the WHOLE frameData): an explicit mesh intent
-                        // is never dim-culled. Siphon it out of the sprite buckets and continue.
+                        // A per-frame render.mesh stamp OUTRANKS shape AND color — it renders as a
+                        // glTF clone regardless (a per-frame projectile). Siphon it out of the sprite
+                        // buckets and continue.
                         var famF = RenderFamily.resolveRenderFamily(f, opts, _is3D);
                         if (famF.family === 'mesh') {
                             (meshByAsset[famF.assetId] || (meshByAsset[famF.assetId] = [])).push(f);
                             continue;
                         }
-
-                        if (layer < renderLayerMin) { continue; }
 
                         var fullness = f.fullness || 0;
                         // render.color: read from string_map (the cross-engine path), NOT f.data.render.color
@@ -2121,47 +2015,17 @@
                         var z = f.z || 0, px = f.rect.x, py = f.rect.y;
                         var voxelSize = (f.rect && f.rect.w) ? f.rect.w : 1;
 
-                        // ── Render-tier table path (opt-in via opts.renderTiers) ──────────────
-                        // RenderTiers.js is the ONE decode authority (mirrors RenderShape/
-                        // RenderMesh) — a pure function of (tiers, frame, LightColor), unit-
-                        // tested in isolation (lib/frqtl/objects/test/render-tiers.test.mjs)
-                        // without needing THREE.js/WebGL.
-                        if (renderTiers) {
-                            var appearance = RenderTiers.resolveTierAppearance(
-                                renderTiers,
-                                { layer: layer, fullness: fullness, mass: f.mass, renderColor: renderColor, frameScheme: frameScheme },
-                                lc
-                            );
-                            var additiveT = appearance.target === 'flash';
-                            var keyT = layer + '|' + (additiveT ? 'A' : 'N');
-                            var sizeT = additiveT ? (4.0 * fullness + 1.0) : voxelSize;
-                            _pushTo(keyT, additiveT, appearance.paint, px, py, z, fullness, appearance.rgb, appearance.alpha01, sizeT);
-                            continue;
-                        }
-
-                        // ── LEGACY DECODE (byte-identical to before — flashLayerMax/
-                        // smokeLayerMin/smokeColor/plain-additive); only the DESTINATION
-                        // (a per-(dim,family) bucket vs one of two shared meshes) changed. ──
                         var alpha01 = lc.getAlphaFromIntensity(fullness);
-                        var isSmoke = smokeOn && (layer >= smokeLayerMin);
-                        var rgbN;
-                        if (isSmoke && smokeCol) {
-                            rgbN = [smokeCol[0] * 255, smokeCol[1] * 255, smokeCol[2] * 255];
-                        } else {
-                            rgbN = renderColor ? renderColor : lc.getRgbBySchemeName(frameScheme, fullness);
-                        }
-                        // "N" bucket: EVERY non-mesh frame goes here (the dense base) — UNLESS the
-                        // whole scene is in plain-additive mode (no flashSplit, no renderTiers,
-                        // glow>0), in which case there is no separate normal family; everything is
-                        // additive. The per-frame render FAMILY (famF) folds into the KEY so ball /
-                        // box / sphere coexist per-frame (fast path: one family per dim → one bucket,
-                        // byte-identical to the old single `layer|N` key).
+                        var rgbN = renderColor ? renderColor : lc.getRgbBySchemeName(frameScheme, fullness);
+                        // Destination bucket, in priority order: the whole scene additive (glow > 0);
+                        // soft puffs (smoke > 0); else the per-frame render FAMILY (famF) folded into
+                        // the KEY so ball / box / sphere coexist per-frame.
                         var nSize = plainWantAdditive ? (4.0 * fullness + 1.0) : voxelSize;
                         if (plainWantAdditive) {
                             // additive glow sprite — shape N/A (additive materials carry no uShape uniform).
                             _pushTo(layer + '|A', true, 'crisp', px, py, z, fullness, rgbN, alpha01, nSize);
-                        } else if (isSmoke) {
-                            // soft puff — shape N/A; keep the legacy soft family.
+                        } else if (smokeOn) {
+                            // soft puff — shape N/A.
                             _pushTo(layer + '|N|soft', false, 'soft', px, py, z, fullness, rgbN, alpha01, nSize);
                         } else if (famF.family === 'sphere') {
                             // per-frame render.shape='sphere' → the instanced-sphere family (per-instance color).
@@ -2172,15 +2036,6 @@
                             // 3D cube is the scene-wide useCubeMesh branch only (cube-fold = Phase 2).
                             var uv = (famF.family === 'cube') ? 1 : (famF.uShapeVariant != null ? famF.uShapeVariant : 0);
                             _pushTo(layer + '|N|pts:' + uv, false, 'crisp', px, py, z, fullness, rgbN, alpha01, nSize, uv);
-                        }
-
-                        // "A" bucket — ADDITIONALLY overlay the low-dimension COEXIST subset
-                        // (flashLayerMax) as additive gold ON TOP of the white smoke base — the
-                        // SAME coexist composite the cinematic FX pages rely on, just landing in its own
-                        // per-dim bucket now (true-depth dimming is the only NEW behavior).
-                        if (flashSplit && layer < flashSplit) {
-                            var frgb = renderColor ? renderColor : lc.getRgbBySchemeName(frameScheme, fullness);
-                            _pushTo(layer + '|A', true, 'crisp', px, py, z, fullness, frgb, alpha01, 4.0 * fullness + 1.0);
                         }
                     }
 
@@ -2230,8 +2085,7 @@
                                 entry.bufs.sizeArr[j]=it.size;
                                 // Puff-size gate (aSmoke/uSmoke — the pre-existing `smoke`
                                 // render option, independent of color/alpha), driven by
-                                // `paint` — a bucket-level (per-dim) constant since one dim
-                                // resolves to ONE row (or one legacy branch), never per-frame.
+                                // `paint` — a bucket-level constant (the key carries it).
                                 entry.bufs.smokeArr[j] = (bucket.paint === 'soft') ? 1 : 0;
                                 cx += it.x; cy += it.y; cz += it.z;
                             }
@@ -2245,7 +2099,7 @@
 
                             entry.mat.uniforms.uPersp.value = _is3D ? 1.0 : 0.0;
                             // uShape is now PER-BUCKET (the per-frame render.shape fold): the crisp
-                            // family bucket carries its own ball(0)/box(1) uShape; tier/flash buckets
+                            // family bucket carries its own ball(0)/box(1) uShape; glow/smoke buckets
                             // (no per-frame shape) fall back to the scene default. So ball and box
                             // coexist per-frame, each in its own bucket with its own uniform.
                             if (entry.mat.uniforms.uShape) {
@@ -2308,14 +2162,6 @@
             // ── Field layer — build the heightfield ONLY when consumed ──
             if (fieldConsumed) { _updateFieldTex(tickData); }
 
-            // ── 3D surface-mesh field layer — displaced terrain the orbit camera sees ──
-            if (field3d) {
-                _updateSurfaceMesh(tickData);
-                if (_surfaceMesh) { _surfaceMesh.visible = true; }
-            } else if (_surfaceMesh) {
-                _surfaceMesh.visible = false;
-            }
-
             // ── Render ── (the FINAL composite dispatch — one implementation, two callers)
             _composeFinal(opts, tickData);
         }
@@ -2331,11 +2177,9 @@
          */
         function _composeFinal(opts, tickData) {
             opts = opts || {};
-            // godrays is a final-composite layer (capability-checked, same setRenderOption
-            // model as field3d). It owns the final pass when on; it and the 2D water-fx
+            // godrays is a final-composite layer (a declared render option). It owns the final pass when on; it and the 2D water-fx
             // filter are alternative final composites (concurrent use is a phase-2 item).
-            var grays = opts.godrays;
-            var wantGodrays = (grays === true) || (typeof grays === 'number' && grays > 0);
+            var wantGodrays = opts.godrays > 0;
 
             if (wantGodrays) {
                 _renderGodrays(opts, tickData);
@@ -2478,7 +2322,9 @@
                     // which passes ran and in what order (it also sees a direct BYO
                     // prov.filter() call, which the runner's map does not).
                     filtersApplied: _filters.map(function (f) { return f.name; }),
-                    renderBaseCanvas: _lastRenderBaseCanvas
+                    renderBaseCanvas: _lastRenderBaseCanvas,
+                    // The TickData the replayed composite was drawn from → `renderedTick`.
+                    composited: _lastTickData
                 });
                 return Promise.resolve(bag);
             },
@@ -2711,7 +2557,7 @@
         };
     } else {
         if (!window._egptRendererProviders) { window._egptRendererProviders = {}; }
-        window._egptRendererProviders.three = { makeProvider: makeThreeProvider };
+        window._egptRendererProviders.three = { makeProvider: makeThreeProvider, renderCapabilities: _renderCapabilitiesThree };
     }
 
 })();

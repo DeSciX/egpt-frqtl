@@ -40,7 +40,7 @@ function track(over) {
                  { i: 2, tick: 15, pose: { azimuth: 30 } }]
     }, over || {});
 }
-const MP4 = { mime: 'video/mp4', bytes: 'AAAA', encoder: null };
+const MP4 = { mime: 'video/mp4', bytes: 'AAAA', encoder: null, codec: 'avc1.640014', muxer: 'mediabunny@1.55.1' };
 
 describe('capture-envelope — the still rides WHOLE, normalized by its OWNER', () => {
     test('every key normalizeStill produces survives under `still` (conformance, driven off the OWNER)', () => {
@@ -129,6 +129,11 @@ describe('capture-envelope — the sidecar manifest must map bytes to state', ()
         assert.throws(() => Envelope.videoEnvelope({ track: t, encoded: MP4, truncated: false }), /ticksPerFrame declares 5/);
     });
 
+    test('a DOUBLED tick (the same tick sampled twice) is refused — a dropped or doubled sample cannot leave', () => {
+        const t = track({ ticksPerFrame: 5, frames: [{ i: 0, tick: 5 }, { i: 1, tick: 5 }, { i: 2, tick: 10 }] });
+        assert.throws(() => Envelope.videoEnvelope({ track: t, encoded: MP4, truncated: false }), /0 ticks after its predecessor/);
+    });
+
     test('ticksPerFrame and fps are BOTH required — collapsing them destroys the tick index', () => {
         assert.throws(() => Envelope.videoEnvelope({ track: track({ ticksPerFrame: undefined }), encoded: MP4, truncated: false }), /ticksPerFrame/);
         assert.throws(() => Envelope.videoEnvelope({ track: track({ fps: undefined }), encoded: MP4, truncated: false }), /fps/);
@@ -150,6 +155,50 @@ describe('capture-envelope — the sidecar manifest must map bytes to state', ()
     });
 
     test('a non-video mime is refused on a video envelope', () => {
-        assert.throws(() => Envelope.videoEnvelope({ track: track(), encoded: { mime: 'image/png', bytes: 'AA' }, truncated: false }), /video\//);
+        assert.throws(() => Envelope.videoEnvelope({ track: track(), encoded: Object.assign({}, MP4, { mime: 'image/png' }), truncated: false }), /video\//);
+    });
+});
+
+describe('capture-envelope — the encoded shape is the exported table, and nothing drops out of it', () => {
+    // Driven off the OWNER's two exported tables: every producer in ENCODERS, through the
+    // envelope form it declares, with every key ENCODED_KEYS declares for that form.
+    const build = {
+        still: (encoded) => Envelope.stillEnvelope({ still: stillPartial(), encoded }),
+        video: (encoded) => Envelope.videoEnvelope({ track: track(), encoded, truncated: false })
+    };
+    function fullEncoded(name) {
+        const spec = Envelope.ENCODERS[name];
+        const out = {};
+        for (const k of Envelope.ENCODED_KEYS[spec.kind]) {
+            out[k] = k === 'mime' ? spec.mime : k === 'encoder' ? name : 'value-of-' + k;
+        }
+        return out;
+    }
+
+    for (const name of Object.keys(Envelope.ENCODERS)) {
+        test(`${name}: every declared encoded key survives the envelope verbatim`, () => {
+            const spec = Envelope.ENCODERS[name];
+            assert.ok(build[spec.kind], `ENCODERS row ${name} declares an envelope form this suite knows`);
+            const input = fullEncoded(name);
+            assert.deepEqual(build[spec.kind](input).encoded, input,
+                'the envelope must carry exactly the declared encoded keys — a dropped codec/muxer is ' +
+                'a video whose container cannot be decoded without guessing');
+        });
+
+        test(`${name}: every REQUIRED encoded key is refused when absent`, () => {
+            const spec = Envelope.ENCODERS[name];
+            for (const k of Envelope.ENCODED_KEYS[spec.kind]) {
+                if (k === 'encoder') { continue; }   // the one optional key (null when absent)
+                const input = fullEncoded(name);
+                delete input[k];
+                assert.throws(() => build[spec.kind](input), new RegExp('encoded\\.' + k),
+                    `missing encoded.${k} must be refused by name`);
+            }
+        });
+    }
+
+    test('an encoder used on the wrong form is refused', () => {
+        assert.throws(() => build.still(Object.assign(fullEncoded('FrqtlVision.record'),
+            { mime: 'image/png' })), /produces a video, not a still/);
     });
 });

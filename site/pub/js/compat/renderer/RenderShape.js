@@ -95,7 +95,8 @@
      *
      * @param {object} frame       - FrameData object; frame.data.string_map may carry 'render.shape'.
      * @param {object} renderOpts  - FrqtlApp._renderOptions (the setRenderOption bag).
-     * @returns {'ball'|'box'|'circle'|'cube'}
+     * @returns {string} a member of VALID_SHAPES (ferried from frame-data's
+     *   RENDER_INTENT_VALUES['render.shape']: 'ball'|'box'|'circle'|'cube'|'sphere').
      */
     function resolve(frame, renderOpts) {
         // 1. Per-frame override via string_map (highest priority).
@@ -128,10 +129,11 @@
      * three-provider switches to an InstancedMesh of BoxGeometry instead. This
      * function returns 0.0 for 'cube' as a safe sentinel; the caller must gate
      * on RenderShape.isCubeMesh(shape) to know whether to use the instanced-mesh
-     * path vs the Points path.
+     * path vs the Points path. 'sphere' is the same: an instanced mesh in 3D
+     * (gate: isSphereMesh), 0.0 here.
      *
-     * @param {string} shape - 'ball' | 'box' | 'circle' | 'cube'
-     * @returns {number}     - 0.0 (ball/circle/cube) or 1.0 (box)
+     * @param {string} shape - a member of VALID_SHAPES: 'ball' | 'box' | 'circle' | 'cube' | 'sphere'
+     * @returns {number}     - 0.0 (ball/circle/cube/sphere) or 1.0 (box)
      */
     function toUniform(shape) {
         return (shape === 'box') ? 1.0 : 0.0;

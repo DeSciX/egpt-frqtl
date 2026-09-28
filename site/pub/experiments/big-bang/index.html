@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Big Bang</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="checkbox"] { cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls input[type="range"] { width: 100px; cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 28px; display: inline-block; text-align: right; }
+    </style>
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Canonical shared loader: engine + renderer + game layer in ONE order.
+         data-page-scripts lists per-page extras loaded after FrqtlApp. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupBigBang.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+        </div>
+        <div id="metrics-panel"></div>
+    </div>
+
+    <!-- Experiment sketch -->
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Big Bang — canonical per-experiment page.
+     * A single radial PointSource at canvas center emits quanta in all directions
+     * with emergent physics. Engine-agnostic: runs JS or WASM via FrqtlApp
+     * + the compat façade. Engine chosen by ?engine= (engine-boot.js).
+     * Renderer chosen by ?renderer= (render-boot.js).
+     */
+    var runner  = null;
+    var metrics = null;
+    var tick    = 0;
+
+    window.setup = function () {
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 600,
+            canvasH: 600,
+            seed: 42,
+            onTick: function () {
+                tick++;
+                metrics.update({ 'Active Quanta': runner.universe.activeQuanta, 'Tick': tick });
+            }
+        });
+        runner.createCanvas();
+        runner.setup(setupBigBang, {});
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Active Quanta', expected: null, format: function (v) { return String(Math.round(v)); } },
+            { name: 'Tick',          expected: null, format: function (v) { return String(v); } }
+        ]);
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+    };
+
+    // Load p5 (which invokes window.setup) ONLY once BOTH the engine AND renderer are live.
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var s = document.createElement('script');
+            s.src = '../../js/lib/p5.min.js';
+            document.body.appendChild(s);
+        });
+    });
+    </script>
+</body>
+</html>

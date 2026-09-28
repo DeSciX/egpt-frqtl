@@ -8,9 +8,11 @@
  * finding 2026-07-03: the generator must point at the ESM-transformed
  * `objects/setup-esm/<file>` route, never the raw classic-script
  * `objects/setup/<file>` route):
- *   - every manifest entry resolves via engineRouter's `objects/` mapping (dev-core
- *     AND dist) to the `setup-esm` route, never a hand-derived '/frqtl' literal
- *     and never the raw (classic-script) `setup/` route;
+ *   - every manifest entry resolves via the CALLER'S engineRouter `objects/` mapping
+ *     (dev-core, dist, and the document-relative static router the static bake uses) to
+ *     the `setup-esm` path, never a hand-derived '/frqtl' literal and never the raw
+ *     (classic-script) `setup/` route; a missing router FAILS LOUD;
+ *   - `frqtlSetupsEsmModules()` is the manifest, one row per spec, with source/esm paths;
  *   - every manifest filename actually exists on disk under lib/frqtl/objects/setup/
  *     (a manifest entry pointing at nothing would 404 silently in the realm loader —
  *     this test catches that at commit time instead);
@@ -22,7 +24,7 @@
  *
  * The REALM-FAITHFUL proof (import()-ing the ESM-transformed source with `module`
  * undefined, exactly as a browser's native ESM loader would) lives in the sibling
- * lib/server/test/frqtl-setup-esm.test.mjs (co-located with the transform it tests).
+ * lib/server/test/frqtl-setup-esm.test.mjs (co-located with the dev emitter).
  *
  * Run: node --test lib/shim/notebook/test/frqtl-setups-importmap.test.mjs
  */
@@ -36,13 +38,14 @@ import { createRequire } from 'node:module';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot  = path.resolve(__dirname, '../../../..');
 
-const { buildFrqtlSetupsImportMap, FRQTL_SETUPS_MANIFEST, frqtlSetupsManifestByFile } = await import(
+const { buildFrqtlSetupsImportMap, FRQTL_SETUPS_MANIFEST, frqtlSetupsManifestByFile, frqtlSetupsEsmModules, frqtlSetupsSourceMissingError } = await import(
     path.join(repoRoot, 'lib/shim/notebook/frqtl-setups-importmap.js')
 );
+const { engineRouter } = await import(path.join(repoRoot, 'lib/shim/engine/router.js'));
 
 describe('buildFrqtlSetupsImportMap — canonical setup-factory bare specifiers', () => {
     test('every manifest spec resolves to the ESM-transformed /frqtl/objects/setup-esm/<file> route in dev-core mode (NEVER the raw classic-script setup/ route)', () => {
-        const map = buildFrqtlSetupsImportMap('dev-core');
+        const map = buildFrqtlSetupsImportMap(engineRouter({ mode: 'dev-core' }));
         for (const spec of Object.keys(FRQTL_SETUPS_MANIFEST)) {
             const { file } = FRQTL_SETUPS_MANIFEST[spec];
             assert.equal(map.imports[spec], '/frqtl/objects/setup-esm/' + file,
@@ -53,7 +56,7 @@ describe('buildFrqtlSetupsImportMap — canonical setup-factory bare specifiers'
     });
 
     test('every manifest spec resolves under the dist game/setup-esm path in dist mode', () => {
-        const map = buildFrqtlSetupsImportMap('dist');
+        const map = buildFrqtlSetupsImportMap(engineRouter({ mode: 'dist' }));
         for (const spec of Object.keys(FRQTL_SETUPS_MANIFEST)) {
             const { file } = FRQTL_SETUPS_MANIFEST[spec];
             assert.equal(map.imports[spec], '../../js/game/setup-esm/' + file,
@@ -61,10 +64,26 @@ describe('buildFrqtlSetupsImportMap — canonical setup-factory bare specifiers'
         }
     });
 
-    test('defaults to dev-core mode when omitted', () => {
-        const withDefault = buildFrqtlSetupsImportMap();
-        const explicit = buildFrqtlSetupsImportMap('dev-core');
-        assert.deepEqual(withDefault, explicit);
+    test('the document-relative static router (the static bake) maps every spec under ./pub/js/game/setup-esm/', () => {
+        const map = buildFrqtlSetupsImportMap(engineRouter({ mode: 'static', documentRelative: true }));
+        for (const spec of Object.keys(FRQTL_SETUPS_MANIFEST)) {
+            assert.equal(map.imports[spec], './pub/js/game/setup-esm/' + FRQTL_SETUPS_MANIFEST[spec].file);
+        }
+    });
+
+    test('FAIL-LOUD without a router (a mode string or nothing is not a path authority)', () => {
+        assert.throws(() => buildFrqtlSetupsImportMap(), /requires an engineRouter\(\) instance/);
+        assert.throws(() => buildFrqtlSetupsImportMap('dev-core'), /requires an engineRouter\(\) instance/);
+    });
+
+    test('frqtlSetupsEsmModules() is the manifest: one row per spec, objects/setup/ source, objects/setup-esm/ module', () => {
+        const mods = frqtlSetupsEsmModules();
+        assert.deepEqual(mods.map((m) => m.spec), Object.keys(FRQTL_SETUPS_MANIFEST));
+        for (const m of mods) {
+            assert.equal(m.entry, FRQTL_SETUPS_MANIFEST[m.spec]);
+            assert.equal(m.sourcePath, 'objects/setup/' + m.entry.file);
+            assert.equal(m.esmPath, 'objects/setup-esm/' + m.entry.file);
+        }
     });
 
     test('every manifest filename exists on disk under lib/frqtl/objects/setup/ (never a dangling entry)', () => {
@@ -103,18 +122,27 @@ describe('buildFrqtlSetupsImportMap — canonical setup-factory bare specifiers'
 });
 
 describe('frqtlSetupsManifestByFile — filename-keyed lookup for the route handler', () => {
-    test('has one entry per manifest file, matching the spec-keyed manifest', () => {
+    test('has one row per manifest file: the frqtlSetupsEsmModules() row (spec + entry)', () => {
         const byFile = frqtlSetupsManifestByFile();
         const specs = Object.keys(FRQTL_SETUPS_MANIFEST);
         assert.equal(Object.keys(byFile).length, specs.length, 'one file entry per spec (no filename collisions)');
         for (const spec of specs) {
             const entry = FRQTL_SETUPS_MANIFEST[spec];
-            assert.deepEqual(byFile[entry.file], entry, entry.file + ' round-trips to the SAME entry object shape');
+            assert.equal(byFile[entry.file].spec, spec);
+            assert.equal(byFile[entry.file].entry, entry, entry.file + ' carries the SAME manifest entry');
         }
     });
 
     test('setupCircuitBasic.js declares its statics (createWire/createBattery/createResistor)', () => {
         const byFile = frqtlSetupsManifestByFile();
-        assert.deepEqual(byFile['setupCircuitBasic.js'].statics, ['createWire', 'createBattery', 'createResistor']);
+        assert.deepEqual(byFile['setupCircuitBasic.js'].entry.statics, ['createWire', 'createBattery', 'createResistor']);
+    });
+
+    test('frqtlSetupsSourceMissingError names the manifest spec, the path and the cause', () => {
+        const cause = Object.assign(new Error('nope'), { code: 'ENOENT' });
+        const err = frqtlSetupsSourceMissingError({ spec: '@frqtl/setups/big-bang' }, '/x/setupBigBang.js', cause);
+        assert.match(err.message, /FRQTL_SETUPS_MANIFEST spec "@frqtl\/setups\/big-bang" names source "\/x\/setupBigBang\.js"/);
+        assert.match(err.message, /ENOENT/);
+        assert.equal(err.cause, cause);
     });
 });

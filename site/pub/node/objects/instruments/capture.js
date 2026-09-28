@@ -58,7 +58,7 @@
  * tick or op-program is touched, so no canonical-bench golden can move because of it.
  *
  * OBSERVATION ONLY. A tap cannot perturb the pipeline. Pipeline CONFIGURATION stays exactly
- * where it already lives — `setFilterActive` / `setRenderOption` / the renderTiers table —
+ * where it already lives — `setFilterActive` / `setRenderOption` —
  * so "capture with the water shader off" composes existing knobs (setFilterActive('water',
  * false) → repaint() → capture → restore) rather than growing a second filter authority on
  * the capture call.
@@ -182,6 +182,45 @@
         return _rasterPathMemo;
     }
 
+    /**
+     * The TICK-PROVENANCE GUARD for a raster the provider executes: the stamp is the pixels'
+     * tick, or the capture THROWS.
+     *
+     * `tick` is stamped off the LOOP's retained TickData when the capture is requested; the
+     * pixels are whatever the provider LAST composited, read later. The two diverge whenever
+     * the clock ticks without a draw — the rAF loop runs a tick batch (listeners included)
+     * BEFORE its one render, so a batched frame composites only its last tick, and the first
+     * frame's burst composites only the burst's last. A still labelled with a tick its pixels
+     * are not is a falsified physics record, so the provider REPORTS the tick it drew
+     * (`renderedTick`, §1a.4) and this compares. The dispatcher takes the readback in the
+     * stamp's task, so a between-frame caller always agrees; what is left to
+     * refuse is a capture from inside a tick batch (or a genuinely asynchronous BYO
+     * readback). There is no reconciling branch: the remedy is the caller's clock
+     * discipline, named in the message.
+     * @private
+     */
+    function _assertComposited(stage, tick, bag) {
+        var rendered = bag.renderedTick;
+        if (!(typeof rendered === 'number' && isFinite(rendered))) {
+            throw new Error('[FrqtlCapture.capture] the provider\'s captureStill() bag reports ' +
+                'no renderedTick (got ' + String(rendered) + ') — the tick of the TickData its ' +
+                'pixels were drawn from is REQUIRED (RENDERER_CONTRACT §1a.4), because without ' +
+                'it a still stamped tick ' + tick + ' cannot be shown to carry tick ' + tick +
+                '\'s picture. (FAIL-LOUD.)');
+        }
+        if (rendered !== tick) {
+            throw new Error('[FrqtlCapture.capture] PROVENANCE MISMATCH at stage \'' + stage +
+                '\': the still would be stamped tick ' + tick + ' (the loop\'s retained TickData) ' +
+                'but the provider composited tick ' + rendered + ' — these pixels are not tick ' +
+                tick + '\'s. Capture a tick that was RENDERED: drive the clock with runner.step() ' +
+                '(it renders, then notifies), or HOLD it from a tick listener — ' +
+                'runner.suspendTicks(), runner.repaint() (forces the draw; an fps cap skips ' +
+                'display frames), capture, runner.resumeTicks() in the capture\'s finally; ' +
+                'outside a listener, runner.repaint() then capture in the same task. ' +
+                '(FAIL-LOUD — a still whose label is not its pixels is a falsified record.)');
+        }
+    }
+
     // ── The instrument ────────────────────────────────────────────────────────
 
     /**
@@ -268,6 +307,16 @@
         return host;
     };
 
+    /**
+     * captureHost() — the attached capture host, or null when this instrument executes its
+     * stages locally. `FrqtlVision.record` reads it to forward a recording to the process
+     * where the world and its clock are (the host's `record` member).
+     * @returns {object|null}
+     */
+    CaptureInstrument.prototype.captureHost = function () {
+        return this._host;
+    };
+
     /** The live provider, or null. @private */
     CaptureInstrument.prototype._provider = function () {
         return this._providerGetter() || null;
@@ -293,11 +342,13 @@
      * Pixel-exact regeneration pins the builds, not just the code+seed. What is genuinely
      * derivable at runtime today is the boot identity: the engine axis engine-boot selected
      * (`window._egptEngine`), the renderer render-boot selected (`window._egptRenderer`), and
-     * the WASM package URL in force (`window._egptWasmPkgUrl`, which on a CDN/dist boot
-     * carries the published version). Each is `null` when the authority is absent (a headless
-     * harness) — honestly absent, never invented. A true engine build id slots in HERE the day
-     * one exists; a hand-typed version string here would be the truth-in-labeling violation
-     * (dep-map rule 4) that this method exists to avoid.
+     * the CONTENT hash of the wasm binary the browser loader instantiated
+     * (`window._WasmLoadBrowser.loadedWasmSha256()`, the `PINNED.json` `wasmSha256`
+     * definition). Never the package URL: the serving origin is a deployment fact, so the same
+     * bytes from two hosts must regenerate ONE scene identity. Each is `null` when the
+     * authority is absent (a headless harness) — honestly absent, never invented; a hand-typed
+     * version string here would be the truth-in-labeling violation (dep-map rule 4) that this
+     * method exists to avoid.
      * @private
      */
     CaptureInstrument.prototype._buildIdentity = function () {
@@ -308,7 +359,7 @@
         return {
             engine:     (w && w._egptEngine)      ? String(w._egptEngine)      : null,
             renderer:   (w && w._egptRenderer)    ? String(w._egptRenderer)    : null,
-            wasmPkgUrl: (w && w._egptWasmPkgUrl)  ? String(w._egptWasmPkgUrl)  : null,
+            wasmSha256: (w && w._WasmLoadBrowser) ? w._WasmLoadBrowser.loadedWasmSha256() : null,
             gl:         _rasterPath()
         };
     };
@@ -541,18 +592,48 @@
                 'from @descix/frqtl-sdk/eyes (lib/frqtl/objects/instruments/hosted-eyes.js)');
         }
 
+        // ONE TASK: the tick is stamped now; a raster readback runs in THIS task's microtask
+        // checkpoint, queued before anything is awaited. Both halves of that are load-bearing:
+        //  - never AFTER the scene hash: sceneRecord() is a real task boundary whenever it
+        //    hashes (the first capture of a scene, and after every scene change), and a running
+        //    loop can tick and redraw inside it — the readback would carry a later tick's
+        //    pixels for a caller that did everything right;
+        //  - never INSIDE the synchronous call: the rAF loop notifies tick listeners BEFORE the
+        //    frame's draw in the same task, so a draw of tick t that follows the request in
+        //    this task (the frame's own) must be what the readback sees.
+        // The raster's LABELS (pose, renderOptions) are read in the readback's own synchronous run,
+        // right beside captureStill(): a listener registered after the requester (CameraPath's
+        // setOrbit, a knob write) can change them later in this task, and the pixels are drawn
+        // under the later values — nothing can draw between these reads and the readback.
+        // Selected by FORMAT off the stage table, not by stage name: every rgba8 stage is a
+        // provider-executed raster and inherits the readback timing, the label timing and the guard.
         var self = this;
         var tick = this._tickIndex(td);
+        var labels = { pose: null, renderOptions: null };
+        var readback = null;
+        if (RS.STAGE_FORMATS[stage] === 'rgba8') {
+            readback = Promise.resolve().then(function () {
+                labels.pose = self._pose();
+                labels.renderOptions = self._captureRenderOptions();
+                return prov.captureStill();
+            });
+        } else {
+            // No readback: the channel IS the retained TickData, so the stamp-time labels are the
+            // ones it is read under.
+            labels.pose = this._pose();
+            labels.renderOptions = this._captureRenderOptions();
+        }
         // The still records COORDINATES WITHIN a scene, so it needs the scene's content id.
         // sceneRecord() is memoized on the canonical form, so this is a hash only when the
-        // scene actually changed.
-        return this.sceneRecord().then(function (scene) {
+        // scene actually changed. Joined with the readback so neither rejection goes unhandled.
+        return Promise.all([this.sceneRecord(), readback]).then(function (joined) {
+            var scene = joined[0];
             var base = {
                 scene:         scene.scene,
                 stage:         stage,
                 tick:          tick,
-                pose:          self._pose(),
-                renderOptions: self._captureRenderOptions()
+                pose:          labels.pose,
+                renderOptions: labels.renderOptions
             };
 
             if (stage === 'tick') {
@@ -594,26 +675,27 @@
                 }));
             }
 
-            // 'composite' — the provider returns the §1a.4 render-domain bag (pixels + the
+            // rgba8 ('composite') — the provider returns the §1a.4 render-domain bag (pixels + the
             // fields it alone is the authority for). The instrument normalizes ONCE through
             // the vocabulary owner: `pixels` becomes the stage-agnostic `data` payload and
             // the dispatcher's provenance is merged in. Providers never import the shim — a
-            // BYO renderer's whole capture burden stays ONE method.
-            return Promise.resolve(prov.captureStill()).then(function (bag) {
-                if (!bag) {
-                    throw new Error('[FrqtlCapture.capture] the provider\'s captureStill() ' +
-                        'resolved with nothing. (FAIL-LOUD — never a null still.)');
-                }
-                return RS.normalizeStill(Object.assign({}, base, {
-                    data:             bag.pixels,
-                    width:            bag.width,
-                    height:           bag.height,
-                    cssWidth:         bag.cssWidth,
-                    cssHeight:        bag.cssHeight,
-                    filtersApplied:   bag.filtersApplied,
-                    renderBaseCanvas: bag.renderBaseCanvas
-                }));
-            });
+            // BYO renderer's whole capture burden stays ONE method. The bag was read in the
+            // stamp's task above.
+            var bag = joined[1];
+            if (!bag) {
+                throw new Error('[FrqtlCapture.capture] the provider\'s captureStill() ' +
+                    'resolved with nothing. (FAIL-LOUD — never a null still.)');
+            }
+            _assertComposited(stage, tick, bag);
+            return RS.normalizeStill(Object.assign({}, base, {
+                data:             bag.pixels,
+                width:            bag.width,
+                height:           bag.height,
+                cssWidth:         bag.cssWidth,
+                cssHeight:        bag.cssHeight,
+                filtersApplied:   bag.filtersApplied,
+                renderBaseCanvas: bag.renderBaseCanvas
+            }));
         });
     };
 

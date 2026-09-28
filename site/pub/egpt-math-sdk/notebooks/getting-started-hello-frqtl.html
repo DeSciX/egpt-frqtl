@@ -22,13 +22,18 @@ export function setupHello(frqtl, universe, options) {
     const { PointSource } = frqtl;          // the convenience emitter, via caps.frqtl
     const r = universe.universe_rect;
 
-    // init(rect, fundamentalDimension, wavelengthScale, ...): configure + create the field.
-    universe.init(r, 2, 8, false, false, false, true, false);
+    // universe.init(rect, fundamentalDimension, options) — ALWAYS FIRST: it creates the
+    // field, fixes the base scale layer, and every other option takes the engine's own
+    // default. `wavelengthScale` is the universe-wide fringe-spacing scale.
+    universe.init(r, 2, { wavelengthScale: 8 });
 
     // PointSource(universe, x, y, diameter, speed, charge, auto_fire, quantum_limit, delay, angle_increment, opts)
     //   one source at center; angle_increment 5° → 72 rays; opts.wavelength → particle mass.
+    //   diameter 32 (= wavelength) and speed 16 (= radius) are Wave Interference's own
+    //   numbers, and so are dimension 2 and wavelengthScale 8 — this IS one of its two
+    //   sources, with the second one left out.
     const source = new PointSource(universe, Math.floor(r.w / 2), Math.floor(r.h / 2),
-        24, 12, null, true, 50000, 0, 5, { wavelength: 32 });
+        32, 16, null, true, 50000, 0, 5, { wavelength: 32 });
 
     return { sources: { source }, largeObjects: [] };
 }
@@ -47,7 +52,7 @@ You created a running physics simulation from two small cells. **Edit the setup*
 
 This runs live in your browser on the compiled FRQTL (WASM) engine.
 
-**Next:** open **Wave Interference** (`gallery-wave-interference`) — two of these emitters produce interference fringes with no wave equation, the classically "impossible" result.
+**Next:** open **Wave Interference** (`gallery-wave-interference`) — add a second source exactly like this one, offset from centre, and interference fringes appear with no wave equation, the classically "impossible" result.
 </cell>
 
 </frqtl-notebook>

@@ -47,7 +47,7 @@ Particles emit from the light source on the left, most are blocked by the slit s
 
 **`detectAtSlits` — the "which-slit" knob.** The default (`1`) applies `RANDOM_XY` at each slit opening: detection disturbs the particle's trajectory. Set it to `0` (transparent slits, no detection) or `2` (color-only, no disturbance) to compare the unobserved and color-only cases.
 
-**Edit the physics:** open the `./setups/double-slit.js` tab and pass an option override to the canonical factory — e.g. change the adapter's `_setupDoubleSlit(universe, options)` call to `_setupDoubleSlit(universe, Object.assign({ wavelength: 32 }, options))` (also try `angleIncrement` or `detectAtSlits`) — then re-Run. The fringe pattern changes because you edited the construction. (The physics body itself lives in the canonical `lib/frqtl/objects/setup/setupDoubleSlit.js` — this cell is a thin, engine-agnostic adapter over it, the SAME construction the `double-slit-rosetta-qft` notebook drives.) The simulation runs live in your browser on the compiled FRQTL (WASM) engine.
+**Edit the physics:** open the `./setups/double-slit.js` tab and pass an option override to the canonical factory — e.g. change the adapter's `_setupDoubleSlit(universe, options)` call to `_setupDoubleSlit(universe, Object.assign({ wavelength: 32 }, options))` (also try `angleIncrement` or `detectAtSlits`) — then re-Run. The fringe pattern changes because you edited the construction. (The physics body itself lives in the canonical `lib/frqtl/objects/setup/setupDoubleSlit.js` — this cell is a thin, engine-agnostic adapter over it.) The simulation runs live in your browser on the compiled FRQTL (WASM) engine.
 </cell>
 
 </frqtl-notebook>

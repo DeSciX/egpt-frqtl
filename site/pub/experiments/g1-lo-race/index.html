@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — G1: LO races a Dim-0 quantum</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="range"] { width: 140px; cursor: pointer; accent-color: #ffb450; }
+        .experiment-controls span.val { color: #ffb450; min-width: 32px; display: inline-block; text-align: right; }
+        #reset { background:#27424f; color:#7ec8e3; border:1px solid #7ec8e3; border-radius:3px; font-size:12px; padding:3px 12px; cursor:pointer; }
+        .legend { color:#888; font-size:11px; }
+        .legend b.q { color:#78c8ff; } .legend b.lo { color:#ffb450; }
+    </style>
+</head>
+<body>
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egpt3D = true;</script>
+
+    <!-- UNIT-TEST G1: the realization of "an LO extends
+         Frame". A Dim-0 LIGHT quantum (always at the speed limit) races a larger Dim-2
+         "LO" leaf that steps with probability = speed_prob. Drive the slider: the LO's
+         FORWARD rate tracks the probability while its sideways wave is unchanged. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupG1Race.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <button type="button" id="reset" title="Restart the race">↺ Reset</button>
+            <label title="Per-frame speed probability of the LO leaf (sets frame.speed_prob)">
+                LO speed_prob:
+                <input type="range" id="ctrl-sp" min="0" max="1" step="0.05" value="0.5">
+                <span class="val" id="ctrl-sp-val">0.50</span>
+            </label>
+            <span class="legend"><b class="q">●</b> Dim-0 light (P=1) &nbsp; <b class="lo">■</b> LO leaf (Dim-2)</span>
+        </div>
+        <div id="metrics-panel"></div>
+    </div>
+
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+    var runner = null, metrics = null, tick = 0;
+
+    window.setup = function () {
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 600,
+            canvasH: 600,
+            seed: 42,
+            onTick: function (tickData) {
+                tick++;
+                var res = runner.setupResult || {};
+                var fd = (tickData && tickData.frameData) ? tickData.frameData : [];
+                var lo = fd.find(function (f) { return f.id === res.loQid; });
+                var q  = fd.find(function (f) { return f.id === res.quantumHandleQid; });
+                var loX = lo ? (lo.rect ? lo.rect._x : lo.x) : 0;
+                var qX  = q  ? (q.rect  ? q.rect._x  : q.x)  : 0;
+                if (metrics) {
+                    metrics.update({
+                        'Tick': tick,
+                        'Light x': qX,
+                        'LO x': loX,
+                        'LO / light': qX > 0 ? (loX / qX) : 0
+                    });
+                }
+            }
+        });
+        runner.createCanvas();
+        runner.setup(setupG1Race, { speedProb: 0.5 });
+
+        // Resolve the quantum's quantum_id too (for the metrics lookup).
+        var res = runner.setupResult || {};
+        res.quantumHandleQid = runner.universe.getFrameQuantumId(res.quantumHandle);
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Tick',       expected: null, format: function (v) { return String(v); } },
+            { name: 'Light x',    expected: null, format: function (v) { return v.toFixed(0) + ' px'; } },
+            { name: 'LO x',       expected: null, format: function (v) { return v.toFixed(0) + ' px'; } },
+            { name: 'LO / light', expected: 0.50, format: function (v) { return v.toFixed(2); } }
+        ]);
+
+        // speed_prob slider → set the LO frame's speed_prob live (per-frame writable prop).
+        var sp = document.getElementById('ctrl-sp'), spVal = document.getElementById('ctrl-sp-val');
+        sp.addEventListener('input', function () {
+            var v = parseFloat(sp.value);
+            spVal.textContent = v.toFixed(2);
+            if (runner.universe && runner.setupResult) {
+                runner.universe.setFrameProperty(runner.setupResult.loQid, 'speed_prob', v);
+            }
+        });
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+        window._frqtlApp = runner;
+    };
+
+    document.getElementById('reset').addEventListener('click', function () { window.location.reload(); });
+
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var r = window._egptRenderer || 'p5';
+            if (r === 'p5') {
+                var s = document.createElement('script');
+                s.src = '../../js/lib/p5.min.js';   // p5 load invokes window.setup
+                document.body.appendChild(s);
+            } else {
+                // three.js (vendored, synchronous): poll until the GAME layer is defined.
+                //
+                // S5b fix-loop — same unguarded-page-script race class fixed on
+                // particle-walk-3d/collision-matrix-3d (frqtl-tester re-verify,
+                // Oracle D): poll for the page's OWN data-page-scripts globals too
+                // (setupG1Race, ExperimentMetrics), not just FrqtlApp.
+                (function whenRunnerReady() {
+                    if (typeof window.FrqtlApp !== 'undefined' &&
+                        typeof setupG1Race !== 'undefined' &&
+                        typeof ExperimentMetrics !== 'undefined') {
+                        window.setup();
+                    } else {
+                        setTimeout(whenRunnerReady, 20);
+                    }
+                })();
+            }
+        });
+    });
+    </script>
+</body>
+</html>

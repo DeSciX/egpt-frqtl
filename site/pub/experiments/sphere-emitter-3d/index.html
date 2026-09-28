@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Sphere Emitter 3D (sun / laser / drum)</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="checkbox"] { cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls input[type="range"] { width: 90px; cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls select { background: #1a1a1a; color: #ddd; border: 1px solid #2a2a2a; border-radius: 3px; font-size: 12px; padding: 2px 4px; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 30px; display: inline-block; text-align: right; }
+        #sphere-emitter-metrics { display: none; }
+        .cam-preset { background:#1a1a1a; color:#aaa; border:1px solid #2a2a2a; border-radius:3px; font-size:11px; padding:2px 7px; cursor:pointer; margin:0 2px; }
+        .cam-preset:hover { color:#7ec8e3; border-color:#7ec8e3; }
+        .control-divider { width: 1px; align-self: stretch; background: #2a2a2a; margin: 0 2px; }
+    </style>
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Vendor three.js (r128 UMD) — must be set BEFORE stack-boot.js. -->
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+
+    <!-- 3D mode: render-boot.js auto-selects the three.js provider (orbit
+         PerspectiveCamera + getCameraControl). Mirrors cone-emitter-3d /
+         particle-walk-3d. -->
+    <script>window._egpt3D = true;</script>
+
+    <!-- Canonical shared loader: engine + renderer + game layer in ONE order. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupSphereEmitter3D.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <!-- ONE .experiment-controls row (chrome=canvas is dropped in the GYM — the
+             page's OWN full chrome renders directly in the iframe now, so this row
+             IS the GYM-visible control strip; a SECOND row would eat vertical space
+             and shrink the canvas — see reference_gym_chrome_canvas_dropped_ruling.md). -->
+        <div class="experiment-controls">
+            <label title="Toggle sustained burst emission on/off">
+                <input type="checkbox" id="ctrl-autofire" checked> Emit
+            </label>
+            <label title="Velocity-sampling range [-R,R] per axis (integer) AND the ball-rejection radius. Also the blockiness/resolution knob: bigger R = more distinct lattice directions = smoother sun. Default 24 sits past the R=20 knee where a single burst stops reading lumpy.">
+                R:
+                <input type="range" id="ctrl-R" min="2" max="40" step="1" value="24">
+                <span class="val" id="ctrl-R-val">24</span>
+            </label>
+            <label title="Side (px) of the cube emission-position box. 0 = point-source sun; up to the CURRENT R = extended light-bulb glow (this slider's max always tracks the live R — it can never be dragged past R).">
+                box:
+                <input type="range" id="ctrl-emissionBoxSide" min="0" max="24" step="1" value="0">
+                <span class="val" id="ctrl-emissionBoxSide-val">0</span>
+            </label>
+            <label title="spherical = full ball of directions (the sun, default). hemisphere = the SAME ball-rejected sampler with the forward axis' range halved to [0,R]: 180-degree FORWARD emission (a uniform half-ball in 3D, a uniform half-disk in 2D), forward axis +X in both modes, aimed by the orientation knob. Ball rejection is retained, which is what keeps it unbiased — a raw box draw would peak 1.45x at +/-45 degrees. laser = narrow forward-biased beam (diverging cone). drum = disk of directions in the z=0 plane (the old cylinder emitter). particle-walk = faithful reproduction of the original Particle Walk / Particle Walk 3D experiments: PURE-forward +x drift (no divergence) from a flat vertical-line source (height=10, ground-truthed from the historical setup factories, identical in 2D and 3D) — the transverse wave alone makes the waviness. Defaults reproduce the historical density (burst=20, rate=every tick, line height=10 -> ~5980 alive at steady state, matching the old ~5960) with ZERO extra slider changes needed. R is directionless here (only the ratio matters, per bench Invariant 1) — raise the box slider past R only if you want an even wider source than the default.">
+                preset:
+                <select id="ctrl-preset">
+                    <option value="spherical" selected>spherical (sun)</option>
+                    <option value="hemisphere">hemisphere (forward 180&deg;)</option>
+                    <option value="laser">laser</option>
+                    <option value="drum">drum</option>
+                    <option value="particle-walk">particle-walk</option>
+                </select>
+            </label>
+            <label title="ball = reject to |v|<=R (filled sphere, default). shell = reject to 0.9R<|v|<=R (thin direction band — a minor angular-uniformity refinement, NOT a speed constraint; speed is always 1px/tick).">
+                mode:
+                <select id="ctrl-mode">
+                    <option value="ball" selected>ball</option>
+                    <option value="shell">shell</option>
+                </select>
+            </label>
+            <label title="Leaves emitted per burst">
+                burst:
+                <input type="range" id="ctrl-burstSize" min="1" max="200" step="1" value="40">
+                <span class="val" id="ctrl-burstSize-val">40</span>
+            </label>
+            <label title="Ticks between successive bursts">
+                rate:
+                <input type="range" id="ctrl-emitEveryTicks" min="1" max="30" step="1" value="6">
+                <span class="val" id="ctrl-emitEveryTicks-val">6</span>
+            </label>
+            <div class="control-divider"></div>
+            <label title="Restart in place with the opposite dimensionality (activeAxes.z is fixed at universe.init() time, so a 2D<->3D switch re-runs runner.setup())">
+                <input type="checkbox" id="ctrl-is2D"> 2D mode
+            </label>
+            <div class="control-divider"></div>
+            <label title="REINIT-CLASS (like 2D mode): raises every emitted leaf's CAPACITY (from 1 to 16, a real width=4 footprint) so the wavelength/mass slider below has room to produce a genuine sub-capacity mass — the r0/r1 'unique rational wavelength' demo (mass/capacity in GCD-reduced form = a unique EntropyRat). OFF is byte-identical to every other preset (capacity=1 pins mass=1 regardless of the slider).">
+                <input type="checkbox" id="ctrl-wvdemo"> &lambda; demo (dim=2)
+            </label>
+            <label title="Per-leaf wavelength arg -> mass=max(1,capacity/wavelength). Only takes effect while '&lambda; demo' is checked (else capacity=1 pins mass=1, a documented no-op). Speed is UNCHANGED (fundamental-dimension leaves always step P=1, CLAUDE.md Invariant 6A) — only the TRANSVERSE OSCILLATION period (capacity/mass x wavelengthScale) changes, decoupled from speed.">
+                &lambda;/mass:
+                <input type="range" id="ctrl-wavelength" min="1" max="1" step="1" value="1" disabled>
+                <span class="val" id="ctrl-wavelength-val">1</span>
+            </label>
+            <div class="control-divider"></div>
+            <!-- Camera orbit controls — shown ONLY when runner.cameraControl exists
+                 (the 3D three.js provider). Capability-checked, never renderer-sniffed. -->
+            <span id="camera-controls" style="display:none; align-items:center; gap:14px;">
+                <label title="Orbit the camera horizontally">
+                    az:
+                    <input type="range" id="cam-azimuth" min="-180" max="180" step="1" value="35">
+                    <span class="val" id="cam-azimuth-val">35</span>
+                </label>
+                <label title="Orbit the camera vertically">
+                    el:
+                    <input type="range" id="cam-elevation" min="-85" max="85" step="1" value="22">
+                    <span class="val" id="cam-elevation-val">22</span>
+                </label>
+                <label title="Dolly the camera in/out">
+                    dist:
+                    <input type="range" id="cam-distance" min="200" max="4000" step="20" value="1400">
+                    <span class="val" id="cam-distance-val">1400</span>
+                </label>
+                <span title="Pre-computed perspectives — rotate around the sun to confirm it's round from every angle">
+                    view:
+                    <button type="button" id="cam-preset-table-top" class="cam-preset">table-top</button>
+                    <button type="button" id="cam-preset-down-barrel" class="cam-preset">down-barrel</button>
+                    <button type="button" id="cam-preset-rooftop" class="cam-preset">rooftop</button>
+                </span>
+            </span>
+        </div>
+        <div id="metrics-panel"></div>
+        <!--
+            Realm-observable proof hook for Playwright.
+            data-active-quanta         : count of active leaf frames this tick.
+            data-r                     : the CURRENT R knob value (integer).
+            data-preset                : the CURRENT preset ('spherical'|'hemisphere'|'laser'|'drum'|'particle-walk').
+            data-source-shape          : the CURRENT emission-position shape ('box'|'disk').
+            data-wavelength            : the CURRENT wavelength/mass knob value (r0/r1 demo).
+            data-max-wavelength        : the CURRENT capacity ceiling (1 when demo off, 16 when on).
+            data-fundamental-dimension : the CURRENT fundamentalDimension (0 or WAVELENGTH_DEMO_DIMENSION).
+            Updated each tick by the onTick callback.
+        -->
+        <div id="sphere-emitter-metrics"
+             data-role="sphere-emitter-metrics"
+             data-active-quanta="0"
+             data-r="20"
+             data-preset="spherical"
+             data-source-shape="box"
+             data-wavelength="1"
+             data-max-wavelength="1"
+             data-fundamental-dimension="0"></div>
+    </div>
+
+    <!-- Experiment sketch -->
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Sphere Emitter 3D — canonical per-experiment page.
+     *
+     * A spherical "sun" emitter: uniform-DIRECTION emission via ball-rejected
+     * integer velocity sampling (CEO-ratified model, 2026-07-17). Speed is
+     * ALWAYS 1px/tick (bench M1) — (vx,vy,vz) is DIRECTION ONLY. See
+     * lib/frqtl/objects/setup/setupSphereEmitter3D.js for the full physics
+     * note and the canonical-bench S4/S5 entries for the measured
+     * engine-realized angular-uniformity finding.
+     *
+     * PHASE 1 DOGFOOD REBUILD (2026-07-18, two iterations): this ONE page +
+     * setup factory reproduces every member of the old "Particle Walk"
+     * family as PRESETS — sun (spherical, box=0), lightbulb (spherical,
+     * box>0), laser (a diverging beam — see setupSphereEmitter3D.js's preset
+     * docs), and (iteration 2, CEO's "Option 1" golden-CHARACTER fix)
+     * particle-walk (a FAITHFUL reproduction: pure-forward +x drift, no
+     * divergence, from a flat line/disk source — the transverse wave alone
+     * makes the waviness) — plus the "&lambda; demo" toggle (dials
+     * fundamentalDimension so the wavelength/mass knob produces a genuine
+     * mass<capacity ratio) for the r0/r1 unique-rational-wavelength recipe
+     * from docs/internal/physics-lab/intuition/README.md. In 2D mode the camera defaults
+     * to a FLAT straight-on view of the x-y plane (azimuth=180,elevation=0 —
+     * see `_applyDefaultCameraOrbit` below), matching the old flat p5 2D
+     * canvas rather than a diagonally-projected 3D orbit. Zero new physics
+     * (SU1) — see setupSphereEmitter3D.js's Layer 2 docs for the full
+     * composition.
+     *
+     * Engine-agnostic: runs WASM via FrqtlApp + the compat facade.
+     * Zero new physics (canonical-bench SU1) — pure composition of M1/M5
+     * (speed fixed, velocity conserved) + frame.rs's own L2-normalized
+     * base-walk ratio (the "sample-in-ball, normalize" recipe realized for
+     * free by the engine's existing stepping rule) + S1 (axes identical).
+     */
+    var runner    = null;
+    var metrics   = null;
+    var tick      = 0;
+    var _metricsEl = null;
+    var _is2D = false;
+    var _wvDemo = false; // r0/r1 unique-rational-wavelength demo toggle (REINIT-CLASS, like _is2D)
+
+    window.__frqtlSphereEmitter = { activeQuanta: 0, R: 24, preset: 'spherical' };
+
+    // THE SKETCH — world.init() FIRST, then CONSTRUCT parts. `setupSphereEmitter3D`
+    // is a PART constructor and never inits; `setupSphereEmitter3D.initWorld` is the
+    // world step (the ONE authority for this emitter's implied wavelengthScale +
+    // activeAxes). This page is the sketch, so it owns that call — and every
+    // restart-in-place (is2D / lambda-demo) re-runs the sketch, world step included.
+    function sphereEmitterSketch(universe, opts) {
+        setupSphereEmitter3D.initWorld(universe, opts);
+        return setupSphereEmitter3D(universe, opts);
+    }
+
+    // Read every CURRENT-DOM control value that must survive a REINIT-CLASS
+    // restart (is2D toggle OR wvdemo toggle) — ONE authority, reused by both
+    // restart call sites (restart-in-place: re-apply from DOM, never a second
+    // shadow state — reference_restart_in_place_reapply_from_dom_not_shadow_state.md).
+    function _currentReinitOptions() {
+        return {
+            R: parseFloat(document.getElementById('ctrl-R').value),
+            emissionBoxSide: parseFloat(document.getElementById('ctrl-emissionBoxSide').value),
+            preset: document.getElementById('ctrl-preset').value,
+            mode: document.getElementById('ctrl-mode').value,
+            burstSize: parseFloat(document.getElementById('ctrl-burstSize').value),
+            emitEveryTicks: parseFloat(document.getElementById('ctrl-emitEveryTicks').value),
+            fundamentalDimension: _wvDemo ? setupSphereEmitter3D.WAVELENGTH_DEMO_DIMENSION : 0,
+            wavelength: parseFloat(document.getElementById('ctrl-wavelength').value)
+        };
+    }
+
+    // Sync the wavelength slider's max (dynamic — depends on the CURRENT
+    // fundamentalDimension, unlike every other control's static max) + its
+    // enabled state to the live control (mirrors tunnel-lab/lightsource-lab's
+    // own `sliderWl.max = setupTunnelLab.MAX_USEFUL_WAVELENGTH` idiom, except
+    // this page's ceiling is RUNTIME-variable — 1 (demo off) or 16 (demo on)
+    // — so it must be re-applied on every restart, not just once at boot).
+    function _syncWavelengthSlider(ctl) {
+        var el = document.getElementById('ctrl-wavelength');
+        var lbl = document.getElementById('ctrl-wavelength-val');
+        el.max = String(ctl.getMaxWavelength());
+        el.disabled = !_wvDemo;
+        el.value = String(ctl.getWavelength());
+        lbl.textContent = String(ctl.getWavelength());
+    }
+
+    // Reflect the camera provider's CURRENT orbit into the slider row (single
+    // source of truth = cam.getOrbit()) — shared by the initial setup AND the
+    // is2D restart handler so both call sites stay in sync, never duplicated.
+    function _syncCameraSliders(cam) {
+        var o = cam.getOrbit();
+        var azEl = document.getElementById('cam-azimuth');
+        var elEl = document.getElementById('cam-elevation');
+        var diEl = document.getElementById('cam-distance');
+        azEl.value = Math.round(o.azimuth);   document.getElementById('cam-azimuth-val').textContent   = azEl.value;
+        elEl.value = Math.round(o.elevation); document.getElementById('cam-elevation-val').textContent = elEl.value;
+        diEl.value = Math.round(o.distance);  document.getElementById('cam-distance-val').textContent  = diEl.value;
+    }
+
+    // Flat-2D presentation (CEO Phase 1 iteration, 2026-07-18): in 2D mode the
+    // scene must render FLAT — x maps unmirrored to screen-right, y (physics
+    // y-down) maps to screen-down, exactly like the old flat p5 2D canvas —
+    // not a diagonally-projected 3D orbit. Verified via
+    // `_orbitCameraBasis({azimuth:180,elevation:0}, W,H)` (pkg-node, three-
+    // provider.js's own exported pure geometry helper): forward=(0,0,1),
+    // right=(1,0,0), up=(0,-1,0) — a straight-on view of the x-y plane. None
+    // of the 3 named presets (down-barrel/table-top/rooftop) is this exact
+    // orbit (table-top's azimuth=0 is the SAME flat geometry but MIRRORED in
+    // x) — composed directly via the existing `setOrbit` primitive, no new
+    // renderer code. 3D mode is unchanged (still defaults to 'rooftop').
+    // Called on EVERY (re)setup so toggling is2D always re-derives the
+    // correct default from CURRENT _is2D, never an incremental adjustment.
+    function _applyDefaultCameraOrbit() {
+        var cam = runner.cameraControl;
+        if (!cam) { return; }
+        if (_is2D) {
+            cam.setOrbit({ azimuth: 180, elevation: 0, distance: 600 * 1.30 });
+        } else {
+            cam.setPreset('rooftop');
+            cam.setOrbit({ distance: 1400 });
+        }
+        _syncCameraSliders(cam);
+    }
+
+    // Generic "re-sync every slider from authoritative state" (CEO fix, 2026-07-18 —
+    // "the clamp bug"). setR() can shrink R below an ALREADY-set emissionBoxSide, and
+    // the sugar factory re-clamps emissionBoxSide internally when that happens — but a
+    // slider dragged for one control never automatically reflects a clamp that fired
+    // on a DIFFERENT control's state. Calling this after EVERY onChange keeps every
+    // slider (value, label, and any maxRef-linked `max` attribute) truthful to the
+    // control's own `get()` accessor — the SAME authority the physics reads — instead
+    // of the raw last-dragged DOM value.
+    function _resyncAllControls(CONTROLS) {
+        CONTROLS.forEach(function (c) {
+            if (typeof c.get !== 'function') return;
+            var el = document.getElementById('ctrl-' + c.id);
+            if (!el) return;
+            var v = c.get();
+            if (c.kind === 'select') {
+                el.value = v;
+            } else {
+                if (c.maxRef) {
+                    var refCtrl = CONTROLS.filter(function (o) { return o.id === c.maxRef; })[0];
+                    if (refCtrl && typeof refCtrl.get === 'function') { el.max = refCtrl.get(); }
+                }
+                el.value = v;
+                var out = document.getElementById('ctrl-' + c.id + '-val');
+                if (out) out.textContent = c.fmt(v);
+            }
+        });
+    }
+
+    function buildAndWireControls(ctl) {
+        var CONTROLS = ctl.controls;
+        CONTROLS.forEach(function (c) {
+            var el = document.getElementById('ctrl-' + c.id);
+            if (!el) return;
+            if (c.kind === 'select') {
+                el.value = c.value;
+                el.addEventListener('change', function () {
+                    c.onChange(el.value);
+                    _resyncAllControls(CONTROLS); // e.g. switching preset may re-derive ranges
+                });
+            } else {
+                var out = document.getElementById('ctrl-' + c.id + '-val');
+                if (c.maxRef) {
+                    var refCtrl0 = CONTROLS.filter(function (o) { return o.id === c.maxRef; })[0];
+                    if (refCtrl0 && typeof refCtrl0.get === 'function') { el.max = refCtrl0.get(); }
+                }
+                el.value = c.value;
+                if (out) out.textContent = c.fmt(c.value);
+                el.addEventListener('input', function () {
+                    var v = parseFloat(el.value);
+                    if (out) out.textContent = c.fmt(v);
+                    c.onChange(v);
+                    // The AUTHORITATIVE post-clamp value may differ from the raw slider
+                    // reading (e.g. dragging R down re-clamps emissionBoxSide) — resync
+                    // EVERY slider (including this one) from the control's own get().
+                    _resyncAllControls(CONTROLS);
+                });
+            }
+        });
+        _resyncAllControls(CONTROLS); // initial pass: apply maxRef bounds before first interaction
+        runner.experimentControls = CONTROLS; // forward-compat (camera excepted, host-side
+                                               // duplicate strip was dropped — see
+                                               // reference_gym_chrome_canvas_dropped_ruling.md)
+    }
+
+    window.setup = function () {
+        _metricsEl = document.getElementById('sphere-emitter-metrics');
+
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 600,
+            canvasH: 600,
+            seed: 42,
+            onTick: function (tickData) {
+                tick++;
+                var frames = tickData && tickData.frameData ? tickData.frameData : [];
+                var count = frames.length;
+
+                if (_metricsEl) {
+                    _metricsEl.setAttribute('data-active-quanta', count);
+                    var ctl = runner.setupResult && runner.setupResult.sphereEmitterControl;
+                    if (ctl) {
+                        _metricsEl.setAttribute('data-r', ctl.getR());
+                        _metricsEl.setAttribute('data-preset', ctl.getPreset());
+                        _metricsEl.setAttribute('data-source-shape', ctl.getSourceShape());
+                        _metricsEl.setAttribute('data-wavelength', ctl.getWavelength());
+                        _metricsEl.setAttribute('data-max-wavelength', ctl.getMaxWavelength());
+                        _metricsEl.setAttribute('data-fundamental-dimension', ctl.getFundamentalDimension());
+                    }
+                }
+                window.__frqtlSphereEmitter.activeQuanta = count;
+
+                if (metrics) {
+                    metrics.update({ 'Active Quanta': count, 'Tick': tick });
+                }
+            }
+        });
+
+        runner.createCanvas();
+        runner.setup(sphereEmitterSketch, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
+
+        var ctl = runner.setupResult.sphereEmitterControl;
+        window.__frqtlSphereEmitter.R = ctl.getR();
+        window.__frqtlSphereEmitter.preset = ctl.getPreset();
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Active Quanta', expected: null, format: function (v) { return String(Math.round(v)); } },
+            { name: 'Tick',          expected: null, format: function (v) { return String(v); } }
+        ]);
+
+        document.getElementById('ctrl-autofire').addEventListener('change', function (e) {
+            ctl.setActive(e.target.checked);
+        });
+
+        buildAndWireControls(ctl);
+        _syncWavelengthSlider(ctl);
+
+        // ── &lambda; demo toggle — restart-in-place (fundamentalDimension is
+        //    fixed at universe.init() time, exactly like is2D below; re-run
+        //    the SAME runner.setup() loop-reset idiom with the opposite
+        //    fundamentalDimension). ─────────────────────────────────────────
+        document.getElementById('ctrl-wvdemo').addEventListener('change', function (e) {
+            _wvDemo = !!e.target.checked;
+            var prevActive = document.getElementById('ctrl-autofire').checked;
+            runner.setup(sphereEmitterSketch, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
+            var newCtl = runner.setupResult.sphereEmitterControl;
+            newCtl.setActive(prevActive);
+            buildAndWireControls(newCtl);
+            _syncWavelengthSlider(newCtl);
+        });
+
+        // ── 2D/3D toggle — restart-in-place (activeAxes.z is fixed at
+        //    universe.init() time; re-run the SAME runner.setup() loop-reset
+        //    idiom with the opposite is2D flag — mirrors the documented
+        //    "rebuild via runner.setup(), re-apply every control from its
+        //    CURRENT DOM value" pattern). ───────────────────────────────────
+        document.getElementById('ctrl-is2D').addEventListener('change', function (e) {
+            _is2D = !!e.target.checked;
+            var prevActive = document.getElementById('ctrl-autofire').checked;
+            runner.setup(sphereEmitterSketch, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
+            var newCtl = runner.setupResult.sphereEmitterControl;
+            newCtl.setActive(prevActive);
+            buildAndWireControls(newCtl);
+            _syncWavelengthSlider(newCtl);
+            _applyDefaultCameraOrbit(); // re-derive flat-2D vs rooftop from the NEW _is2D
+        });
+
+        // ── Camera orbit control (sugar handle — mirrors cone-emitter-3d) ──
+        var cam = runner.cameraControl;
+        if (cam) {
+            document.getElementById('camera-controls').style.display = 'inline-flex';
+
+            // Default orbit for the CURRENT mode: flat straight-on for 2D
+            // (see _applyDefaultCameraOrbit's docs above), 'rooftop' 3/4
+            // aerial for 3D (shows the sun's full volumetric extent from the
+            // first frame — rotating around it via down-barrel/table-top
+            // lets the CEO confirm it looks round from every angle).
+            _applyDefaultCameraOrbit();
+
+            var azEl = document.getElementById('cam-azimuth');
+            var elEl = document.getElementById('cam-elevation');
+            var diEl = document.getElementById('cam-distance');
+            function _wireOrbit(inputEl, labelId, key) {
+                inputEl.addEventListener('input', function () {
+                    var v = parseInt(inputEl.value, 10);
+                    document.getElementById(labelId).textContent = v;
+                    var spec = {}; spec[key] = v;
+                    cam.setOrbit(spec);
+                });
+            }
+            _wireOrbit(azEl, 'cam-azimuth-val',   'azimuth');
+            _wireOrbit(elEl, 'cam-elevation-val', 'elevation');
+            _wireOrbit(diEl, 'cam-distance-val',  'distance');
+
+            (cam.presets || []).forEach(function (name) {
+                var btn = document.getElementById('cam-preset-' + name);
+                if (btn) { btn.addEventListener('click', function () { cam.setPreset(name); _syncCameraSliders(cam); }); }
+            });
+
+            runner.setRateLimits({ fpsLimit: 0, tpsLimit: 120 });
+        }
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+        window._frqtlApp = runner;
+    };
+
+    // Boot dance — identical to cone-emitter-3d / particle-walk-3d.
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var r = window._egptRenderer || 'p5';
+            if (r === 'p5') {
+                var s = document.createElement('script');
+                s.src = '../../js/lib/p5.min.js';
+                document.body.appendChild(s);
+            } else {
+                (function whenRunnerReady() {
+                    if (typeof window.FrqtlApp !== 'undefined' &&
+                        typeof setupSphereEmitter3D !== 'undefined' &&
+                        typeof ExperimentMetrics !== 'undefined') {
+                        window.setup();
+                    } else {
+                        setTimeout(whenRunnerReady, 20);
+                    }
+                })();
+            }
+        });
+    });
+    </script>
+</body>
+</html>

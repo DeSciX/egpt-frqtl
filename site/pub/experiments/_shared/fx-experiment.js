@@ -3,9 +3,9 @@
 /**
  * fx-experiment.js — shared driver for the render-effect demo experiments.
  *
- * The render effects (R4/R5: glow, god-rays, smoke puffs, gun-paint) are
- * capability-checked render OPTIONS on the BYO three.js provider (driven via
- * runner.setRenderOption — see lib/frqtl/compat/renderer/providers/three-provider.js).
+ * The render effects (R4/R5: glow, god-rays, smoke puffs) are render OPTIONS the
+ * three.js provider DECLARES through renderCapabilities() (driven via
+ * runner.setRenderOptions — see lib/frqtl/compat/renderer/providers/three-provider.js).
  * Each fx-* experiment page is identical boilerplate EXCEPT a small config; this
  * module is the single source of that boilerplate (DRY — no per-page copy of the
  * runner / camera-control / boot dance).
@@ -15,7 +15,7 @@
  *     title:          'FX — Glow',
  *     setup:          window.setupParticleWalk3D,   // a setup factory (global)
  *     setupOpts:      {},                            // forwarded to the factory
- *     renderDefaults: { glowIntensity: 2.2, heat: 0.6 },  // applied via setRenderOption after setup;
+ *     renderDefaults: { glowIntensity: 2.2, heat: 0.6 },  // applied via setRenderOptions after setup;
  *                                                     // ALSO drives which effect sliders this page
  *                                                     // gets (see "RETIRED: controls" below — a page
  *                                                     // no longer separately declares a controls array).
@@ -36,16 +36,6 @@
  *   - runner.fxPresets = config.presets — the CAPABILITY the GYM (CompareView)
  *     capability-CHECKS to render its own preset row (the page chrome is hidden there).
  *   - runner.fxControls = config.controls — same, for the GYM's effect sliders.
- *   - Per-dim tier MATRIX (FRQTL-MAINT 2026-07-03, CEO in-page per-dim walkthrough
- *     tool): capability-checked on `cfg.renderDefaults.renderTiers` (any renderTiers-
- *     bearing experiment gets it automatically, GENERIC — not page-specific).
- *     Columns = one per declared dim (+Toggle-All); rows = Show Dim (checkbox, the
- *     existing `row.hidden` mechanism) / Count (LIVE, `RenderTiers.groupByLayer`-
- *     derived, engine untouched) / Effect (dropdown mutating that dim's LIVE
- *     RenderTiers row `mode`/`paint`/`label` — a UI onto the ONE per-layer authority,
- *     never a parallel state; see `RenderTiers.buildTierMatrixSpec`). "None" =
- *     the sphere baseline (`paint:'sphere'`, low-poly InstancedMesh, the 2D disk
- *     coloring extended to 3D — see three-provider.js).
  *   - Loop control (ALWAYS present, no cfg opt-in needed — mirrors the always-present
  *     camera-control-if-capable idiom): a checkbox + tick-count input that, when on,
  *     re-runs `runner.setup(setupFn, cfg.setupOpts)` every N ticks — reuses the SAME
@@ -53,36 +43,20 @@
  *     from the same seed), driven by the pre-existing per-tick `onTick` hook (never
  *     `universe.experimentTickFunctions`, which is NOT cleared by `init()` and would
  *     duplicate on every reset).
- *   - `runner.tierMatrix` / `runner.loopControl` (FRQTL-MAINT 2026-07-03, CEO standing
+ *   - `runner.loopControl` (FRQTL-MAINT 2026-07-03, CEO standing
  *     principle — "the GYM is my ONLY visual-verification surface," so a tool that
- *     exists only on the standalone page is NOT done): the SAME live objects that
- *     drive the in-page DOM above, published on the runner exactly like fxPresets/
- *     fxControls/cameraControl — two renderers of ONE spec, zero parallel state.
- *     `runner.tierMatrix` = the `RenderTiers.buildTierMatrixSpec` result (`null` when
- *     `_buildTierMatrix` built nothing, i.e. non-tiered pages); its `columns[i].
- *     setHidden/effectValue/setEffect` closures mutate the SAME RenderTiers rows the
- *     in-page checkboxes/selects do. `columns[i].count(groups)` needs a per-tick
- *     `frameData` grouping the GYM (a separate window reading the iframe's runner)
- *     has no direct feed for, so `_buildTierMatrix`'s `updateCounts(tickData)` — the
- *     SAME function that fills the in-page Count cells every tick — ALSO stashes the
- *     just-computed counts array on `spec.liveCounts`; the GYM polls that array on
- *     its existing TPS/alive readout cadence (no new per-tick wiring across the
- *     iframe boundary). `runner.loopControl` = the `_buildLoopControl` state object,
+ *     exists only on the standalone page is NOT done): the SAME live object that
+ *     drives the in-page DOM above, published on the runner exactly like fxPresets/
+ *     fxControls/cameraControl — two renderers of ONE state, zero parallel state.
+ *     `runner.loopControl` = the `_buildLoopControl` state object,
  *     extended with `setEnabled(v)`/`setTicks(n)` methods that ALSO update the
  *     in-page checkbox/number-input (two-way sync — the GYM and the standalone page
- *     agree because both mutate/read the SAME object). Capability-checked: absent on
- *     non-tiered pages (`tierMatrix` stays `null`); `loopControl` is always present
+ *     agree because both mutate/read the SAME object). `loopControl` is always present
  *     (mirrors the always-present in-page control).
- *   - `?soloTier=<label>` deep-link (FRQTL-MAINT 2026-07-03, architect completion —
- *     HOISTED out of the page chrome, its one remaining page-local trap):
- *     capability-checked on `cfg.renderDefaults.renderTiers` exactly like the matrix
- *     above, symmetric with `?seed=` — every renderTiers-bearing experiment gets the
- *     deep-link automatically. Hides every row whose `label` doesn't match, via the
- *     SAME `row.hidden` field. Absent -> byte-identical no-op.
  *
- * Effects are render-only and degrade gracefully: setRenderOption on a p5 runner is a
- * no-op; the three provider reads the option. No renderer-sniffing anywhere — the page
- * capability-checks runner.cameraControl / runner.setRenderOption.
+ * Effects are render-only. Every renderDefaults / preset key must be declared by the
+ * active renderer: on a renderer that does not declare it (p5 declares no godrays) the
+ * write THROWS naming the declared list. No renderer-sniffing anywhere.
  *
  * ── RETIRED: cfg.controls / runner.fxControls (WS Studio Controls Realignment ────
  *    §7 r2 item 3(b), CEO call C2) ─────────────────────────────────────────────
@@ -141,7 +115,7 @@
     };
 
     // PageParams contract (WS gym-controls-as-sugar Bite 3 item 0/2): the URL param
-    // KEY NAMES this file reads (`seed`, `soloTier`) are single-sourced from
+    // KEY NAME this file reads (`seed`) is single-sourced from
     // lib/shim/page-params/index.js, live-imported via window.PageParams (installed
     // early in stack-boot.js's ENGINE array — guaranteed present before this file,
     // a data-page-scripts entry loaded LAST in the boot sequence, ever executes).
@@ -175,44 +149,10 @@
         return isNaN(n) ? 42 : n;
     }
 
-    // ?soloTier=<label> deep-link (FRQTL-MAINT 2026-07-03, architect completion on the
-    // in-page per-dim matrix bite — HOISTED here out of the page chrome, its one
-    // remaining page-local trap, so the SAME 2D-parity meta-goal the matrix/sphere/loop
-    // controls already satisfy also covers this knob: any renderTiers-bearing
-    // experiment gets the deep-link automatically, symmetric with `?seed=` above).
-    // Capability-checked EXACTLY like `_buildTierMatrix` (`cfg.renderDefaults.
-    // renderTiers` must be a real array) — reuses `row.hidden` verbatim (the SAME
-    // field `_buildTierMatrix`'s Show-Dim checkboxes and the matrix's Effect dropdowns
-    // read/mutate — zero new render machinery, zero parallel state): hides every row
-    // whose `label` does NOT match `?soloTier=`. Called EARLY in `window.setup()`
-    // (before `_buildTierMatrix` builds the Show-Dim checkboxes' initial `checked`
-    // state from `row.hidden`) so the matrix ALSO seeds correctly reflecting the
-    // solo'd state — same requirement the page-local IIFE version satisfied by running
-    // synchronously before `director`/the old flat toggle row. Absent (or
-    // non-matching) `?soloTier=` -> every row's `hidden` stays unset -> byte-identical
-    // to normal all-tiers behavior for every fx-* page, tiered or not. SEMANTICS ARE
-    // BYTE-IDENTICAL to the removed page-local copy — only the reading LOCATION moved
-    // (apps/ide/test/walkthrough-dims.mjs, the one existing consumer, needs no change:
-    // it drives `?soloTier=` purely via the URL, never reaching into page-local DOM).
-    function _applySoloTierFromUrl(cfg) {
-        if (!cfg.renderDefaults || !Array.isArray(cfg.renderDefaults.renderTiers)) { return; }
-        var soloTier = new URLSearchParams(window.location.search).get(_getPageParams().KEYS.SOLO_TIER);
-        if (!soloTier) { return; }
-        cfg.renderDefaults.renderTiers.forEach(function (row) {
-            row.hidden = (row.label !== soloTier);
-        });
-    }
-
     // Applies a {render:{...}, orbit:{...}} preset to the runner.
     function _applyPreset(runner, preset) {
         if (!preset) { return; }
-        if (preset.render && runner.setRenderOption) {
-            for (var k in preset.render) {
-                if (Object.prototype.hasOwnProperty.call(preset.render, k)) {
-                    runner.setRenderOption(k, preset.render[k]);
-                }
-            }
-        }
+        if (preset.render) { runner.setRenderOptions(preset.render); }
         if (preset.orbit && runner.cameraControl) {
             runner.cameraControl.setOrbit(preset.orbit);
         }
@@ -263,7 +203,7 @@
             input.addEventListener('input', function () {
                 var v = Number(input.value);
                 val.textContent = v;
-                if (runner.setRenderOption) { runner.setRenderOption(key, v); }
+                runner.setRenderOption(key, v);
             });
             wrap.appendChild(input); wrap.appendChild(val);
             bar.appendChild(wrap);
@@ -295,138 +235,6 @@
         }
 
         return effectControls;
-    }
-
-    // ── Per-dim tier MATRIX (CEO in-page walkthrough tool, 2026-07-03) ────────────
-    // GENERIC surface: driven entirely by `cfg.renderDefaults.renderTiers` (any
-    // renderTiers-bearing experiment picks this up automatically — no page-
-    // specific code; the META-GOAL is "any 2D experiment picks this up trivially when
-    // it gains z") + `RenderTiers.buildTierMatrixSpec` (the pure data descriptor — see
-    // RenderTiers.js; this function is ONLY the DOM/wiring layer on top of it, per the
-    // architect's "RenderTiers stays the ONE per-layer authority" guardrail — every
-    // mutation here calls straight into the spec's closures over the SAME row objects,
-    // never a parallel state). Capability-checked: absent/empty renderTiers -> returns
-    // null, zero DOM added, byte-identical for every non-tiered fx-* page
-    // (fx-smoke, fx-godrays, fx-glow).
-    //
-    // Replaces the OLD flat `RenderTiers.buildVisibilityControls` toggle row (still a
-    // valid, separate utility in RenderTiers.js for any other future consumer — NOT
-    // deleted) with the CEO's drawn matrix: columns = one per declared dim (+Toggle-All),
-    // rows = Show Dim / Count / Effect. Returns `{ spec, updateCounts }` — `spec` is the
-    // SAME live `RenderTiers.buildTierMatrixSpec` object the caller publishes as
-    // `runner.tierMatrix` (the GYM capability); `updateCounts(tickData)` is invoked once
-    // per tick (Count is LIVE, engine-untouched — re-derived from `tickData.frameData`
-    // via the EXISTING `RenderTiers.groupByLayer`) and ALSO stashes the computed counts
-    // on `spec.liveCounts` so the GYM (a separate window with no per-tick feed into the
-    // iframe) can poll them on its own readout cadence. Returns `null` if no matrix was
-    // built (non-tiered page).
-    function _buildTierMatrix(cfg) {
-        if (!cfg.renderDefaults || !Array.isArray(cfg.renderDefaults.renderTiers) ||
-            typeof RenderTiers === 'undefined' || typeof RenderTiers.buildTierMatrixSpec !== 'function') {
-            return null;
-        }
-        var spec = RenderTiers.buildTierMatrixSpec(cfg.renderDefaults.renderTiers);
-        if (!spec.columns.length) { return null; }
-
-        var host = document.querySelector('.experiment-container') || document.body;
-
-        var wrap = document.createElement('div');
-        wrap.className = 'tier-matrix';
-        wrap.style.cssText = 'flex:0 0 auto; padding:6px 12px; background:#0d0d0d; ' +
-            'border-top:1px solid #2a2a2a; overflow-x:auto;';
-
-        var table = document.createElement('table');
-        table.style.cssText = 'border-collapse:collapse; font-size:11px; color:#ccc;';
-
-        function th(text) {
-            var el = document.createElement('th');
-            el.textContent = text;
-            el.style.cssText = 'padding:2px 8px; color:#7ec8e3; text-align:center; white-space:nowrap;';
-            return el;
-        }
-        function labelTd(text) {
-            var el = document.createElement('td');
-            el.textContent = text;
-            el.style.cssText = 'padding:2px 8px; color:#aaa; white-space:nowrap;';
-            return el;
-        }
-
-        // Header: row-label corner + one column per dim + Toggle-All.
-        var headRow = document.createElement('tr');
-        headRow.appendChild(document.createElement('th'));
-        spec.columns.forEach(function (c) { headRow.appendChild(th(c.label)); });
-        headRow.appendChild(th('All'));
-        table.appendChild(headRow);
-
-        // Row 1 — Show Dim (checkboxes; the EXISTING row.hidden mechanism, presented as
-        // what these always really were — binary checkboxes aligned to dim levels).
-        var showRow = document.createElement('tr');
-        showRow.appendChild(labelTd('Show Dim'));
-        var checkboxes = spec.columns.map(function (c) {
-            var td = document.createElement('td'); td.style.textAlign = 'center';
-            var cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.checked = !c.isHidden();
-            cb.addEventListener('change', function () { c.setHidden(!cb.checked); });
-            td.appendChild(cb);
-            showRow.appendChild(td);
-            return cb;
-        });
-        var allTd = document.createElement('td'); allTd.style.textAlign = 'center'; allTd.style.whiteSpace = 'nowrap';
-        var onBtn  = document.createElement('button'); onBtn.type  = 'button'; onBtn.className  = 'cam-preset'; onBtn.textContent  = 'ON';
-        var offBtn = document.createElement('button'); offBtn.type = 'button'; offBtn.className = 'cam-preset'; offBtn.textContent = 'OFF';
-        onBtn.addEventListener('click',  function () { spec.setAllHidden(false); checkboxes.forEach(function (cb) { cb.checked = true;  }); });
-        offBtn.addEventListener('click', function () { spec.setAllHidden(true);  checkboxes.forEach(function (cb) { cb.checked = false; }); });
-        allTd.appendChild(onBtn); allTd.appendChild(offBtn);
-        showRow.appendChild(allTd);
-        table.appendChild(showRow);
-
-        // Row 2 — Count (LIVE per-dim frame count; filled in by updateCounts() each tick).
-        var countRow = document.createElement('tr');
-        countRow.appendChild(labelTd('Count'));
-        var countCells = spec.columns.map(function () {
-            var td = document.createElement('td'); td.style.textAlign = 'center'; td.textContent = '0';
-            countRow.appendChild(td);
-            return td;
-        });
-        countRow.appendChild(document.createElement('td'));   // All column — blank for Count
-        table.appendChild(countRow);
-
-        // Row 3 — Effect (per-dim dropdown; mutates mode/paint/label on the SAME
-        // RenderTiers row — "the matrix is a UI onto the RenderTiers table," no parallel
-        // state). "None" = the sphere baseline (paint:'sphere').
-        var effectRow = document.createElement('tr');
-        effectRow.appendChild(labelTd('Effect'));
-        spec.columns.forEach(function (c) {
-            var td = document.createElement('td');
-            var select = document.createElement('select');
-            select.style.cssText = 'background:#1a1a1a; color:#ddd; border:1px solid #2a2a2a; font-size:11px;';
-            spec.effectOptions.forEach(function (opt) {
-                var o = document.createElement('option');
-                o.value = opt.value; o.textContent = opt.label;
-                select.appendChild(o);
-            });
-            select.value = c.effectValue();
-            select.addEventListener('change', function () { c.setEffect(select.value); });
-            td.appendChild(select);
-            effectRow.appendChild(td);
-        });
-        effectRow.appendChild(document.createElement('td'));   // All column — blank for Effect
-        table.appendChild(effectRow);
-
-        wrap.appendChild(table);
-        host.appendChild(wrap);
-
-        function updateCounts(tickData) {
-            var groups = (tickData && tickData.frameData) ? RenderTiers.groupByLayer(tickData.frameData) : {};
-            var counts = spec.columns.map(function (c) { return c.count(groups); });
-            counts.forEach(function (v, i) { countCells[i].textContent = String(v); });
-            // GYM capability read (lib/features/ide/CompareView.jsx) — a separate window
-            // has no per-tick feed into this iframe, so it polls this array instead.
-            spec.liveCounts = counts;
-        }
-
-        return { spec: spec, updateCounts: updateCounts };
     }
 
     // ── Loop control (CEO in-page walkthrough tool, 2026-07-03) ───────────────────
@@ -533,10 +341,6 @@
     // ── window.setup — invoked by the boot dance once engine + renderer are live ──
     window.setup = function () {
         var cfg = window._egptFx || {};
-        // ?soloTier= deep-link — applied FIRST, before anything (esp. _buildTierMatrix,
-        // later) reads cfg.renderDefaults.renderTiers, so the matrix's Show-Dim
-        // checkboxes seed correctly reflecting the solo'd state.
-        _applySoloTierFromUrl(cfg);
         // Resolve the setup factory. Pages name it by STRING (`setup:'setupFxSmoke'`) because
         // the inline config runs before the factory's async page-script has loaded — a direct
         // global reference would be undefined at parse time. A function is also accepted.
@@ -558,9 +362,8 @@
         var _beats = [];
         function schedule(atTick, fn) { _beats.push({ at: atTick, fn: fn, fired: false }); }
 
-        // Filled in AFTER runner.setup() below (both need cfg.renderDefaults.renderTiers /
-        // the built DOM to exist first) — declared here so the onTick closure can see them.
-        var updateTierCounts = null;   // set by _buildTierMatrix(cfg); null on non-tiered pages
+        // Filled in AFTER runner.setup() below (needs the built DOM to exist first) —
+        // declared here so the onTick closure can see it.
         var loopState = null;          // set by _buildLoopControl(cfg) — {enabled, ticks}
 
         var runner = new FrqtlApp({
@@ -581,12 +384,9 @@
                     var frames = (tickData && tickData.frameData) ? tickData.frameData : [];
                     metrics.update({ 'Active Quanta': frames.length, 'Tick': tick });
                 }
-                // Per-dim matrix Count row — LIVE, re-derived from this tick's frameData
-                // (engine untouched; RenderTiers.groupByLayer already does the grouping).
-                if (updateTierCounts) { updateTierCounts(tickData); }
                 // Loop control: "re-run the simulation every X ticks, continuous" — fixed
                 // seed means every loop iteration replays the IDENTICAL physics stream.
-                // Checked LAST so this tick's beats/metrics/counts still reflect the run
+                // Checked LAST so this tick's beats/metrics still reflect the run
                 // that just completed before the reset takes effect on the NEXT tick.
                 if (loopState && loopState.enabled && tick >= loopState.ticks) {
                     tick = 0;
@@ -607,14 +407,8 @@
             ]);
         }
 
-        // Apply the effect's render defaults (capability-checked; no-op on p5).
-        if (cfg.renderDefaults && runner.setRenderOption) {
-            for (var k in cfg.renderDefaults) {
-                if (Object.prototype.hasOwnProperty.call(cfg.renderDefaults, k)) {
-                    runner.setRenderOption(k, cfg.renderDefaults[k]);
-                }
-            }
-        }
+        // Apply the effect's render defaults — one validated batch.
+        if (cfg.renderDefaults) { runner.setRenderOptions(cfg.renderDefaults); }
 
         // Expose presets so the GYM (CompareView) — which hides the page chrome —
         // can render its own preset row by capability-CHECKING the runner.
@@ -636,20 +430,9 @@
         // renders sliders from — never a hand-authored cfg.controls array (§7 r2
         // item 3(b) retirement; see the file docstring).
         runner.fxControls = _buildControls(runner, cfg);
-        // Per-dim matrix (capability-checked — null/no-op on non-tiered pages) + the
-        // generic loop control (every fx-* page gets it — CEO in-page walkthrough tool).
-        var tierMatrixBuild = _buildTierMatrix(cfg);   // null or { spec, updateCounts }
-        updateTierCounts = tierMatrixBuild ? tierMatrixBuild.updateCounts : null;
+        // The generic loop control (every fx-* page gets it — CEO in-page walkthrough tool),
+        // published as a runner capability exactly like fxPresets/fxControls/cameraControl.
         loopState = _buildLoopControl(cfg);
-
-        // Publish the SAME live spec/state objects as runner capabilities — the GYM
-        // (CompareView, chrome=canvas hides the DOM built above) capability-checks
-        // these exactly like fxPresets/fxControls/cameraControl (FRQTL-MAINT
-        // 2026-07-03, CEO standing principle: "the GYM is my ONLY visual-verification
-        // surface"). `tierMatrix` stays absent (undefined) on non-tiered pages — the
-        // GYM's matrix strip stays hidden, byte-identical for fx-smoke,
-        // fx-godrays, fx-glow. `loopControl` is always present.
-        if (tierMatrixBuild) { runner.tierMatrix = tierMatrixBuild.spec; }
         runner.loopControl = loopState;
 
         // 3D experiments default to a VIEWING cadence (capped TPS → smooth FPS).

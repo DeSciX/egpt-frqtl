@@ -58,6 +58,10 @@
  *   tap MECHANISM) and `objects/objects/FrqtlVision.js` (the sugar), both GAME
  *   layer and both through a named FAIL-LOUD guard at CALL time — so there is
  *   no eval-time ordering dependency on the other shim entries.
+ * - `render/capture-envelope.js` — the TRANSPORT contract of a capture (the still and video
+ *   envelopes, `ENCODERS`, `ENCODED_KEYS`). Publishes `window.CaptureEnvelope`. Consumed by
+ *   `FrqtlVision.record` in the page, which returns `videoEnvelope`; resolves `RenderStages`
+ *   at CALL time, so no eval-time ordering dependency.
  *
  * ## Updating this manifest
  *
@@ -85,5 +89,6 @@ export var ENGINE_SHIM_CONTRACT_SCRIPTS = [
     '/lib/shim/controls/registry.js',
     '/lib/shim/rpc/index.js',
     '/lib/shim/render/heat-colormap.js',
-    '/lib/shim/render/render-stages.js'
+    '/lib/shim/render/render-stages.js',
+    '/lib/shim/render/capture-envelope.js'
 ];

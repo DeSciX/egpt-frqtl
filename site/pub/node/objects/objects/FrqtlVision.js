@@ -25,13 +25,20 @@
  *
  * `FrqtlVision.attach(runner) → handle`
  *
- *   @param {object} runner — an FrqtlApp. The ONLY coupling: `runner.capture()`,
- *     `runner.captureStill()`, `runner.sceneRecord()` and the shim-owned stage table. No
- *     renderer-sniffing, no engine, no per-page coupling — this object knows nothing about
- *     which experiment mounts it.
+ *   @param {object} runner — an FrqtlApp. The coupling: `runner.capture()`,
+ *     `runner.captureStill()`, `runner.sceneRecord()` and the shim-owned stage table; the
+ *     stream and the recorder additionally use the per-tick listener fan-out
+ *     (`addTickListener`) and, for a raster stage, the capture hold (`suspendTicks`,
+ *     `repaint`, `resumeTicks`); `record` reads `runner.captureHost()` where the runner has
+ *     one (a node-side capture instrument), and forwards to that host. No renderer-sniffing,
+ *     no engine, no per-page coupling — this
+ *     object knows nothing about which experiment mounts it.
  *   @returns {{
  *     getScene():Promise<object>,        // the run-invariant SceneRecord + its content id
  *     getStill(stage?):Promise<object>,  // stage omitted → the FULL composed stack
+ *     getStream({stage?, everyTicks}):AsyncIterable<object>,   // stills at a TICK cadence
+ *     record({everyTicks, stopAt, maxFrames, fps, stage?, bitrate?, keyFrameInterval?, signal?})
+ *         :Promise<object>,              // an encoded video: CaptureEnvelope.videoEnvelope
  *     stages:string[],                   // the FERRIED RenderStages.RENDER_STAGES list
  *     finalStage():string,               // the ferried final-stage derivation
  *     toDataURL(still):string,           // the BROWSER PNG encoder (data URL)
@@ -77,26 +84,41 @@
  *   All dispatch, all throw rules and ALL provenance stamping live in the runner and nowhere
  *   else. This object holds no state at all.
  *
- * RESERVED, DEFERRED: `getStream({stage, everyNTicks}) → AsyncIterable<Still>` — a stream is
- * this same tap subscribed across ticks, yielding the SAME canonical bags (no envelope, no
- * new noun, and rate vocabulary in TICKS, never wall-clock fps: the physics clock is the only
- * clock). It needs no new capture machinery — the runner's per-tick listener fan-out is
- * already the subscription seam — so it lands with its first real caller. Nothing here
- * precludes it: `getStill` is stateless and re-entrant, every record carries a mandatory
- * `tick` (so a stream is just tick-monotone records and needs no sequence numbers — a second
- * ordering key beside `tick` would be a two-clocks bug), and provenance rides every element,
- * so a stream needs no stream-level header.
+ * ── STREAM and VIDEO: the tick IS the frame ─────────────────────────────────
+ *
+ * `getStream({stage, everyTicks})` is this same tap subscribed across ticks through the
+ * runner's per-tick listener fan-out, yielding the SAME canonical still bags in tick order —
+ * no envelope, no new noun, no sequence number beside `tick` (a second ordering key would be a
+ * two-clocks bug). The cadence is in TICKS; there is no wall-clock rate anywhere on this face.
+ * A stream spans ONE scene at ONE size: a still whose `scene` or dimensions differ from the
+ * first ENDS the stream with an error rather than yielding a sequence no encoder can hold.
+ *
+ * A sampled RASTER tick is rendered before it is read because the stream ASKS for it: in the
+ * listener it raises the capture HOLD — `suspendTicks()` → `repaint()` → capture →
+ * `resumeTicks()` when the capture settles. The listener fires BEFORE the loop draws its
+ * tick, a batching loop composites only a batch's last tick, and an fps cap skips draws; the
+ * hold stops the clock and forces the draw, and the tap's provenance guard proves it did.
+ * The stream never OWNS the clock: a paused runner yields nothing, and a runner driven by
+ * `step()` waits for each hold to release. Numeric stages (`tick`, `field`) read the
+ * retained TickData directly and need no hold — selected by FORMAT off the stage table.
+ *
+ * `record(...)` is `getStream`'s sampling plus an encoder, and nothing records anything
+ * else: every encoded picture IS a provenance-stamped still, so its manifest row `{i, tick,
+ * pose}` is DERIVED from the still. The encoder is mediabunny (vendored unmodified with its
+ * licence and pin, `assets/vendor/mediabunny.*`), loaded LAZILY through the page's router on
+ * the first `record()` — a page that never records never fetches it. It runs where WebCodecs
+ * exists, i.e. in a page; under node the hosted eyes run this SAME `record` inside their page
+ * (`eyes.vision.record`), and a node process with no host is refused naming that door.
  *
  * ── Why the PNG is DERIVED here and never in a provider ──────────────────────
  *
  * The pixel array IS the still; a PNG is a lossless ENCODING of it. pixels → PNG is
  * synchronous and lossless, so it is written ONCE, here, and no provider (nor any BYO
- * renderer) ever ships image-encoding code. This is the sanctioned EDGE for encoders: when a
- * second encoding genuinely arrives it accretes HERE as a pure function over records — never
- * below this layer, and never as a format parameter on the tap (that would be format
- * negotiation inside a render capability). A video encoder in particular is a CONSUMER-side
- * module over a stream of `rgba8` records: a heavyweight codec inside `lib/frqtl` sugar would
- * ship a video encoder to every experiment page.
+ * renderer) ever ships image-encoding code. This is the sanctioned EDGE for encoders: every
+ * encoding accretes HERE over records — never below this layer, and never as a format
+ * parameter on the tap (that would be format negotiation inside a render capability). The
+ * video encoder is the heavyweight one, so it is resolved lazily by `record()` rather than
+ * loaded as a script by every page.
  *
  * ── ONE ENCODER PER HOST, both on this ONE face ──────────────────────────────
  *
@@ -145,6 +167,9 @@
  *   var scene  = await vision.getScene();         // store ONCE
  *   var still  = await vision.getStill();         // the whole composed stack
  *   var field  = await vision.getStill('field');  // the render-free numeric channel
+ *
+ *   // A video: 1 still per 2 ticks until tick 600, played back at 30 fps.
+ *   var env = await vision.record({ everyTicks: 2, stopAt: { tick: 600 }, maxFrames: 400, fps: 30 });
  *
  *   // Aligned multi-channel corpus row: capture BETWEEN ticks and assert equal tick stamps —
  *   // the tick equality IS the co-registration guard; `scene` ties them to one header.
@@ -291,6 +316,492 @@ function toPNG(still) {
     ]);
 }
 
+// ── STREAM + VIDEO ────────────────────────────────────────────────────────────
+
+/** Named FAIL-LOUD for this face. @private */
+function _fail(who, msg) {
+    throw new Error('[FrqtlVision.' + who + '] ' + msg + ' (FAIL-LOUD.)');
+}
+
+/** @private */
+function _requirePosInt(value, name, who) {
+    if (typeof value !== 'number' || !isFinite(value) || value <= 0 || value % 1 !== 0) {
+        _fail(who, name + ' must be a positive whole number, got ' + String(value));
+    }
+    return value;
+}
+
+/** Refuse any option this call does not declare — a typo'd knob is never a silent no-op. @private */
+function _assertKnownKeys(bag, allowed, where, who) {
+    var keys = Object.keys(bag);
+    for (var i = 0; i < keys.length; i++) {
+        if (allowed.indexOf(keys[i]) === -1) {
+            _fail(who, where + ' has no option ' + JSON.stringify(keys[i]) + ' — declared: ' +
+                allowed.join(', '));
+        }
+    }
+}
+
+/**
+ * The capture-envelope contract (the video shape `record` returns), FERRIED from its owner
+ * with the same two-host resolution as the stage vocabulary.
+ * @private
+ */
+function _resolveCaptureEnvelope() {
+    if (typeof window !== 'undefined' && window.CaptureEnvelope) { return window.CaptureEnvelope; }
+    if (typeof CaptureEnvelope !== 'undefined') { return CaptureEnvelope; }
+    if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
+        return require('../../../shim/render/capture-envelope.js');
+    }
+    throw new Error('[FrqtlVision] canonical contract CaptureEnvelope ' +
+        '(lib/shim/render/capture-envelope.js) is unreachable (load order) — fail-loud, not a fallback.');
+}
+
+/** The pose authority `record` composes for a `stopAt.path` flight. @private */
+function _resolveCameraPath() {
+    if (typeof window !== 'undefined' && window.CameraPath) { return window.CameraPath; }
+    if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
+        return require('./CameraPath.js');
+    }
+    throw new Error('[FrqtlVision] canonical contract CameraPath ' +
+        '(lib/frqtl/objects/objects/CameraPath.js) is unreachable (load order) — fail-loud, not a fallback.');
+}
+
+/** The capture-host KIND (verification of a hosted recording). Node-side only. @private */
+function _resolveCaptureHost() {
+    if (typeof window !== 'undefined' && window.FrqtlCaptureHost) { return window.FrqtlCaptureHost; }
+    if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
+        return require('../instruments/capture-host.js');
+    }
+    throw new Error('[FrqtlVision] canonical contract FrqtlCaptureHost ' +
+        '(lib/frqtl/objects/instruments/capture-host.js) is unreachable — fail-loud, not a fallback.');
+}
+
+/**
+ * THE ONE SAMPLING MECHANISM behind `getStream` and `record`.
+ *
+ * Subscribes to the runner's tick fan-out and samples the FIRST tick after subscription, then
+ * every `everyTicks`-th. A sampled raster tick is HELD (suspend → repaint → capture → resume
+ * when `cfg.onStill`'s promise settles, so a stop decision taken there lands before another
+ * tick can run). `cfg.admit(index)` is asked BEFORE each capture and may refuse it (a bound
+ * reached). Every capture promise goes to `cfg.onStill(promise, index)` with the one-scene /
+ * one-size continuity check already applied.
+ *
+ * @returns {{stop:function}} idempotent; releases nothing it does not hold (holds release
+ *   when their own capture settles).
+ * @private
+ */
+function _sample(runner, RS, cfg) {
+    var who = cfg.who;
+    if (typeof runner.addTickListener !== 'function') {
+        _fail(who, 'needs the runner\'s per-tick listener fan-out (runner.addTickListener) — the ' +
+            'cadence is counted in TICKS, and nothing else can count them. A node-side capture ' +
+            'instrument has no clock of its own: record inside the page that runs the world ' +
+            '(eyes.vision.record from @descix/frqtl-sdk/eyes)');
+    }
+    var raster = RS.STAGE_FORMATS[cfg.stage] === _rgba8Format(RS);
+    if (raster && (typeof runner.suspendTicks !== 'function' || typeof runner.resumeTicks !== 'function' ||
+                   typeof runner.repaint !== 'function')) {
+        _fail(who, 'a ' + JSON.stringify(cfg.stage) + ' sample needs the capture hold ' +
+            '(runner.suspendTicks/repaint/resumeTicks): a capture from the tick listener must see ' +
+            'its tick COMPOSITED before the readback, and on a batching or fps-capped loop only a ' +
+            'held clock plus a forced draw guarantees that');
+    }
+    var calls = 0;
+    var index = 0;
+    var first = null;
+    var stopped = false;
+    var unsubscribe = null;
+
+    function continuity(still) {
+        if (first === null) { first = { scene: still.scene, width: still.width, height: still.height }; return still; }
+        if (still.scene !== first.scene) {
+            throw new Error('[FrqtlVision.' + who + '] the scene changed mid-sequence (' +
+                JSON.stringify(first.scene) + ' → ' + JSON.stringify(still.scene) + ' at tick ' +
+                still.tick + '): a sequence spans exactly ONE scene record. Start a new one. (FAIL-LOUD.)');
+        }
+        if (still.width !== first.width || still.height !== first.height) {
+            throw new Error('[FrqtlVision.' + who + '] the ' + still.stage + ' size changed mid-sequence (' +
+                first.width + 'x' + first.height + ' → ' + still.width + 'x' + still.height + ' at tick ' +
+                still.tick + '): a sequence has constant dimensions (an encoder cannot hold a resize). ' +
+                'Start a new one. (FAIL-LOUD.)');
+        }
+        return still;
+    }
+
+    function onTick() {
+        if (stopped) { return; }
+        calls += 1;
+        if ((calls - 1) % cfg.everyTicks !== 0) { return; }
+        if (!cfg.admit(index)) { return; }
+        var i = index;
+        index += 1;
+        var capture;
+        if (raster) {
+            runner.suspendTicks();
+            try { runner.repaint(); }
+            catch (e) { capture = Promise.reject(e); }
+        }
+        if (!capture) {
+            try { capture = Promise.resolve(runner.capture(cfg.stage)); }
+            catch (e) { capture = Promise.reject(e); }
+        }
+        var handled = Promise.resolve(cfg.onStill(capture.then(continuity), i));
+        if (raster) {
+            var release = function () { runner.resumeTicks(); };
+            handled.then(release, release);
+        }
+    }
+
+    unsubscribe = runner.addTickListener(onTick);
+    return {
+        stop: function () {
+            if (stopped) { return; }
+            stopped = true;
+            if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        }
+    };
+}
+
+/**
+ * getStream({stage?, everyTicks}) — the tap subscribed across ticks.
+ *
+ * @param {object} runner
+ * @param {object} RS
+ * @param {{stage?:string, everyTicks:number}} opts — `stage` defaults to the final stage.
+ * @returns {AsyncIterable<object>} canonical still bags in tick order. Iteration SUBSCRIBES;
+ *   `break`/`return()` unsubscribes. A capture failure or a continuity break rejects `next()`
+ *   and ends the stream. The queue is UNBOUNDED: stills sampled faster than the consumer pulls
+ *   are held in memory — `record`'s `maxFrames` is the bound when one is needed.
+ * @private
+ */
+function _getStream(runner, RS, opts) {
+    var who = 'getStream';
+    if (!opts || typeof opts !== 'object') { _fail(who, 'expected {stage?, everyTicks}, got ' + String(opts)); }
+    _assertKnownKeys(opts, ['stage', 'everyTicks'], 'getStream', who);
+    var everyTicks = _requirePosInt(opts.everyTicks, 'everyTicks', who);
+    var stage = (opts.stage === undefined) ? RS.finalStage() : RS.assertStage(opts.stage);
+
+    var iterable = {};
+    iterable[Symbol.asyncIterator] = function () {
+        var queue = [];          // capture promises, in index order
+        var waiter = null;       // a pending next() with nothing queued
+        var ended = false;
+        var session = _sample(runner, RS, {
+            who: who, stage: stage, everyTicks: everyTicks,
+            admit: function () { return !ended; },
+            onStill: function (p) {
+                // Handled here so a capture failing while nobody is pulling is never an
+                // unhandled rejection; the failure is delivered by next().
+                p.then(null, function () {});
+                queue.push(p);
+                if (waiter) { var w = waiter; waiter = null; w(); }
+                return p;
+            }
+        });
+        function end() { ended = true; session.stop(); queue.length = 0; }
+        return {
+            next: function () {
+                if (queue.length) {
+                    return queue.shift().then(function (still) { return { value: still, done: false }; },
+                        function (e) { end(); throw e; });
+                }
+                if (ended) { return Promise.resolve({ value: undefined, done: true }); }
+                var self = this;
+                return new Promise(function (resolve) { waiter = resolve; }).then(function () { return self.next(); });
+            },
+            return: function () {
+                end();
+                if (waiter) { var w = waiter; waiter = null; w(); }
+                return Promise.resolve({ value: undefined, done: true });
+            }
+        };
+    };
+    return iterable;
+}
+
+/** The recorder's declared options. @private */
+var RECORD_OPTIONS = ['everyTicks', 'stopAt', 'maxFrames', 'fps', 'stage', 'bitrate', 'keyFrameInterval', 'signal'];
+var STOP_AT_FORMS = ['tick', 'ticks', 'path'];
+var PATH_OPTIONS = ['waypoints', 'loop', 'waypointTimeoutMs'];
+
+/** Validate a record() request; returns the normalized request. @private */
+function _normalizeRecord(RS, opts) {
+    var who = 'record';
+    if (!opts || typeof opts !== 'object') {
+        _fail(who, 'expected {everyTicks, stopAt, maxFrames, fps, stage?, bitrate?, keyFrameInterval?, signal?}, got ' + String(opts));
+    }
+    _assertKnownKeys(opts, RECORD_OPTIONS, 'record', who);
+    var req = {
+        everyTicks: _requirePosInt(opts.everyTicks, 'everyTicks (the capture cadence in TICKS — there is no wall-clock cadence)', who),
+        maxFrames:  _requirePosInt(opts.maxFrames, 'maxFrames (the memory bound; hitting it reports truncated:true)', who),
+        fps:        _requirePosInt(opts.fps, 'fps (the PLAYBACK rate — it has no physical meaning)', who),
+        stage:      (opts.stage === undefined) ? RS.finalStage() : RS.assertStage(opts.stage),
+        bitrate:    (opts.bitrate === undefined) ? null : _requirePosInt(opts.bitrate, 'bitrate (bits per second)', who),
+        keyFrameInterval: (opts.keyFrameInterval === undefined) ? 1
+            : _requirePosInt(opts.keyFrameInterval, 'keyFrameInterval (frames)', who),
+        stopAt: null,
+        signal: null
+    };
+    if (opts.signal !== undefined) {
+        var sig = opts.signal;
+        if (!sig || typeof sig.aborted !== 'boolean' || typeof sig.addEventListener !== 'function') {
+            _fail(who, 'signal must be an AbortSignal (new AbortController().signal) — it is how a recording ' +
+                'stops before its stopAt; got ' + String(sig));
+        }
+        req.signal = sig;
+    }
+    if (RS.STAGE_FORMATS[req.stage] !== _rgba8Format(RS)) {
+        _fail(who, 'stage ' + JSON.stringify(req.stage) + ' carries NUMBERS (format ' +
+            JSON.stringify(RS.STAGE_FORMATS[req.stage]) + '), not an image — a video of it would be a ' +
+            'plausible-looking movie of nothing. Read the numbers with getStream({stage: ' +
+            JSON.stringify(req.stage) + ', everyTicks})');
+    }
+    var s = opts.stopAt;
+    if (!s || typeof s !== 'object') {
+        _fail(who, 'stopAt is REQUIRED — exactly one of {tick: T}, {ticks: K}, {path: {waypoints, loop?, ' +
+            'waypointTimeoutMs?}}. A recording with no honest stop is stopped by its bound, which is ' +
+            'how a cap silently becomes the length of every video');
+    }
+    var forms = Object.keys(s);
+    _assertKnownKeys(s, STOP_AT_FORMS, 'stopAt', who);
+    if (forms.length !== 1) {
+        _fail(who, 'stopAt names exactly ONE form, got [' + forms.join(', ') + '] — declared: ' + STOP_AT_FORMS.join(', '));
+    }
+    if (forms[0] === 'tick') {
+        if (typeof s.tick !== 'number' || !isFinite(s.tick) || s.tick < 0 || s.tick % 1 !== 0) {
+            _fail(who, 'stopAt.tick is an absolute tick (a non-negative whole number), got ' + String(s.tick));
+        }
+        req.stopAt = { tick: s.tick };
+    } else if (forms[0] === 'ticks') {
+        req.stopAt = { ticks: _requirePosInt(s.ticks, 'stopAt.ticks (ticks after the first capture)', who) };
+    } else {
+        if (!s.path || typeof s.path !== 'object') { _fail(who, 'stopAt.path must be {waypoints, loop?, waypointTimeoutMs?}'); }
+        _assertKnownKeys(s.path, PATH_OPTIONS, 'stopAt.path', who);
+        req.stopAt = { path: s.path };
+    }
+    return req;
+}
+
+/**
+ * The page's ONE path authority, or a named refusal. A synchronous DOOR check: `_record` runs it
+ * before it attaches or subscribes anything.
+ *
+ * Returns ABSOLUTE URLs. The static router hands out DOCUMENT-relative paths, and a relative
+ * specifier given to `import()` from this classic script resolves against the SCRIPT's URL, not
+ * the document's (measured: `../../js/lib/…` became `/pub/js/js/lib/…` and 404'd). Anchoring at
+ * `document.baseURI` resolves it the way the router meant; an absolute result passes unchanged.
+ * @private
+ */
+function _assetResolver() {
+    var resolve = globalThis._egptResolveFrqtl;
+    if (typeof resolve !== 'function') {
+        _fail('record', 'this page has no router-backed path resolver (window._egptResolveFrqtl), so the ' +
+            'vendored encoder cannot be located. It is published by the canonical boots — ' +
+            'lib/frqtl/experiments/_shared/stack-boot.js and the @descix/frqtl-sdk browser barrel');
+    }
+    return function (relPath) {
+        return new URL(resolve(relPath), document.baseURI).href;
+    };
+}
+
+/**
+ * Load the vendored encoder and its pin through the page's path authority. Asynchronous only —
+ * every synchronous refusal is a door `_record` checks first. @private
+ */
+function _loadEncoder(resolve) {
+    return Promise.all([
+        import(resolve('assets/vendor/mediabunny.min.mjs')),
+        fetch(resolve('assets/vendor/mediabunny.PINNED.json')).then(function (r) {
+            if (!r.ok) { _fail('record', 'the encoder pin mediabunny.PINNED.json did not load (HTTP ' + r.status + ')'); }
+            return r.json();
+        })
+    ]).then(function (mods) {
+        var pin = mods[1];
+        if (!pin || typeof pin.version !== 'string' || !pin.version) {
+            _fail('record', 'mediabunny.PINNED.json carries no version — the muxer label is ferried from ' +
+                'the pin, never typed here');
+        }
+        return { MB: mods[0], pin: pin };
+    });
+}
+
+/**
+ * record(opts) — the in-page recorder, or the hosted forward.
+ * @private
+ */
+function _record(runner, RS, opts) {
+    var req = _normalizeRecord(RS, opts);
+    var CE = _resolveCaptureEnvelope();
+
+    // HOSTED: the world, the clock and the encoder are in the page. The SAME record runs there;
+    // this process forwards and VERIFIES the envelope against its own scene identity. The
+    // forward is issued synchronously, so a drive issued right after this call cannot run
+    // ticks ahead of the page-side subscription.
+    var host = (typeof runner.captureHost === 'function') ? runner.captureHost() : null;
+    if (host) {
+        var pending = Promise.resolve(host.record(opts));
+        return Promise.all([runner.sceneRecord(), pending]).then(function (joined) {
+            return _resolveCaptureHost().verifyVideo(joined[0].scene, joined[1]);
+        });
+    }
+    if (typeof document === 'undefined') {
+        _fail('record', 'no DOM and no capture host: video is encoded with WebCodecs where the ' +
+            'picture is, i.e. in a page. From node use the hosted eyes — ' +
+            'openHostedEyes from @descix/frqtl-sdk/eyes, then eyes.vision.record(opts), ' +
+            'which runs this SAME record inside the hosted page');
+    }
+    if (typeof VideoEncoder === 'undefined') {
+        _fail('record', 'this page has no WebCodecs VideoEncoder (it needs a secure context: https or ' +
+            'localhost). The encoder is not optional — there is no second path');
+    }
+
+    var resolveAsset = _assetResolver();
+
+    // Everything that can THROW synchronously happens BEFORE the sampler subscribes: a
+    // CameraPath refused at attach (no pose control, an undeclared pose field) must not leave
+    // a subscribed sampler holding the clock behind a rejection nobody can reach.
+    var path = null;
+    if (req.stopAt.path) {
+        path = _resolveCameraPath().attach(runner, {
+            waypoints: req.stopAt.path.waypoints,
+            loop: !!req.stopAt.path.loop,
+            waypointTimeoutMs: req.stopAt.path.waypointTimeoutMs
+        });
+    }
+    var frames = [];
+    var inflight = [];
+    var truncated = false;
+    var closing = false;
+    var failure = null;
+    var stopTick = (req.stopAt.tick !== undefined) ? req.stopAt.tick : null;
+    var session = null;
+    var onAbort = null;
+    var dims = null;
+    var scene = null;
+    var encoderReady = _loadEncoder(resolveAsset).then(function (enc) {
+        var MB = enc.MB;
+        var target = new MB.BufferTarget();
+        var output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: target });
+        var source = new MB.VideoSampleSource({
+            codec: 'avc',
+            bitrate: (req.bitrate === null) ? MB.QUALITY_HIGH : req.bitrate,
+            keyFrameInterval: req.keyFrameInterval
+        });
+        output.addVideoTrack(source, { frameRate: req.fps });
+        return output.start().then(function () {
+            return { MB: MB, pin: enc.pin, target: target, output: output, source: source };
+        });
+    });
+    var encodeChain = encoderReady;
+
+    var settle;
+    var done = new Promise(function (resolve, reject) { settle = { resolve: resolve, reject: reject }; });
+
+    function close(err) {
+        if (err && !failure) { failure = err; }
+        if (closing) { return; }
+        closing = true;
+        if (session) { session.stop(); }
+        if (path) { path.dispose(); path = null; }
+        if (onAbort) { req.signal.removeEventListener('abort', onAbort); onAbort = null; }
+        // Every capture already requested lands in the video before it is finalized.
+        Promise.all(inflight).then(function () {
+            if (failure) { throw failure; }
+            if (!frames.length) {
+                _fail('record', 'the recording stopped before a single still was captured — nothing to ' +
+                    'encode. Is the runner advancing ticks?');
+            }
+            return encodeChain;
+        }).then(function (enc) {
+            return enc.output.finalize().then(function () { return enc.output.getMimeType(); })
+                .then(function (mimeType) {
+                    var parts = String(mimeType).split(';');
+                    var mime = parts[0].trim();
+                    var m = /codecs="([^"]+)"/.exec(mimeType);
+                    if (!m) {
+                        _fail('record', 'the muxer reported no codec string (' + JSON.stringify(mimeType) +
+                            ') — encoded.codec REPORTS what was produced and is never assumed');
+                    }
+                    return CE.videoEnvelope({
+                        track: {
+                            scene: scene, stage: req.stage, width: dims.width, height: dims.height,
+                            ticksPerFrame: req.everyTicks, fps: req.fps, frames: frames
+                        },
+                        encoded: {
+                            mime: mime,
+                            bytes: CE.bytesToBase64(new Uint8Array(enc.target.buffer)),
+                            encoder: 'FrqtlVision.record',
+                            codec: m[1],
+                            muxer: 'mediabunny@' + enc.pin.version
+                        },
+                        truncated: truncated
+                    });
+                });
+        }).then(settle.resolve, function (e) {
+            encoderReady.then(function (enc) { return enc.output.cancel(); }).then(null, function () {});
+            settle.reject(e);
+        });
+    }
+
+    encoderReady.then(null, function (e) { close(e); });
+
+    session = _sample(runner, RS, {
+        who: 'record', stage: req.stage, everyTicks: req.everyTicks,
+        admit: function (i) {
+            if (closing) { return false; }
+            if (i >= req.maxFrames) { truncated = true; close(null); return false; }
+            return true;
+        },
+        onStill: function (p, i) {
+            var handled = p.then(function (still) {
+                if (i === 0) {
+                    scene = still.scene;
+                    dims = { width: still.width, height: still.height };
+                    if (req.stopAt.ticks !== undefined) { stopTick = still.tick + req.stopAt.ticks; }
+                    if (stopTick !== null && still.tick > stopTick) {
+                        _fail('record', 'stopAt.tick ' + stopTick + ' is already in the past — the first ' +
+                            'capture is tick ' + still.tick);
+                    }
+                }
+                frames[i] = { i: i, tick: still.tick, pose: still.pose };
+                encodeChain = encodeChain.then(function (enc) {
+                    var sample = new enc.MB.VideoSample(still.data, {
+                        format: 'RGBA', codedWidth: still.width, codedHeight: still.height,
+                        timestamp: i / req.fps, duration: 1 / req.fps
+                    });
+                    return Promise.resolve(enc.source.add(sample)).then(function () {
+                        sample.close();
+                        return enc;
+                    }, function (e) { sample.close(); throw e; });
+                });
+                // Handled at close; a rejected encode must not surface as unhandled meanwhile.
+                encodeChain.then(null, function (e) { close(e); });
+                if (stopTick !== null && still.tick + req.everyTicks > stopTick) { close(null); }
+            }, function (e) { close(e); });
+            inflight.push(handled);
+            return handled;
+        }
+    });
+
+    // An abort ends the recording before its declared stop — that IS what `truncated` reports.
+    // With no still captured yet, close() refuses with "nothing to encode".
+    if (req.signal) {
+        onAbort = function () { truncated = true; close(null); };
+        if (req.signal.aborted) { onAbort(); return done; }
+        req.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    try {
+        if (path) {
+            var last = path.waypoints.length - 1;
+            path.onWaypoint(function (evt) { if (evt.index === last) { close(null); } });
+            path.start();
+        }
+    } catch (e) { close(e); }
+    return done;
+}
+
 /**
  * attach(runner) — bind the handle to a runner. Stateless: the handle is a thin forwarder.
  * @param {object} runner — an FrqtlApp
@@ -334,6 +845,45 @@ function attach(runner) {
          */
         getStill: function (stage) {
             return (stage === undefined) ? runner.captureStill() : runner.capture(stage);
+        },
+        /**
+         * getStream({stage?, everyTicks}) — stills at a TICK cadence, as an async iterable.
+         * Iterating subscribes; `break` unsubscribes. The queue is UNBOUNDED (a slow consumer
+         * holds every sampled still in memory); `record`'s `maxFrames` is the bound when one
+         * is needed. See the module docstring for the hold and the one-scene/one-size rule.
+         * @param {{stage?:string, everyTicks:number}} opts
+         * @returns {AsyncIterable<object>}
+         */
+        getStream: function (opts) { return _getStream(runner, RS, opts); },
+        /**
+         * record(opts) → Promise<VideoEnvelope> — sample like `getStream`, encode an MP4.
+         *
+         *   everyTicks        REQUIRED — capture cadence in TICKS (sampling starts at the first
+         *                     tick after this call, then every `everyTicks`)
+         *   stopAt            REQUIRED — exactly one of `{tick: T}` (absolute, inclusive),
+         *                     `{ticks: K}` (K ticks after the first capture),
+         *                     `{path: {waypoints, loop?, waypointTimeoutMs?}}` (a CameraPath
+         *                     flight started with the recording; stop = arrival at its last
+         *                     waypoint)
+         *   maxFrames         REQUIRED — the memory bound; reaching it before `stopAt` stops the
+         *                     recording and reports `truncated: true`
+         *   fps               REQUIRED — PLAYBACK rate only; frame i is timestamped i/fps
+         *   stage             default `finalStage()`; must be an rgba8 stage
+         *   signal            an AbortSignal: abort ends the recording early with the stills
+         *                     captured so far and `truncated: true` (rejects if none yet)
+         *   bitrate           default mediabunny QUALITY_HIGH (resolution-scaled); bits/second
+         *   keyFrameInterval  default 1 — every frame independently decodable
+         *
+         * Resolves `CaptureEnvelope.videoEnvelope`: `encoded {mime, bytes (base64), encoder,
+         * codec (as PRODUCED), muxer ('mediabunny@<pin>')}`, `track {scene, stage, width,
+         * height, ticksPerFrame, fps, firstTick, lastTick, frames[{i, tick, pose}]}` (every row
+         * derived from its still), `truncated`. Never throws synchronously.
+         * @param {object} opts
+         * @returns {Promise<object>}
+         */
+        record: function (opts) {
+            try { return _record(runner, RS, opts); }
+            catch (e) { return Promise.reject(e); }
         },
         toDataURL: toDataURL,
         toPNG:     toPNG

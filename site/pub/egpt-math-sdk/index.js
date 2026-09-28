@@ -195,7 +195,10 @@ function buildWasmMathProvider(wasmFacade) {
   const provider = Object.freeze({
     id: "wasm-math",
     // ── resetScope — per-run arena lifecycle ────────────────────────────────
-    // Called by MathBackendRegistry.resetScope() (Runtime's finally block).
+    // Reached via MathBackendRegistry.resetScope(), which the shim publishes as
+    // Runtime.resetMathScope() — called by whichever party owns a run unit (the
+    // run() lane owns one buffer; NotebookKernel owns one notebook run). NOT per
+    // cell: a cell's values outlive it in the kernel's binding store.
     // Provider MUST NOT subscribe to Bus — Runtime calls DOWN via registry.
     resetScope() {
       wasmFacade.resetScope();

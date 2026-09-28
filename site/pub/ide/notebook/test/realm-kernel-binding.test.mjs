@@ -48,7 +48,11 @@ function makeStubBus() {
 /* a stub runtime — the kernel only calls runCell for js/canvas RUNCELL cells; the seam
  * commits via commitViewOutputs which never touches the runtime. */
 function makeStubRuntime() {
-    return { math: { activeMathBackend: 'js-reference' }, runCell() { return Promise.resolve({ ok: true, outputs: {} }); } };
+    return {
+        math: { activeMathBackend: 'js-reference' },
+        runCell() { return Promise.resolve({ ok: true, outputs: {} }); },
+        resetMathScope() {}
+    };
 }
 
 function nb(cells) { return { title: 't', version: '1', cells }; }

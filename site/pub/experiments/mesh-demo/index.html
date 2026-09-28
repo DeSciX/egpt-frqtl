@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — render.mesh demo (external glTF geometry)</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        #reset { background:#27424f; color:#7ec8e3; border:1px solid #7ec8e3; border-radius:3px;
+                 font-size:12px; padding:3px 12px; cursor:pointer; }
+        .experiment-controls label { display:flex; align-items:center; gap:6px; color:#aaa; font-size:12px; cursor:pointer; white-space:nowrap; }
+        .experiment-controls input[type="range"] { width:120px; cursor:pointer; accent-color:#ffb450; }
+        .experiment-controls span.val { color:#ffb450; min-width:28px; display:inline-block; text-align:right; }
+        .cam-preset { background:#1a1a1a; color:#aaa; border:1px solid #2a2a2a; border-radius:3px;
+                      font-size:11px; padding:2px 7px; cursor:pointer; margin:0 2px; }
+        .cam-preset:hover { color:#7ec8e3; border-color:#7ec8e3; }
+        .legend { color:#888; font-size:11px; }
+        .legend b.a { color:#ff8c46; }
+        .legend b.b { color:#46a0ff; }
+    </style>
+</head>
+<body>
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+
+    <!--
+    ── 2D vs 3D: THE TWO FLAG CHANGES ──────────────────────────────────────────
+
+    The 2D collision-matrix uses:
+      (a) window._egptDefaultRenderer = 'three'   — explicit default (no _egpt3D)
+      (b) activeAxes: { x:true, y:true, z:false } — in universe.init() inside setup factory
+      Result: three.js ORTHOGRAPHIC camera (top-down 1:1), cubes rendered flat in XY plane.
+
+    This 3D version changes EXACTLY TWO flags:
+
+    FLAG 1 — Page-level (here):
+      window._egpt3D = true
+      Effect in render-boot.js (line ~108): renderer resolves to 'three' AND the three-provider
+      reads _egpt3D → creates a PerspectiveCamera (50° FOV, orbit) instead of orthographic.
+      getCameraControl() returns a live orbit handle (non-null) → the page wires it.
+      Without _egpt3D: orthographic (z=0 slice, no depth). With _egpt3D: perspective + depth.
+
+    FLAG 2 — Setup factory (setupCollisionMatrix3D.js):
+      activeAxes: { x:true, y:true, z:true }   (vs z:false in the 2D version)
+      Effect in engine: the transverse yo-yo also fires on Z each tick, and setFrameProperty('z')
+      moves bodies in depth. TickData.frameData[*].z is non-zero → three-provider places cubes
+      at their true depth. Bench C5 proves z-axis bounce is identical to x-axis bounce.
+      Without z:true: z stays 0, all cubes render at depth 0 (flat slice, camera depth is wasted).
+
+    RENDER PATH:
+      _egpt3D → render-boot.js → three-provider.makeProvider() → PerspectiveCamera + orbit
+            → renderTick(): f.z is read from TickData and placed at _posArr[w*3+2]
+            → cubes at different laneZ positions appear at true depth in the perspective view
+      setRenderOption('shape','cube') → RenderShape.resolve → isCubeMesh=true → InstancedMesh BoxGeometry path (true shaded cubes)
+      setRenderOption('colorScheme','roygbiv') → LightColor.getRgbBySchemeName → fullness-to-spectrum
+
+    CAMERA CONTROL (sugar, not renderer-sniffing):
+      runner.cameraControl = renderer.getCameraControl()
+      In 3D (perspective) mode: returns { setOrbit, getOrbit, setPreset, presets } handle.
+      In 2D (orthographic) mode: returns null.
+      The page CAPABILITY-CHECKS: if (cam) { show sliders; wire cam.setOrbit() }
+      No `if (renderer === 'three')` — zero renderer sniffing.
+
+    SCENE LAYOUT (3D only):
+      7 lanes distributed in a 3×3 grid (Y rows × Z cols), ~175px spacing.
+      All lanes approach along X (head-on). The orbit camera reveals depth.
+      The 2D matrix distributes lanes in Y ONLY (no Z variation).
+    ─────────────────────────────────────────────────────────────────────────── -->
+    <script>window._egpt3D = true;</script>
+    <!-- render.mesh demo: opt into the GLTFLoader+DRACOLoader UMD loaders (render-boot loads
+         them after three because window._egptMeshLoaders is set). The same 7-lane collision
+         physics as collision-matrix-3d, but each quantum renders as a CLONE of an external glTF
+         mesh (Flamingo) routed via setRenderOption('mesh', …) — the first "frame → external
+         geometry" worked example. WHICH mesh is a renderer choice; the engine is untouched. -->
+    <script>window._egptMeshLoaders = true;</script>
+
+    <!-- COLLISION MATRIX 3D: 7 Dim-6 CUBES arranged in a 3D grid (3 rows Y × 3 cols Z),
+         launched head-on along X at speed_prob=1. Same log-scale density sweep as the 2D
+         version (ρ ≈ 0.0002 … 1.0 across the 7 lanes). The orbit PerspectiveCamera
+         (auto-engaged by _egpt3D) shows cubes receding in depth. ROYGBIV colours by fullness.
+         The two-bucket momentum exchange runs per-axis; z-axis propagation is "free"
+         (engine bench C5: z-bounce ≡ x-bounce). No engine changes — pure sugar + routing. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupCollisionMatrix3D.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <button type="button" id="reset" title="Restart all 7 collisions">&#8634; Reset</button>
+            <label title="transverse OFFSET (px): expands pairs in Y, revealing glancing hits in perspective">
+                offset:
+                <input type="range" id="ctrl-offset" min="0" max="48" step="4" value="0">
+                <span class="val" id="ctrl-offset-val">0</span>
+            </label>
+            <label title="approach ANGLE (converging vy): adds Y-momentum — x+y momentum at impact">
+                angle:
+                <input type="range" id="ctrl-angle" min="0" max="1" step="0.1" value="0">
+                <span class="val" id="ctrl-angle-val">0.0</span>
+            </label>
+            <!-- Camera orbit sliders — shown only when cameraControl is available (3D mode).
+                 Wired via capability check; zero renderer sniffing (Particle Walk 3D pattern). -->
+            <span id="camera-controls" style="display:none; align-items:center; gap:16px;">
+                <label title="Orbit horizontally">
+                    cam azimuth:
+                    <input type="range" id="cam-azimuth" min="-180" max="180" step="1" value="-25">
+                    <span class="val" id="cam-azimuth-val">-25</span>
+                </label>
+                <label title="Orbit vertically">
+                    cam elevation:
+                    <input type="range" id="cam-elevation" min="-85" max="85" step="1" value="30">
+                    <span class="val" id="cam-elevation-val">30</span>
+                </label>
+                <label title="Dolly in/out">
+                    cam distance:
+                    <input type="range" id="cam-distance" min="200" max="2400" step="20" value="1100">
+                    <span class="val" id="cam-distance-val">1100</span>
+                </label>
+                <span>
+                    view:
+                    <button type="button" id="cam-preset-table-top"   class="cam-preset">table-top</button>
+                    <button type="button" id="cam-preset-down-barrel" class="cam-preset">down-barrel</button>
+                    <button type="button" id="cam-preset-rooftop"     class="cam-preset">rooftop</button>
+                </span>
+            </span>
+            <span class="legend"><b class="a">&#9632;</b> A (&rarr;) &nbsp; <b class="b">&#9632;</b> B (&larr;) &nbsp; Dim-6 shaded cube meshes (64 px), 7 lanes, 3D grid</span>
+        </div>
+        <div id="metrics-panel"></div>
+    </div>
+
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Collision Matrix 3D — 7-lane density sweep in a perspective 3D view.
+     *
+     * The 2D collision-matrix has 7 lanes in a column (Y only).
+     * This version distributes them in a 3×3 grid (Y rows, Z cols) so the
+     * orbit camera reveals TRUE DEPTH — cubes at different Z positions
+     * recede/approach as you orbit.
+     *
+     * Physics is identical to the 2D version: the two-bucket momentum exchange
+     * runs per-axis, and adding z:true to activeAxes costs nothing (engine C5).
+     * The only new work is sugar + render routing:
+     *   FLAG 1: window._egpt3D = true  → perspective camera + orbit control
+     *   FLAG 2: activeAxes {x,y,z}     → z-axis live in engine (setup factory)
+     *
+     * Live knobs (no reload): offset, angle (same as 2D matrix), plus orbit camera.
+     * Declared in CONTROLS once; used by BOTH the page sliders AND runner.experimentControls
+     * (the GYM hides page controls under chrome=canvas).
+     */
+
+    var runner = null, metrics = null, tick = 0;
+
+    function bodyX(fd, qid) {
+        var f = fd.find(function (g) { return g.id === qid; });
+        if (!f) return 0;
+        return f.rect ? f.rect._x : (f.x !== undefined ? f.x : 0);
+    }
+
+    window.setup = function () {
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 700, canvasH: 700, seed: 42,
+            onTick: function (tickData) {
+                tick++;
+                var res = runner.setupResult || {};
+                var lanes = res.lanes || [];
+                var voxel = res.voxel || 64;
+                var fd = (tickData && tickData.frameData) ? tickData.frameData : [];
+
+                // Per-lane gap (same metric as 2D matrix; gap < voxel = interpenetrating).
+                var vals = { 'Tick': tick };
+                lanes.forEach(function (lane) {
+                    var ax = bodyX(fd, lane.aQid);
+                    var bx = bodyX(fd, lane.bQid);
+                    var gap = Math.abs(bx - ax) - voxel;
+                    vals[lane.name + ' gap'] = gap;
+                });
+                if (metrics) { metrics.update(vals); }
+            }
+        });
+
+        runner.createCanvas();
+        // CUBE shape → true shaded 3D cube meshes (THREE.InstancedMesh + BoxGeometry +
+        // MeshLambertMaterial + scene lights). Only takes effect when _is3D is true (which
+        // this experiment always sets). In 2D or p5 the cube shape resolves to 'ball' (the
+        // default else branch in p5-provider). The cube path completely replaces the
+        // point-sprite GLSL shader with a real retained-mode mesh for true face-depth shading.
+        // ROYGBIV colour scheme: fullness→spectrum (sparse=red, dense=violet), bodies COLORLESS.
+        // render.mesh: route every quantum to an external glTF asset (loaded once, cloned per
+        // frame, FAIL-LOUD on load error). Takes priority over shape — the cube/points paths are
+        // hidden. The asset id is an OPEN-ID render-intent value (any URL/id); RenderMesh.resolve
+        // decodes it. The fixture is DRACO-COMPRESSED (KHR_draco_mesh_compression) — so the demo
+        // exercises the FULL GLTFLoader + DRACOLoader + decoder-WASM path on every run (the same
+        // path Objaverse Draco assets take). flamingo.glb (uncompressed) is the alternate fixture.
+        // Resolved via the router's 'assets/models/' key (window._egptResolveFrqtl, published by
+        // stack-boot.js) — never a hardcoded '/frqtl/...' literal, so this also works under the
+        // dist/static layout (B4b).
+        runner.setRenderOption('mesh', window._egptResolveFrqtl('assets/models/flamingo-draco.glb'));
+        runner.setRenderOption('meshScale', 6);   // enlarge clones for a legible demo (Flamingo's
+                                                  // wingspan dominates its bbox; unit-norm renders small)
+
+        runner.setup(setupCollisionMatrix3D, { level: 6, canvasW: 700, canvasH: 700 });
+        var ctl = runner.setupResult.matrixControl;
+
+        // ── Reset ──────────────────────────────────────────────────────────────
+        document.getElementById('reset').addEventListener('click', function () {
+            tick = 0;
+            ctl.reset();
+        });
+
+        // ── Control descriptors: declared ONCE for BOTH page sliders AND GYM ──
+        var CONTROLS = [
+            { id: 'offset', label: 'offset', min: 0, max: 48, step: 4,   value: 0,
+              fmt: function (v) { return String(v); },       onChange: function (v) { tick = 0; ctl.setOffset(v); } },
+            { id: 'angle',  label: 'angle',  min: 0, max: 1,  step: 0.1, value: 0,
+              fmt: function (v) { return v.toFixed(1); },    onChange: function (v) { tick = 0; ctl.setAngle(v); } }
+        ];
+        CONTROLS.forEach(function (c) {
+            var slider = document.getElementById('ctrl-' + c.id);
+            var out    = document.getElementById('ctrl-' + c.id + '-val');
+            if (!slider) return;
+            slider.addEventListener('input', function () {
+                var v = parseFloat(slider.value);
+                if (out) out.textContent = c.fmt(v);
+                c.onChange(v);
+            });
+        });
+        runner.experimentControls = CONTROLS;
+
+        // ── Camera orbit (sugar handle — zero renderer sniffing) ───────────────
+        // runner.cameraControl is null in 2D (orthographic), a handle in 3D (perspective).
+        // We capability-CHECK it; never sniff window._egptRenderer or the THREE namespace.
+        var cam = runner.cameraControl;
+        if (cam) {
+            document.getElementById('camera-controls').style.display = 'inline-flex';
+
+            // Seed sliders from the provider's initial orbit (single source of truth).
+            var startOrbit = cam.getOrbit();
+            var azEl = document.getElementById('cam-azimuth');
+            var elEl = document.getElementById('cam-elevation');
+            var diEl = document.getElementById('cam-distance');
+            azEl.value = Math.round(startOrbit.azimuth);
+            elEl.value = Math.round(startOrbit.elevation);
+            diEl.value = Math.round(startOrbit.distance);
+            document.getElementById('cam-azimuth-val').textContent   = azEl.value;
+            document.getElementById('cam-elevation-val').textContent = elEl.value;
+            document.getElementById('cam-distance-val').textContent  = diEl.value;
+
+            function _wireOrbit(inputEl, labelId, key) {
+                inputEl.addEventListener('input', function () {
+                    var v = parseInt(inputEl.value, 10);
+                    document.getElementById(labelId).textContent = v;
+                    var spec = {}; spec[key] = v;
+                    cam.setOrbit(spec);
+                });
+            }
+            _wireOrbit(azEl, 'cam-azimuth-val',   'azimuth');
+            _wireOrbit(elEl, 'cam-elevation-val', 'elevation');
+            _wireOrbit(diEl, 'cam-distance-val',  'distance');
+
+            function _syncSliders() {
+                var o = cam.getOrbit();
+                azEl.value = Math.round(o.azimuth);   document.getElementById('cam-azimuth-val').textContent   = azEl.value;
+                elEl.value = Math.round(o.elevation); document.getElementById('cam-elevation-val').textContent = elEl.value;
+                diEl.value = Math.round(o.distance);  document.getElementById('cam-distance-val').textContent  = diEl.value;
+            }
+            (cam.presets || []).forEach(function (name) {
+                var btn = document.getElementById('cam-preset-' + name);
+                if (btn) { btn.addEventListener('click', function () { cam.setPreset(name); _syncSliders(); }); }
+            });
+
+            // 3D experiments: cap TPS for smooth viewing (same as Particle Walk 3D).
+            runner.setRateLimits({ fpsLimit: 0, tpsLimit: 120 });
+        }
+
+        // ── Metrics ────────────────────────────────────────────────────────────
+        var lanes = runner.setupResult.lanes || [];
+        var metricDefs = [
+            { name: 'Tick', expected: null, format: function (v) { return String(v); } }
+        ].concat(lanes.map(function (lane) {
+            return {
+                name: lane.name + ' gap',
+                expected: '> 0 (sep)',
+                format: function (v) { return v.toFixed(0) + ' px'; }
+            };
+        }));
+        metrics = new ExperimentMetrics('metrics-panel', metricDefs);
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+        window._frqtlApp = runner;
+    };
+
+    // Boot: same pattern as particle-walk-3d. _egpt3D resolves renderer to 'three';
+    // render-boot fires the ready callback; we poll for FrqtlApp to be defined.
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var r = window._egptRenderer || 'p5';
+            if (r === 'p5') {
+                // Fallback: _egpt3D should have forced three, but if renderer was overridden
+                // to p5 explicitly via ?renderer=p5, honour it (z=0 slice — no depth).
+                var s = document.createElement('script');
+                s.src = '../../js/lib/p5.min.js';
+                document.body.appendChild(s);
+            } else {
+                (function whenRunnerReady() {
+                    // Wait for BOTH the GAME-layer FrqtlApp AND the page-script
+                    // ExperimentMetrics (data-page-scripts) — setup() constructs ExperimentMetrics
+                    // before runner.start(), so a too-early call throws and the sim never starts.
+                    //
+                    // S5b fix-loop (frqtl-tester re-verify, Oracle D): this guard was
+                    // missing the THIRD data-page-scripts global — setupCollisionMatrix3D
+                    // itself (runner.setup(setupCollisionMatrix3D, ...) below) — the SAME
+                    // unguarded-global race class as ExperimentMetrics, just not yet hit
+                    // in practice on this page.
+                    if (typeof window.FrqtlApp !== 'undefined' &&
+                        typeof setupCollisionMatrix3D !== 'undefined' &&
+                        typeof window.ExperimentMetrics !== 'undefined') { window.setup(); }
+                    else { setTimeout(whenRunnerReady, 20); }
+                })();
+            }
+        });
+    });
+    </script>
+</body>
+</html>

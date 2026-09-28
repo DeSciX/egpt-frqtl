@@ -144,6 +144,10 @@ export class WasmUniverse {
     }
     /**
      * Run one tick. Returns TickData as a JS object.
+     *
+     * An engine panic inside the tick — the injection path's diagnostics are the live class —
+     * reaches the caller as a JS error carrying the panic's own sentence, via the hook
+     * installed in `WasmUniverse::new`, instead of a bare `RuntimeError: unreachable`.
      * @returns {any}
      */
     do_tick() {
@@ -457,6 +461,15 @@ export class WasmUniverse {
      *   seed: 42
      * }
      * ```
+     *
+     * AN UNKNOWN KEY IS UNDETECTABLE AT THIS BOUNDARY, and `#[serde(deny_unknown_fields)]`
+     * cannot change that: `serde_wasm_bindgen` deserializes a struct by looking each KNOWN field
+     * name up as a property and never enumerates the object's own keys, so an unrecognised or
+     * near-miss key (`wavelengthScale` beside `wavelength_scale`) is silently ignored here while
+     * a wrong type, a bad enum value and a missing field all still throw. The gate is the JS
+     * wrapper's `create()` / `init()` contract tables (`wasm-engine.js`, `_assertNoUnknownKeys`
+     * + `_RETIRED_CONFIG_KEYS`), which throw naming the key — and the one-construction-authority
+     * rule keeps every caller behind them. Do not add a second key list here.
      * @param {any} config
      */
     constructor(config) {
@@ -870,6 +883,9 @@ function __wbg_get_imports() {
             getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
             getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
         },
+        __wbg___wbindgen_rethrow_c4d99b4b53265290: function(arg0) {
+            throw arg0;
+        },
         __wbg___wbindgen_string_get_72bdf95d3ae505b1: function(arg0, arg1) {
             const obj = arg1;
             const ret = typeof(obj) === 'string' ? obj : undefined;
@@ -957,6 +973,10 @@ function __wbg_get_imports() {
         },
         __wbg_length_66f1a4b2e9026940: function(arg0) {
             const ret = arg0.length;
+            return ret;
+        },
+        __wbg_new_50bb5ebeecef71a8: function(arg0, arg1) {
+            const ret = new Error(getStringFromWasm0(arg0, arg1));
             return ret;
         },
         __wbg_new_578aeef4b6b94378: function(arg0) {

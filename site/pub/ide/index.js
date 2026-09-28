@@ -56,13 +56,11 @@ export {
 export * as RealmRegistry from './notebook/realm-registry.js';
 export { makeViewHandle, isViewHandle, assertSerializable } from './notebook/view-handle.js';
 export { inAppTransport, vsixPostMessageTransport, makeRealmProxyHandle } from './notebook/realm-transport.js';
-// Vendor import-map generator (WS-NOTEBOOK-VENDOR §2a.3) — the ONE pure function that
-// maps the committed vendor manifest → a browser import-map `{ imports }`. FraqtlIde
-// builds the in-app realm host's import-map from this + router.vendorBase; the .vsix
-// host splices the same map server-side (lib/server/realm-html.js). PURE, DOM-free.
-export { buildImportMap, importMapScriptBody } from './notebook/vendor-importmap.js';
-// Canonical setup-factory bare-specifier import-map generator (WS gym-controls-as-sugar
-// Bite 0, notebook physics-logic-fork remediation) — the sibling generator to
-// buildImportMap above; merged into the SAME import-map script by
-// lib/server/realm-html.js `spliceVendorImportMap`. PURE, DOM-free.
+// Realm import map — buildImportMap (vendor manifest → `{ imports }`), buildRealmImportMap
+// (vendor + @frqtl/setups, through ONE router) and spliceRealmImportMap (the ONE splice the
+// served hosts, lib/server/realm-html.js, and the static bake, apps/ide/vite.config.js, both
+// call). PURE, DOM-free.
+export { buildImportMap, buildRealmImportMap, spliceRealmImportMap } from './notebook/vendor-importmap.js';
+// Canonical setup-factory bare-specifier surface — the manifest and its import-map fragment
+// (merged by buildRealmImportMap above). PURE, DOM-free.
 export { buildFrqtlSetupsImportMap, FRQTL_SETUPS_MANIFEST } from './notebook/frqtl-setups-importmap.js';

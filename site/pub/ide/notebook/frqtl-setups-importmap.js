@@ -1,96 +1,47 @@
 // Copyright 2023-2026 by Essam Abadir
-// lib/shim/notebook/frqtl-setups-importmap.js — bare-specifier import-map generator
-// for the CANONICAL setup factories (lib/frqtl/objects/setup/*.js).
+// lib/shim/notebook/frqtl-setups-importmap.js — the ONE owner of the `@frqtl/setups/<id>`
+// bare-specifier surface: the manifest, the ESM transform, the emitted-module list, and
+// the import-map fragment.
 //
-// WS gym-controls-as-sugar, Bite 0 (notebook physics-logic-fork remediation,
-// architect OBJECT-class finding).
+// WHY BARE SPECIFIERS: a notebook `module` cell's declared name (`name="./setups/x.js"`)
+// is a SIBLING-MODULE KEY inside the notebook's own moduleSet() closure, not a real
+// filesystem/HTTP path; a relative specifier that is NOT itself a module cell in the same
+// notebook 404s (VETO-CLASS #1, lib/shim/notebook/module-resolver.js). A notebook imports a
+// canonical setup factory by bare specifier, resolved through the document import map.
 //
-// PROBLEM 1 (de-fork): several gallery/dogfood notebooks HAND-COPIED a canonical
-// setup factory's body into a notebook `module` cell instead of importing it — a
-// physics-logic FORK. THE FIX IS NOT "import the canonical factory by relative
-// path" — a notebook module cell's declared name (`name="./setups/x.js"`) is a
-// SIBLING-MODULE KEY inside the notebook's own moduleSet() closure, not a real
-// filesystem/HTTP path; a relative specifier that is NOT itself a module cell in
-// the SAME notebook hits the documented VETO-CLASS #1 404 trap
-// (lib/shim/notebook/module-resolver.js). THE CORRECT MECHANISM: register the
-// canonical setup factories as BARE-SPECIFIER import-map entries — mirroring the
-// EXISTING `view`-cell d3 precedent (`import * as d3 from 'd3'`,
-// view-builder.js:28-31).
+// WHY AN ESM TRANSFORM: the canonical factories (lib/frqtl/objects/setup/*.js) are
+// UMD/CJS-interop IIFEs with NO top-level `export` — the same file loads as a CLASSIC
+// <script> on experiment pages, where an `export` keyword is a syntax error. The bare
+// specifiers therefore point at a SIBLING `objects/setup-esm/<file>` URL whose body is
+// `appendEsmExports(source)`: the untouched source plus `export const <name> =
+// window.<name>;`. The classic `objects/setup/<file>` URL stays byte-for-byte unchanged.
 //
-// PROBLEM 2 (realm-verification finding, tester report 2026-07-03): the
-// canonical setup factories are UMD/CJS-interop IIFEs —
-// `if (typeof module !== 'undefined' && module.exports) {...} else {
-// window.setupX = setupX; }` — with NO top-level `export` statement (by
-// design: the SAME file also loads as a CLASSIC <script> on experiment pages,
-// stack-boot.js `data-page-scripts`, where a bare `export` keyword would be a
-// syntax error). A real browser ES module loader executes this IIFE fine
-// (`typeof module` is undefined in real ESM too, so the window-assignment
-// branch runs) but then finds NO export — `import { setupX } from
-// '@frqtl/setups/<id>'` throws "does not provide an export named 'setupX'".
-// Deterministic, all 7 fork sites, confirmed by the tester across two sweeps.
+// ONE TRANSFORM, TWO EMITTERS, ONE URL SPACE:
+//   - dev:  lib/server/frqtl-setup-esm.js serves `/frqtl/objects/setup-esm/:file` at request time;
+//   - dist: sdk/frqtl-sdk/build.js writes `dist/js/game/setup-esm/<file>` at build time.
+// Both call appendEsmExports and iterate FRQTL_SETUPS_MANIFEST (via frqtlSetupsEsmModules).
+// Every profile's `objects/` prefix (lib/shim/engine/router.js) routes `objects/setup-esm/`
+// to the emitted location, so the map built here is correct in every profile, and
+// scripts/assemble-static-deploy.mjs derives its presence check from the same list.
 //
-// THE FIX: this generator does NOT point bare specifiers at the raw
-// `/frqtl/objects/setup/<file>.js` route (the one experiment pages' classic
-// <script> tags consume, byte-for-byte unchanged) — it points them at the
-// SIBLING `/frqtl/objects/setup-esm/<file>.js` route
-// (lib/server/frqtl-setup-esm.js), which serves the SAME source with a thin
-// `export const <name> = window.<name>;` statement appended server-side. The
-// classic-script path is completely untouched (different URL). FAIL-LOUD: the
-// appender refuses to serve a transform when the expected `window.<name> =
-// <name>` assignment isn't found in the source text (never a silent export of
-// `undefined`).
-//
-// PROBLEM 3 (tester re-verification finding 2026-07-03, gallery-circuit-sat
-// DETERMINISTIC fail, on the now-retired setupCircuitSAT.js): a factory whose
-// browser-classic branch reads another factory's window global at EVAL time — a
-// CROSS-FILE UMD dependency. On an experiment page this is guaranteed by
-// stack-boot.js's `data-page-scripts` ORDERING, which a notebook adapter does not
-// have: importing ONLY the dependent specifier never triggers a fetch of the
-// dependency at all, so its window global stays undefined and the failure is a
-// deterministic TypeError. Such a dependency is a property of the FACTORY FILE
-// (true for ANY consumer, not a per-notebook detail), so it belongs HERE, in the
-// manifest, as `deps` — the
-// setup-esm transform (lib/server/frqtl-setup-esm.js) turns each into a
-// static side-effect `import '<dep>';` PREPENDED to the served source. A
-// static import guarantees ES-module evaluation order: the dependency's
-// top-level code (which sets `window.setupCircuitBasic`) runs to completion
-// BEFORE the importing module's own top-level code (the UMD IIFE reading
-// `window.setupCircuitBasic.createWire`) — no race, no manual per-notebook
-// side-effect import to remember.
-//
-// PURE: no DOM, no Runtime, no engine import — only `engineRouter` (the single
-// engine path-routing authority, lib/shim/engine/router.js) so this generator
-// NEVER hardcodes a `/frqtl` literal and stays profile-correct if a dist splice
-// route is ever added (today's only callers always pass the dev-core profile —
-// see the `mode` param default and the FRQTL-MAINT note at the bottom).
-//
-// FAIL-LOUD (the slit-objects-hardcoded-list bug class): a manifest entry with
-// no file/primary throws — never silently dropped.
-
-import { engineRouter } from '../engine/router.js';
+// PURE: no DOM, no fs, no engine import — URLs come only from the caller's router.
 
 /**
  * The ONE bare-specifier → canonical-setup-factory manifest.
  *
- * Explicit curation (not a directory enumeration) — mirrors the hand-authored
- * vendor manifest.json shape: a bare specifier is a chosen PUBLIC vocabulary
- * (`@frqtl/setups/<id>`), not a 1:1 derivation from the PascalCase filename
- * (acronyms like `SAT` don't kebab-case losslessly). Add an entry here when a
- * notebook needs to import a new canonical setup factory by bare specifier —
- * never re-derive this list elsewhere (schema-mirror-drift class).
+ * Explicit curation (not a directory enumeration): a bare specifier is a chosen PUBLIC
+ * vocabulary (`@frqtl/setups/<id>`), not a 1:1 derivation from the PascalCase filename.
+ * Add an entry here when a notebook needs a new canonical setup factory — never re-derive
+ * this list elsewhere.
  *
- * `file` is relative to `lib/frqtl/objects/setup/`. `primary` is the name the
- * classic-script (browser) export branch assigns via `window.<primary> =
- * <primary>` — this is what lib/server/frqtl-setup-esm.js scans FOR
- * (FAIL-LOUD if absent) before appending the ESM re-export. `statics` (only
- * `setupCircuitBasic.js` needs this today) names helper functions the factory
- * attaches as STATIC PROPERTIES on the primary function itself
- * (`setupCircuitBasic.createWire = createWire`, NOT a separate
- * `window.createWire`) — each also gets its own `export const`. `deps` (only
- * no manifest entry needs this today) lists OTHER bare specifiers whose
- * module MUST evaluate first (a property of the factory file — see PROBLEM 3
- * above); the setup-esm transform prepends a static side-effect `import
- * '<dep>';` for each.
+ * `file` is relative to `lib/frqtl/objects/setup/`. `primary` is the name the classic
+ * branch assigns via `window.<primary> = <primary>` (appendEsmExports scans for it,
+ * FAIL-LOUD if absent). `statics` names helpers attached as STATIC PROPERTIES on the
+ * primary (`setupCircuitBasic.createWire = createWire`) — each gets its own export. `deps`
+ * lists OTHER bare specifiers whose module MUST evaluate first (a cross-file evaluation-
+ * order dependency of the factory file); appendEsmExports prepends a static side-effect
+ * `import '<dep>';` for each. No entry declares `deps` today: every factory resolves its
+ * sugar dependencies at CALL time.
  *
  * @type {Object<string, {file:string, primary:string, statics?:string[], deps?:string[]}>}
  */
@@ -104,78 +55,154 @@ export const FRQTL_SETUPS_MANIFEST = {
         file: 'setupCircuitBasic.js', primary: 'setupCircuitBasic',
         statics: ['createWire', 'createBattery', 'createResistor']
     },
-    // circuit-sat is the HALF-ADDER, rebuilt on LogicGate + Trace (2026-08-01). The
-    // specifier is the EXPERIMENT id and is unchanged; the factory behind it is the
-    // successor, and the retired `setupCircuitSAT` symbol is gone rather than fenced.
-    // NO `deps`: setupHalfAdder resolves LogicGate/Trace/setupSphereEmitter3D at CALL
-    // time from the game-layer roster, so it has no cross-file EVALUATION-ORDER
-    // dependency — which is exactly what the call-time idiom exists to avoid. This was
-    // the LAST manifest entry carrying `deps`; the mechanism stays (the next cross-file
-    // dependency will need it) and keeps its own tests in
-    // lib/server/test/frqtl-setup-esm.test.mjs.
+    // circuit-sat is the HALF-ADDER built on LogicGate + Trace; the specifier is the
+    // experiment id.
     '@frqtl/setups/circuit-sat': { file: 'setupHalfAdder.js', primary: 'setupHalfAdder' },
-    // ── 3D experiments (WS gym-controls-as-sugar Bite 0 ADDENDUM, CEO 2026-07-03) ──
-    // No cross-setup-file deps — each factory's
-    // window.* sugar dependencies are game-layer objects (QuantumEmitter for
-    // particle-walk-3d; none for collision-matrix-3d), all installed by
-    // GAME_LAYER_SCRIPTS (game-layer-manifest.js) — NOT another setup factory,
-    // so no `deps` entry here.
     '@frqtl/setups/particle-walk-3d': { file: 'setupParticleWalk3D.js', primary: 'setupParticleWalk3D' },
     '@frqtl/setups/collision-matrix-3d': { file: 'setupCollisionMatrix3D.js', primary: 'setupCollisionMatrix3D' }
 };
 
+/** Canonical source directory of the factories, relative to the frqtl root (`lib/frqtl/`). */
+export const FRQTL_SETUPS_SOURCE_DIR = 'objects/setup/';
+
+/** Router-relative directory of the ESM-transformed modules (routed by every profile's `objects/` prefix). */
+export const FRQTL_SETUPS_ESM_DIR = 'objects/setup-esm/';
+
 /**
- * Build a lookup keyed by FILENAME (not bare specifier) — the shape
- * `lib/server/frqtl-setup-esm.js`'s route handler needs (it receives a
- * `:file` express param, not a bare specifier). One derivation authority so
- * the route handler never re-scans FRQTL_SETUPS_MANIFEST itself.
+ * The emitted-module list — every consumer that writes, serves, maps or checks a
+ * setup-esm module iterates THIS (never FRQTL_SETUPS_MANIFEST's keys by hand).
  *
- * @returns {Object<string, {file:string, primary:string, statics?:string[]}>}
+ * @returns {Array<{spec:string, entry:{file:string, primary:string, statics?:string[], deps?:string[]}, sourcePath:string, esmPath:string}>}
+ *   `sourcePath` / `esmPath` are frqtl-root-relative (`objects/setup/<file>`,
+ *   `objects/setup-esm/<file>`) — hand `esmPath` to `router.resolve()` for a URL.
+ * @throws {Error} FAIL-LOUD on a manifest entry with no file/primary.
+ */
+export function frqtlSetupsEsmModules() {
+    return Object.keys(FRQTL_SETUPS_MANIFEST).map(function (spec) {
+        const entry = FRQTL_SETUPS_MANIFEST[spec];
+        if (!entry || typeof entry.file !== 'string' || typeof entry.primary !== 'string') {
+            throw new Error('[frqtl-setups-importmap] manifest spec "' + spec + '" has no file/primary (FAIL-LOUD).');
+        }
+        return {
+            spec: spec,
+            entry: entry,
+            sourcePath: FRQTL_SETUPS_SOURCE_DIR + entry.file,
+            esmPath: FRQTL_SETUPS_ESM_DIR + entry.file
+        };
+    });
+}
+
+/**
+ * Filename-keyed view of the emitted-module list — the shape the dev route handler needs (it
+ * receives an express `:file` param, not a bare specifier). Each value is the SAME row
+ * frqtlSetupsEsmModules() yields, so the handler can name the spec it is serving.
+ *
+ * @returns {Object<string, {spec:string, entry:{file:string, primary:string, statics?:string[], deps?:string[]}, sourcePath:string, esmPath:string}>}
  */
 export function frqtlSetupsManifestByFile() {
     const byFile = {};
-    const specs = Object.keys(FRQTL_SETUPS_MANIFEST);
-    for (let i = 0; i < specs.length; i++) {
-        const entry = FRQTL_SETUPS_MANIFEST[specs[i]];
-        byFile[entry.file] = entry;
+    const mods = frqtlSetupsEsmModules();
+    for (let i = 0; i < mods.length; i++) {
+        byFile[mods[i].entry.file] = mods[i];
     }
     return byFile;
 }
 
 /**
- * Build the `{imports: {spec: url}}` import-map fragment for the canonical
- * setup factories, pointing each bare specifier at the ESM-transformed
- * `objects/setup-esm/<file>` route (NEVER the raw `objects/setup/<file>` route
- * experiment pages' classic <script> tags consume) — using `engineRouter`'s
- * `objects/` path mapping so the URL is correct in BOTH profiles (`dev-core` →
- * `/frqtl/objects/setup-esm/<file>`; `dist` → `../../js/game/setup-esm/<file>`,
- * see the FRQTL-MAINT note below for the dist-route gap).
+ * The ONE error both emitters raise when a manifest row's source file is absent (manifest↔tree
+ * drift): the dev handler answers 500 with its message, build.js rethrows it — so the two fail
+ * with identical wording.
  *
- * @param {'dev-core'|'dist'} [mode='dev-core']
- * @returns {{imports: Object<string,string>}}
- * @throws {Error} FAIL-LOUD on a manifest entry with no file/primary.
+ * @param {{spec:string}} mod        a frqtlSetupsEsmModules() row.
+ * @param {string} absSourcePath     the absolute path that was read.
+ * @param {Error} [cause]            the underlying read error.
+ * @returns {Error}
  */
-export function buildFrqtlSetupsImportMap(mode) {
-    const router = engineRouter({ mode: mode || 'dev-core' });
-    const imports = {};
-    const specs = Object.keys(FRQTL_SETUPS_MANIFEST);
-    for (let i = 0; i < specs.length; i++) {
-        const spec = specs[i];
-        const entry = FRQTL_SETUPS_MANIFEST[spec];
-        if (!entry || typeof entry.file !== 'string' || typeof entry.primary !== 'string') {
-            throw new Error('[frqtl-setups-importmap] manifest spec "' + spec + '" has no file/primary (FAIL-LOUD).');
+export function frqtlSetupsSourceMissingError(mod, absSourcePath, cause) {
+    const err = new Error(
+        '[frqtl-setup-esm] FRQTL_SETUPS_MANIFEST spec "' + mod.spec + '" names source "' + absSourcePath +
+        '", which cannot be read (' + ((cause && cause.code) || (cause && cause.message) || 'missing') + ') — restore the ' +
+        'file or remove the entry from lib/shim/notebook/frqtl-setups-importmap.js (FAIL-LOUD).'
+    );
+    if (cause) { err.cause = cause; }
+    return err;
+}
+
+/**
+ * The ONE ESM transform. Verifies the source contains the expected browser-classic
+ * assignment(s), appends `export const` statement(s) re-reading them off `window`, and
+ * prepends a static side-effect import for each declared `deps` entry.
+ *
+ * @param {string} source  raw file contents of a canonical setup factory.
+ * @param {{primary:string, statics?:string[], deps?:string[]}} spec
+ * @returns {string} deps imports + source + appended export statement(s).
+ * @throws {Error} FAIL-LOUD when an expected assignment is not found in source.
+ */
+export function appendEsmExports(source, spec) {
+    const primary = spec && spec.primary;
+    if (!primary) {
+        throw new Error('[frqtl-setup-esm] spec.primary is required (FAIL-LOUD).');
+    }
+    const statics = (spec && spec.statics) || [];
+    const deps = (spec && spec.deps) || [];
+
+    const primaryRe = new RegExp('window\\.' + primary + '\\s*=\\s*' + primary + '\\b');
+    if (!primaryRe.test(source)) {
+        throw new Error(
+            '[frqtl-setup-esm] expected "window.' + primary + ' = ' + primary + '" not found in source ' +
+            '— refusing to append a broken export statement (FAIL-LOUD).'
+        );
+    }
+    for (let i = 0; i < statics.length; i++) {
+        const s = statics[i];
+        const staticRe = new RegExp(primary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.' + s + '\\s*=\\s*' + s + '\\b');
+        if (!staticRe.test(source)) {
+            throw new Error(
+                '[frqtl-setup-esm] expected "' + primary + '.' + s + ' = ' + s + '" (static export) not found in ' +
+                'source — refusing to append a broken export statement (FAIL-LOUD).'
+            );
         }
-        imports[spec] = router.resolve('objects/setup-esm/' + entry.file);
+    }
+
+    let depImports = '';
+    for (let i = 0; i < deps.length; i++) {
+        if (!deps[i] || typeof deps[i] !== 'string') {
+            throw new Error('[frqtl-setup-esm] spec.deps entry is not a non-empty string (FAIL-LOUD).');
+        }
+        depImports += "import '" + deps[i] + "';\n";
+    }
+
+    let out = depImports +
+        '// ── Appended by lib/shim/notebook/frqtl-setups-importmap.js appendEsmExports (ESM URL only) ──\n' +
+        source +
+        '\n// ── Appended by lib/shim/notebook/frqtl-setups-importmap.js appendEsmExports (ESM URL only) ──\n' +
+        'export const ' + primary + ' = (typeof window !== "undefined" ? window.' + primary + ' : undefined);\n';
+    for (let i = 0; i < statics.length; i++) {
+        const s = statics[i];
+        out += 'export const ' + s + ' = (typeof window !== "undefined" && window.' + primary +
+            ' ? window.' + primary + '.' + s + ' : undefined);\n';
+    }
+    return out;
+}
+
+/**
+ * Build the `{imports: {spec: url}}` import-map fragment for the canonical setup
+ * factories, each bare specifier resolved by the CALLER'S router at the ESM-transformed
+ * `objects/setup-esm/<file>` path (never the raw classic-script `objects/setup/<file>`).
+ *
+ * @param {{resolve:(relPath:string)=>string}} router  an engineRouter() instance.
+ * @returns {{imports: Object<string,string>}}
+ * @throws {Error} FAIL-LOUD without a router, or on a manifest entry with no file/primary.
+ */
+export function buildFrqtlSetupsImportMap(router) {
+    if (!router || typeof router.resolve !== 'function') {
+        throw new Error('[frqtl-setups-importmap] buildFrqtlSetupsImportMap(router) requires an engineRouter() instance ' +
+            '(lib/shim/engine/router.js) — the map is a function of the host\'s path profile (FAIL-LOUD).');
+    }
+    const imports = {};
+    const mods = frqtlSetupsEsmModules();
+    for (let i = 0; i < mods.length; i++) {
+        imports[mods[i].spec] = router.resolve(mods[i].esmPath);
     }
     return { imports: imports };
 }
-
-// FRQTL-MAINT(frqtl-setups-importmap-dist-splice): today's ONLY caller
-// (lib/server/realm-html.js spliceVendorImportMap) is invoked exclusively with
-// the dev-core profile (plugin.js's in-app transform, mounts.js's /ide-app and
-// /realm handlers) — there is no dist-mode splice route yet, so `mode` above
-// always defaults correctly. If a dist-served notebook splice route is added,
-// BOTH the splice mode AND a dist-mode `/objects/setup-esm/` serving route
-// (today only registered in mounts.js core mode — see frqtl-setup-esm.js) are
-// needed. Thread the real mode through rather than relying on the default. See
-// FRAQTL issue #61 (learning methodology tag).

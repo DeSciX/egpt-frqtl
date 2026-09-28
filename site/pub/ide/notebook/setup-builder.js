@@ -292,6 +292,16 @@ export function parseSeed(seed) {
  *     (rather than silently dropping it). The `<export>` defaults to
  *     `'buildExperiment'` when the `#export` part is omitted.
  *
+ * WHY the template checks `buildExperiment` but not `exp` (FRAQTL #73): the two values
+ * have different OWNERS. `buildExperiment` is read off `window` by this template itself,
+ * so nothing but this template can vouch for it — hence the emitted FAIL-LOUD check.
+ * `exp` comes from `frqtl.RecipeContext(...)`, a caps.frqtl member: its owner
+ * (lib/shim/runtime/index.js `_sugar`) FAILS LOUD naming the missing game-layer global,
+ * so `exp` is never null here and a second check would re-derive the owner's guarantee
+ * for one call site while leaving every other member (runner, Universe, the sugar) to
+ * the owner anyway. `RecipeContext` used to return null instead — that null reached
+ * `exp.build` as an opaque property-access TypeError, which is what #73 reported.
+ *
  * WHY the recipe path reads `window.<export>` rather than destructuring the import
  * namespace: a `buildExperiment(exp)` recipe is authored with the dual-mode tail
  * (`window.buildExperiment = buildExperiment`), NOT `export function buildExperiment`

@@ -16,8 +16,9 @@
  *              cw  = iframe contentWindow when called from the parent React tree;
  *                    omit (or pass null) when called from inside the iframe —
  *                    class globals resolve from window in that case.
- *     returns: primary/visual handle object, or null for the documented
- *              intentional-null kinds; THROWS on an unknown kind
+ *     returns: primary/visual handle object; THROWS on an unknown kind, on a
+ *              part class absent from the construction scope, and on any
+ *              builder result that is not a handle
  *
  *   ObjectFactory.list()   → ObjectSchema.placeableCatalog()
  *   ObjectFactory.kinds()  → array of registered builder keys
@@ -37,7 +38,7 @@
  *         CircuitProbe marker).
  *       • PointSource opts dict re-pass (_wavelength, _optColor, _emergentPhysics).
  *       • layer → observedDimensions=[layer] (null = all dims).
- *       • SlitLightSource: warn + return null (needs a paired SlitScreen).
+ *       • SlitLightSource: THROWS naming the pairing (needs a paired SlitScreen).
  *       • Unknown kind: THROW naming the registered kinds + the V2 replacement.
  */
 
@@ -266,9 +267,26 @@
         EgptFractal:     "(archived — no V2 successor)"
     };
 
+    /**
+     * Resolve a part class from the construction scope, or THROW naming it and the
+     * game-layer script that publishes it. A missing class never degrades to a null
+     * handle or a marker-less emitter: a recipe would build an incomplete scene and
+     * report success. Resolve every class a builder needs BEFORE constructing anything,
+     * so a throw never leaves a half-built object registered in the world.
+     */
+    function _requireClass(kind, gbl, name) {
+        var Cls = gbl[name];
+        if (Cls) { return Cls; }
+        throw new Error('[ObjectFactory] create("' + kind + '"): class `' + name + '` is not published ' +
+            'on the construction scope (ctx.cw, else window/globalThis). It is published by `' + name +
+            '.js`, its GAME_LAYER_SCRIPTS entry (lib/shim/engine/game-layer-manifest.js): in a page the ' +
+            'GAME phase of stack-boot loads it before any object is built; in node, require that module ' +
+            'and publish the class on globalThis first. (FAIL-LOUD — never a null handle.)');
+    }
+
     // ── Per-kind builders ─────────────────────────────────────────────────────
     //
-    // Each builder: function(props, ctx, gbl) → handle | null
+    // Each builder: function(props, ctx, gbl) → handle (create() throws on anything else)
     //   props = merged schema defaultProps + config overrides
     //   ctx   = { runner, cw, x, y, PHYS_W, PHYS_H }
     //   gbl   = resolved global scope (ctx.cw || window || globalThis)
@@ -277,9 +295,8 @@
 
     // ── LargeObject ──────────────────────────────────────────────────────────
     _builders['LargeObject'] = function (props, ctx, gbl) {
-        var LO = gbl.LargeObject;
-        var CT = gbl.CollisionTypes;
-        if (!LO || !CT) { return null; }
+        var LO = _requireClass('LargeObject', gbl, 'LargeObject');
+        _requireClass('LargeObject', gbl, 'CollisionTypes');
         var bw = (props.rect && props.rect.w)    || 70;
         var bh = (props.rect && props.rect.h)    || 70;
         var bl = (props.rect && props.rect.left  != null) ? props.rect.left : Math.round(ctx.x - bw / 2);
@@ -304,8 +321,9 @@
 
     // ── QuantumEmitter ───────────────────────────────────────────────────────
     _builders['QuantumEmitter'] = function (props, ctx, gbl) {
-        var QE = gbl.QuantumEmitter;
-        if (!QE) { return null; }
+        var QE  = _requireClass('QuantumEmitter', gbl, 'QuantumEmitter');
+        var LO2 = _requireClass('QuantumEmitter', gbl, 'LargeObject');
+        var CT2 = _requireClass('QuantumEmitter', gbl, 'CollisionTypes');
         var ew = 20, eh = 20;
         var er;
         if (props.rect) {
@@ -340,22 +358,17 @@
         ctx.runner.addEmitter(qemitter);
 
         // Visual handle (circle LargeObject) so hand tool can drag it.
-        var LO2 = gbl.LargeObject;
-        var CT2 = gbl.CollisionTypes;
-        if (LO2 && CT2) {
-            // layer → observedDimensions: the visual handle tracks the emitter's layer.
-            var qvisObsDims = (props.layer != null) ? [props.layer] : null;
-            var qvis = new LO2(ctx.runner.universe,
-                [er[0], er[1], er[2] || ew, er[3] || eh],
-                CT2.NONE, [],
-                'emitter ' + ((ctx.runner._emitters || []).length),
-                'closest', qvisObsDims, 1, props._visualColor || props.color || [80, 200, 80]);
-            qvis.drawAsCircle = true;
-            qvis._emitter     = qemitter;
-            qvis._schemaKind  = 'LargeObject';
-            return qvis;
-        }
-        return qemitter;
+        // layer → observedDimensions: the visual handle tracks the emitter's layer.
+        var qvisObsDims = (props.layer != null) ? [props.layer] : null;
+        var qvis = new LO2(ctx.runner.universe,
+            [er[0], er[1], er[2] || ew, er[3] || eh],
+            CT2.NONE, [],
+            'emitter ' + ((ctx.runner._emitters || []).length),
+            'closest', qvisObsDims, 1, props._visualColor || props.color || [80, 200, 80]);
+        qvis.drawAsCircle = true;
+        qvis._emitter     = qemitter;
+        qvis._schemaKind  = 'LargeObject';
+        return qvis;
     };
 
     // ── PointSource ──────────────────────────────────────────────────────────
@@ -365,8 +378,9 @@
     // QuantumEmitter). The visual rect comes from props._visualRect (captured by
     // serializeDesign from lo.rect) or falls back to x/y/diameter.
     _builders['PointSource'] = function (props, ctx, gbl) {
-        var PS = gbl.PointSource;
-        if (!PS) { return null; }
+        var PS  = _requireClass('PointSource', gbl, 'PointSource');
+        var LO3 = _requireClass('PointSource', gbl, 'LargeObject');
+        var CT3 = _requireClass('PointSource', gbl, 'CollisionTypes');
         var psCx = props.x != null ? props.x : Math.round(ctx.x);
         var psCy = props.y != null ? props.y : Math.round(ctx.y);
         var psDiam = props.diameter || 16;
@@ -400,34 +414,29 @@
 
         // Visual handle: circle LargeObject at the source position.
         // rect source: saved _visualRect → x/y+diameter → placement centre.
-        var LO3 = gbl.LargeObject;
-        var CT3 = gbl.CollisionTypes;
-        if (LO3 && CT3) {
-            var psR = props._visualRect;
-            var psVLeft, psVTop, psVW, psVH;
-            if (psR && psR.w != null) {
-                psVLeft = psR.left != null ? psR.left : Math.round(psCx - psR.w / 2);
-                psVTop  = psR.top  != null ? psR.top  : Math.round(psCy - psR.h / 2);
-                psVW    = psR.w;
-                psVH    = psR.h;
-            } else {
-                psVLeft = Math.round(psCx - psDiam / 2);
-                psVTop  = Math.round(psCy - psDiam / 2);
-                psVW    = psDiam;
-                psVH    = psDiam;
-            }
-            var psVis = new LO3(ctx.runner.universe,
-                [psVLeft, psVTop, psVW, psVH],
-                CT3.NONE, [],
-                'source ' + ((ctx.runner._emitters || []).length),
-                'closest', null, 1,
-                props._visualColor || [0, 0, 0]);
-            psVis.drawAsCircle = true;
-            psVis._emitter     = ps;
-            psVis._schemaKind  = 'LargeObject';
-            return psVis;
+        var psR = props._visualRect;
+        var psVLeft, psVTop, psVW, psVH;
+        if (psR && psR.w != null) {
+            psVLeft = psR.left != null ? psR.left : Math.round(psCx - psR.w / 2);
+            psVTop  = psR.top  != null ? psR.top  : Math.round(psCy - psR.h / 2);
+            psVW    = psR.w;
+            psVH    = psR.h;
+        } else {
+            psVLeft = Math.round(psCx - psDiam / 2);
+            psVTop  = Math.round(psCy - psDiam / 2);
+            psVW    = psDiam;
+            psVH    = psDiam;
         }
-        return ps;
+        var psVis = new LO3(ctx.runner.universe,
+            [psVLeft, psVTop, psVW, psVH],
+            CT3.NONE, [],
+            'source ' + ((ctx.runner._emitters || []).length),
+            'closest', null, 1,
+            props._visualColor || [0, 0, 0]);
+        psVis.drawAsCircle = true;
+        psVis._emitter     = ps;
+        psVis._schemaKind  = 'LargeObject';
+        return psVis;
     };
 
     // ── SphereEmitter ────────────────────────────────────────────────────────
@@ -441,8 +450,7 @@
     // setupSphereEmitter3D). It is a PART: it never inits the world — the SKETCH
     // (the recipe's exp.init / a page's setup factory) did that before any object.
     _builders['SphereEmitter'] = function (props, ctx, gbl) {
-        var SphereEmitterCls = gbl.SphereEmitter;
-        if (!SphereEmitterCls) { return null; }
+        var SphereEmitterCls = _requireClass('SphereEmitter', gbl, 'SphereEmitter');
 
         // Forward the config VERBATIM to the factory (via the facade) — MINUS the
         // visual-only keys codegen attaches (`_visualRect`/`_visualColor`) and the
@@ -469,7 +477,12 @@
             typeof ctx.x === 'number' && typeof ctx.y === 'number') {
             opts.center = [ctx.x, ctx.y];
         }
+        // Construction validates the option bag (its owner's migration messages win) and
+        // registers nothing; the marker classes are resolved before addTo registers the
+        // emitter, so a missing class never leaves a marker-less emitter in the world.
         var sphere = new SphereEmitterCls(opts);
+        var LO = _requireClass('SphereEmitter', gbl, 'LargeObject');
+        var CT = _requireClass('SphereEmitter', gbl, 'CollisionTypes');
         // Thread the runner BEFORE addTo (which compiles the declared emission gate):
         // the gate's lazy by-name gateCounter resolution goes through the runner's
         // canonical resolver (FrqtlApp.getObjectByName) on its first tick.
@@ -477,9 +490,6 @@
         sphere.addTo(ctx.runner.universe);
 
         // Visual marker (circle LargeObject, NONE collision) — the drag/inspect handle.
-        var LO = gbl.LargeObject;
-        var CT = gbl.CollisionTypes;
-        if (!LO || !CT) { return sphere; }
         var center = (typeof sphere.getCenter === 'function') ? sphere.getCenter() : [ctx.x, ctx.y, 0];
         var vr = props._visualRect;
         var vLeft, vTop, vW, vH;
@@ -526,8 +536,7 @@
     // the click. A recipe passing an explicit rect / left+top still wins (byte-
     // identical addObject path).
     _builders['Wall'] = function (props, ctx, gbl) {
-        var WallCls = gbl.Wall;
-        if (!WallCls) { return null; }
+        var WallCls = _requireClass('Wall', gbl, 'Wall');
 
         var opts = {};
         for (var k in props) {
@@ -560,8 +569,7 @@
     // `lo._facade` back-reference (which is what lets codegen serialize the
     // FACADE — and therefore the heatmap fields — on Restart).
     _builders['GraphingDetectorWall'] = function (props, ctx, gbl) {
-        var GDW = gbl.GraphingDetectorWall;
-        if (!GDW) { return null; }
+        var GDW = _requireClass('GraphingDetectorWall', gbl, 'GraphingDetectorWall');
 
         var opts = {};
         for (var k in props) {
@@ -584,8 +592,7 @@
 
     // ── DetectorWall ─────────────────────────────────────────────────────────
     _builders['DetectorWall'] = function (props, ctx, gbl) {
-        var DW = gbl.DetectorWall;
-        if (!DW) { return null; }
+        var DW = _requireClass('DetectorWall', gbl, 'DetectorWall');
         var pw = ctx.PHYS_W || 600;
         var ph = ctx.PHYS_H || 400;
         var dw = new DW(
@@ -599,12 +606,14 @@
             props.wallWidth  || 20,
             props.wallName   || ('detector ' + Date.now())
         );
-        if (dw.detector_wall) {
-            dw.detector_wall._schemaKind  = 'DetectorWall';
-            dw.detector_wall._groupOwner  = dw;
-            return dw.detector_wall;
+        if (!dw.detector_wall) {
+            throw new Error('[ObjectFactory] create("DetectorWall"): the DetectorWall was constructed but ' +
+                'exposes no `detector_wall` (the registered inner LargeObject this kind hands back) — ' +
+                'nothing placeable was built. (FAIL-LOUD.)');
         }
-        return null;
+        dw.detector_wall._schemaKind  = 'DetectorWall';
+        dw.detector_wall._groupOwner  = dw;
+        return dw.detector_wall;
     };
 
     // ── LiveChart ────────────────────────────────────────────────────────────
@@ -622,9 +631,8 @@
     // (FAIL-LOUD build-time). The count-hook validity (a detect/count wall) is surfaced
     // at WIRE time by letting Wall.getCollisionHistogram's own throw propagate.
     _builders['LiveChart'] = function (props, ctx, gbl) {
-        var LO = gbl.LargeObject;
-        var CT = gbl.CollisionTypes;
-        if (!LO || !CT) { return null; }
+        var LO = _requireClass('LiveChart', gbl, 'LargeObject');
+        var CT = _requireClass('LiveChart', gbl, 'CollisionTypes');
 
         // Rect: an explicit rect (array [l,t,w,h] / [l,t,z,w,h,d] OR object {left,top,w,h})
         // wins; else center a default panel on the drop point (ctx.x/ctx.y).
@@ -712,8 +720,7 @@
 
     // ── SlitScreen ───────────────────────────────────────────────────────────
     _builders['SlitScreen'] = function (props, ctx, gbl) {
-        var SS = gbl.SlitScreen;
-        if (!SS) { return null; }
+        var SS = _requireClass('SlitScreen', gbl, 'SlitScreen');
         var ph = ctx.PHYS_H || 400;
         var screen = new SS(
             ctx.runner.universe,
@@ -736,19 +743,16 @@
         return screen.wall1 || (screen.walls && screen.walls[0]) || null;
     };
 
-    // ── SlitLightSource — skip with warning ──────────────────────────────────
-    _builders['SlitLightSource'] = function (props, ctx, gbl) {
-        if (typeof console !== 'undefined' && console.warn) {
-            console.warn('[ObjectFactory] create: SlitLightSource requires a paired ' +
-                         'SlitScreen and cannot be reconstructed independently. Skipped in applyDesign.');
-        }
-        return null;
+    // ── SlitLightSource — cannot be built standalone ─────────────────────────
+    _builders['SlitLightSource'] = function () {
+        throw new Error('[ObjectFactory] create("SlitLightSource"): a SlitLightSource requires a paired ' +
+            'SlitScreen and cannot be constructed independently — build it through its setup factory ' +
+            '(setupDoubleSlit), or compose ' + V1_REPLACEMENTS.SlitLightSource + '. (FAIL-LOUD.)');
     };
 
     // ── Box ──────────────────────────────────────────────────────────────────
     _builders['Box'] = function (props, ctx, gbl) {
-        var BoxCls = gbl.Box;
-        if (!BoxCls) { return null; }
+        var BoxCls = _requireClass('Box', gbl, 'Box');
         var box = new BoxCls(ctx.runner.universe, Object.assign({
             left: props.left != null ? props.left : Math.round(ctx.x - 40),
             top:  props.top  != null ? props.top  : Math.round(ctx.y - 40),
@@ -771,8 +775,7 @@
     // Wall's LO is registered + tagged _grouped so the Layers panel routes to the
     // Tunnel facade. Zero physics (SU1) — two Wall{bounce} mirrors + a bore.
     _builders['Tunnel'] = function (props, ctx, gbl) {
-        var TunnelCls = gbl.Tunnel;
-        if (!TunnelCls) { return null; }
+        var TunnelCls = _requireClass('Tunnel', gbl, 'Tunnel');
         var opts = {};
         for (var k in props) {
             if (!Object.prototype.hasOwnProperty.call(props, k)) { continue; }
@@ -803,8 +806,7 @@
 
     // ── OvenBox ──────────────────────────────────────────────────────────────
     _builders['OvenBox'] = function (props, ctx, gbl) {
-        var OvenBoxCls = gbl.OvenBox;
-        if (!OvenBoxCls) { return null; }
+        var OvenBoxCls = _requireClass('OvenBox', gbl, 'OvenBox');
         var ovenBox = new OvenBoxCls(ctx.runner.universe, Object.assign({
             left: props.left != null ? props.left : Math.round(ctx.x - 50),
             top:  props.top  != null ? props.top  : Math.round(ctx.y - 60),
@@ -830,8 +832,7 @@
 
     // ── LogicGate ────────────────────────────────────────────────────────────
     _builders['LogicGate'] = function (props, ctx, gbl) {
-        var GateCls = gbl.LogicGate;
-        if (!GateCls) { return null; }
+        var GateCls = _requireClass('LogicGate', gbl, 'LogicGate');
         var opts = Object.assign({}, props);
         var bore = (opts.bore != null) ? opts.bore : 3;
         var wt = (opts.wallThickness != null) ? opts.wallThickness : 3;
@@ -858,8 +859,7 @@
 
     // ── CircuitGate ──────────────────────────────────────────────────────────
     _builders['CircuitGate'] = function (props, ctx, gbl) {
-        var CGateCls = gbl.CircuitGate;
-        if (!CGateCls) { return null; }
+        var CGateCls = _requireClass('CircuitGate', gbl, 'CircuitGate');
         var cg = new CGateCls(
             ctx.runner.universe,
             props.gateType   || 'AND',
@@ -890,8 +890,7 @@
 
     // ── CircuitProbe ─────────────────────────────────────────────────────────
     _builders['CircuitProbe'] = function (props, ctx, gbl) {
-        var CProbeCls = gbl.CircuitProbe;
-        if (!CProbeCls) { return null; }
+        var CProbeCls = _requireClass('CircuitProbe', gbl, 'CircuitProbe');
         var cp = new CProbeCls(
             ctx.runner.universe,
             props.x    != null ? props.x    : Math.round(ctx.x),
@@ -921,10 +920,9 @@
          * @param {string} kind
          * @param {object|null} config  — override props (merged over schema defaultProps)
          * @param {object} ctx          — { runner, cw, x, y, PHYS_W, PHYS_H }
-         * @returns {object|null}       — primary/visual handle, or null for the
-         *                                documented intentional-null kinds
-         *                                (SlitLightSource needs a paired SlitScreen)
-         * @throws {Error} on an unknown kind, or a ctx without a runner
+         * @returns {object}            — primary/visual handle
+         * @throws {Error} on an unknown kind, a ctx without a runner, a part class absent
+         *                 from the construction scope, or a builder result that is not a handle
          */
         create: function (kind, config, ctx) {
             if (!ctx || !ctx.runner) {
@@ -958,7 +956,14 @@
 
             var props = _mergeProps(kind, config, schemaRef);
 
-            return builder(props, ctx, gbl);
+            var handle = builder(props, ctx, gbl);
+            if (handle === null || typeof handle !== 'object') {
+                throw new Error('[ObjectFactory] create("' + kind + '"): the builder returned ' +
+                    (handle === null ? 'null' : typeof handle) + ', not a handle. Every kind returns ' +
+                    'the object it built or throws naming what is missing — a non-handle here is a ' +
+                    'part silently absent from the scene. (FAIL-LOUD.)');
+            }
+            return handle;
         },
 
         /**

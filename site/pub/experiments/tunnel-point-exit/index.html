@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Tunnel Point-Exit (self-interference from a collapsed mouth, 2D)</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="checkbox"] { cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls input[type="range"] { width: 130px; cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 30px; display: inline-block; text-align: right; }
+        #tpe-metrics { display: none; }
+    </style>
+</head>
+<body>
+
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- 2D ONLY (p5). The exemplar this is graded against — Single-Source
+         Self-Interference — is a flat x-y picture, and the semicircular fan is a
+         2D observable; no ?egpt3D path is offered here on purpose. -->
+
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupSphereEmitter3D.js,
+            ../../js/game/setup/setupTunnelPointExit.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <label title="Toggle the feeding emitter on/off. It sits just inside the corridor's input mouth on the hemisphere preset, so the whole burst is aimed down the bore.">
+                <input type="checkbox" id="ctrl-emit" checked> Emit
+            </label>
+
+            <!-- λ — THE first axis the CEO wants to sweep. LIVE: this is the universe's
+                 global wavelengthScale, consumed fresh every tick, so dragging it
+                 re-tunes the transverse oscillation of every quantum already in flight. -->
+            <label title="λ scale — the universe's GLOBAL wavelengthScale (LIVE, consumed each tick). Leaves are born at dimension 2 (capacity 16) with a wavelength arg of 32 (mass 1), so capacity/mass = 16 and the EFFECTIVE per-leaf transverse wavelength is 16 × scale px. THIS IS THE EXPERIMENT'S MAIN AXIS: the exit gate collapses every quantum onto one pixel, but quanta arrive with DIFFERENT transit histories, so their spin phases are spread (measured: within-crossing-tick local_time std ~45 ticks). The spin period IS the eff λ — one full transverse cycle takes eff λ ticks — so at scale 16 (eff λ 256) the ~45-tick spread is ~18% of a period and the mouth is ~82% phase-aligned FOR FREE, enough that the fan should band with the phase toggle OFF; at scale <= 8 (eff λ <= 128) that same spread is >= 35% of a period, so the mouth is phase-flat and the fan should read SMOOTH with the toggle OFF and BANDED with it ON. Speed is unchanged (always 1px/tick, bench M1) — only the transverse period moves.">
+                λ scale:
+                <input type="range" id="ctrl-wlscale" min="1" max="24" step="1" value="16">
+                <span class="val" id="ctrl-wlscale-val">16</span>
+            </label>
+            <label title="Read-only: the resulting EFFECTIVE per-leaf transverse wavelength in px = (capacity/mass) × λ scale = 16 × scale. The spin period that sets the banding IS this value — one full transverse cycle takes eff λ ticks.">
+                eff λ: <span class="val" id="ctrl-efflambda">256</span>px
+            </label>
+
+            <!-- THE coherence toggle — L2. LIVE: flipping it recompiles the exit gate's
+                 op-program and pushes it on the live path, so bands can be switched on and
+                 off mid-run without losing the scene. -->
+            <!-- D4: recentering is now optional, so the point-source question and the coherence
+                 question can be asked separately. LIVE — it recompiles the gate program. -->
+            <label title="RECENTER AT EXIT (default ON). Pins every quantum crossing the exit gate to the bore mid-line — the point-source collapse. Turning it OFF leaves the exit spatially unchanged, so the corridor simply emits from wherever each quantum happened to reach the mouth. This is what SEPARATES the two questions the lab asks: 'does the point source matter?' (this flag) from 'does coherence matter?' (the phase flag). While recentering was mandatory the two were confounded. With BOTH flags off the gate carries no program at all and remains only as an inert collector. LIVE (affects the next collision).">
+                <input type="checkbox" id="ctrl-recenter" checked> recenter at exit
+            </label>
+
+            <label title="PHASE RESET AT THE EXIT GATE (default OFF). Appends exactly ONE op to the gate's program — `set frame.local_time = 0` — re-phase-locking the ensemble at the mouth, so every quantum leaving shares a spin phase and AGE = RADIUS again. It is PHASE ONLY: never the separable decoherence bundle, whose second op redraws charge (an RNG draw nobody asked for that would shift every downstream seeded stream). The corridor WALLS never reset phase regardless. Default OFF because this is a deliberate coherence CHOICE, not a ratified behaviour — the point is to make BOTH regimes drivable so the boundary is visible. LIVE (affects the next collision).">
+                <input type="checkbox" id="ctrl-phase"> phase reset at exit
+            </label>
+
+            <!-- The second axis the CEO wants to sweep. HONESTLY labelled: this is wall
+                 geometry, so it is a REBUILD, not a live knob. -->
+            <label title="Corridor LENGTH in px. REBUILD-class, not live: the corridor is two wall LargeObjects plus the exit gate, so changing it re-runs the setup factory in place (the documented restart-in-place idiom — the canvas and camera survive, the scene restarts at tick 0). A LONGER corridor means more wall hits and a wider transit-time spread, which spreads the arrival phase further — so length and λ trade off against each other, which is exactly why both are on this strip.">
+                length:
+                <input type="range" id="ctrl-length" min="60" max="420" step="20" value="240">
+                <span class="val" id="ctrl-length-val">240</span>px
+            </label>
+
+            <label title="Live count of alive quanta.">
+                quanta: <span class="val" id="ctrl-count">0</span>
+            </label>
+        </div>
+    </div>
+
+    <!--
+        HEADLESS OBSERVABILITY (the tester's hooks; display:none so it never affects layout)
+            data-alive          : alive quantum count this tick
+            data-wl-scale       : the CURRENT global wavelengthScale
+            data-eff-wavelength : floor((capacity/mass) × wavelengthScale) px
+            data-phase-reset    : 'true' | 'false' — the exit gate's phase option
+            data-recenter       : 'true' | 'false' — the exit gate's recentering (point-source) option
+            data-gate-armed     : 'true' | 'false' — whether the gate carries ANY op. With both
+                                  flags off this reads false and data-gate-ops is empty: the gate
+                                  is registered but DISARMED, which is deliberately distinct from
+                                  a gate that failed to compile.
+            data-tunnel-length  : the CURRENT corridor length (px)
+            data-exit-x         : the x of the corridor's output mouth (where the point source is)
+            data-mid-y          : the bore mid-line the gate collapses onto
+            data-gate-ops       : the exit gate's CURRENT op targets, comma-joined — the
+                                  legible proof of what the collapse is doing (and that the
+                                  phase op appears/disappears with the toggle)
+    -->
+    <div id="tpe-metrics"
+         data-alive="0" data-wl-scale="16" data-eff-wavelength="256"
+         data-phase-reset="false" data-recenter="true" data-gate-armed="true"
+         data-tunnel-length="240"
+         data-exit-x="0" data-mid-y="0" data-gate-ops=""></div>
+
+    <script>
+    /**
+     * Tunnel Point-Exit lab — the D3 page.
+     *
+     * WHAT YOU ARE LOOKING AT. A hemisphere emitter sits just inside the corridor's input
+     * mouth and fires the whole burst down the bore. Every wall hit re-emits the quantum in
+     * a random forward direction within 180° of the axis (the directed mode). At the output
+     * mouth a 2px gate pins every crossing quantum to the bore's mid-line — so the mouth
+     * radiates as a one-pixel POINT SOURCE into the open canvas on the right.
+     *
+     * WHAT TO COMPARE IT WITH. The Single-Source Self-Interference experiment: a semicircular
+     * banded fan from a point source. Two differences are expected and are NOT bugs:
+     *   - that exemplar launches on a velocity-aligned shell (innerR 16) so it has an EMPTY
+     *     CENTRE; this launches from a true point and will not;
+     *   - the angular distribution here is transit-FILTERED (only quanta that survive the
+     *     corridor arrive), not a clean uniform half-disk.
+     *
+     * THE EXPERIMENT IS THE CONTRAST, not either picture alone: sweep λ against the phase
+     * toggle. Nothing on this page is tuned to make the two regimes agree.
+     */
+    var runner = null;
+    var _metricsEl = null;
+    var _res = null;          // the current setup result (rebuilt when length changes)
+    var _tick = 0;
+
+    // Page-level scene state. `length` is the only REBUILD-class member — the other two are
+    // live and are pushed straight at the control handle.
+    var STATE = { tunnelLength: 240, wavelengthScale: 16, phaseReset: false, recenter: true, emit: true };
+
+    window.__frqtlTunnelPointExit = { activeQuanta: 0, wlScale: 16, effLambda: 256, phaseReset: false };
+
+    function el(id) { return document.getElementById(id); }
+
+    /** Stamp every headless hook from AUTHORITATIVE state (never from the raw slider value). */
+    function stamp() {
+        if (!_metricsEl || !_res) { return; }
+        var c = _res.pointExitControl;
+        _metricsEl.setAttribute('data-wl-scale', String(c.getWavelengthScale()));
+        _metricsEl.setAttribute('data-eff-wavelength', String(c.getEffectiveWavelength()));
+        _metricsEl.setAttribute('data-phase-reset', String(c.getExitPhaseReset()));
+        _metricsEl.setAttribute('data-recenter', String(c.getExitRecenter()));
+        _metricsEl.setAttribute('data-gate-armed', String(c.isExitGateArmed()));
+        _metricsEl.setAttribute('data-tunnel-length', String(c.getTunnelLength()));
+        _metricsEl.setAttribute('data-exit-x', String(c.getExitX()));
+        _metricsEl.setAttribute('data-mid-y', String(c.getMidY()));
+        var gate = _res.tunnel && _res.tunnel.exitGate;
+        var ops = (gate && gate.lo && gate.lo.program && gate.lo.program.ops) || [];
+        _metricsEl.setAttribute('data-gate-ops', ops.map(function (o) { return String(o.set); }).join(','));
+        el('ctrl-efflambda').textContent = String(c.getEffectiveWavelength());
+        window.__frqtlTunnelPointExit.wlScale = c.getWavelengthScale();
+        window.__frqtlTunnelPointExit.effLambda = c.getEffectiveWavelength();
+        window.__frqtlTunnelPointExit.phaseReset = c.getExitPhaseReset();
+    }
+
+    /**
+     * (Re)build the scene through the runner's OWN setup seam. `runner.setup()` disposes the
+     * previous setupResult first (canonical teardown), so a length change can never stack
+     * emitters or walls. Re-attaching the tunnel is required because the directed mode's host
+     * redirect subscribes to the runner's per-tick fan-out, and the OLD tunnel's subscription
+     * was dropped by its dispose.
+     */
+    function buildScene() {
+        _res = runner.setup(setupTunnelPointExit, {
+            canvasW: 600, canvasH: 600,
+            tunnelLength: STATE.tunnelLength,
+            wavelengthScale: STATE.wavelengthScale,
+            exitPhaseReset: STATE.phaseReset,
+            exitRecenter: STATE.recenter,
+            active: STATE.emit
+        });
+        _res.tunnel.attachToRunner(runner);
+        stamp();
+    }
+
+    window.setup = function () {
+        _metricsEl = el('tpe-metrics');
+
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 600,
+            canvasH: 600,
+            seed: 42,
+            onTick: function (tickData) {
+                _tick++;
+                var frames = (tickData && tickData.frameData) ? tickData.frameData : [];
+                window.__frqtlTunnelPointExit.activeQuanta = frames.length;
+                if (_metricsEl) { _metricsEl.setAttribute('data-alive', String(frames.length)); }
+                el('ctrl-count').textContent = String(frames.length);
+            }
+        });
+
+        // CREATE THE CANVAS FIRST — the canonical scaffold step every experiment page
+        // performs, and the one this page originally omitted. `createCanvas()` delegates to
+        // the active renderer provider's `init({parentEl, width, height})`, which is what
+        // actually calls p5's `createCanvas(w,h)` at the SCENE dimensions and parents the
+        // element to `canvasParentId`. Without it p5 reaches the end of `window.setup()`
+        // having never been given a canvas, silently creates its own DEFAULT 100x100 one and
+        // appends it to `document.body` — physics runs, controls work, and the page renders
+        // nothing visible. It must run BEFORE `setup()`/`start()`, in p5's setup() context,
+        // because `createCanvas` is a p5 global only available there.
+        runner.createCanvas();
+
+        buildScene();
+
+        // ── Controls ──────────────────────────────────────────────────────────
+        // LIVE: λ scale. Drives universe.wavelengthScale through the control handle.
+        el('ctrl-wlscale').addEventListener('input', function () {
+            STATE.wavelengthScale = parseInt(this.value, 10);
+            el('ctrl-wlscale-val').textContent = String(STATE.wavelengthScale);
+            _res.pointExitControl.setWavelengthScale(STATE.wavelengthScale);
+            stamp();
+        });
+
+        // LIVE: the phase reset. Recompiles + pushes the exit gate's op-program.
+        el('ctrl-phase').addEventListener('change', function () {
+            STATE.phaseReset = !!this.checked;
+            _res.pointExitControl.setExitPhaseReset(STATE.phaseReset);
+            stamp();
+        });
+
+        // LIVE: recentering (the point-source collapse). Same live path as the phase flag.
+        el('ctrl-recenter').addEventListener('change', function () {
+            STATE.recenter = !!this.checked;
+            _res.pointExitControl.setExitRecenter(STATE.recenter);
+            stamp();
+        });
+
+        // REBUILD: corridor length. Wall geometry cannot change under a running scene, so
+        // this re-runs the setup factory in place rather than pretending to be live.
+        el('ctrl-length').addEventListener('change', function () {
+            STATE.tunnelLength = parseInt(this.value, 10);
+            el('ctrl-length-val').textContent = String(STATE.tunnelLength);
+            buildScene();
+        });
+        el('ctrl-length').addEventListener('input', function () {
+            el('ctrl-length-val').textContent = String(this.value);
+        });
+
+        el('ctrl-emit').addEventListener('change', function () {
+            STATE.emit = !!this.checked;
+            _res.pointExitControl.setActive(STATE.emit);
+        });
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+        window._frqtlApp = runner;
+    };
+
+    // Boot once BOTH engine AND renderer are live (fail-loud otherwise). 2D/p5 only, so the
+    // p5 provider's own p5.min.js load is what invokes window.setup().
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var s = document.createElement('script');
+            s.src = '../../js/lib/p5.min.js';
+            document.body.appendChild(s);
+        });
+    });
+    </script>
+</body>
+</html>

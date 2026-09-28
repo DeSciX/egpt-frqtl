@@ -179,11 +179,12 @@
  * @param {number} [options.emitEveryTicks=6] - Ticks between bursts (sustained
  *   emission — a host tick-fn, NOT a native emit-spec; mirrors
  *   `setupConeEmitter3D.js` / Blackbody's thermostat).
- * @param {number} [options.fundamentalDimension=0] - REINIT-CLASS (like `is2D`
+ * @param {number} [options.fundamentalDimension] - REINIT-CLASS (like `is2D`
  *   — a WORLD knob, fixed at the sketch's `universe.init()` time via
- *   `worldCfg().dimension`; changing it needs a restart-in-place).
- *   `0` is BYTE-IDENTICAL to every pre-existing caller (capacity=1 at level 0,
- *   see Layer 2 below). A positive value (e.g. `2`, matching `setupTunnelLab`/
+ *   `worldCfg().dimension`, which reads it as 0 when undeclared; changing it needs
+ *   a restart-in-place). The PART step, when neither this nor `leafDimension` is
+ *   declared, takes the universe's live `fundamentalDimension`; when only
+ *   `leafDimension` is declared it is 0. A positive value (e.g. `2`, matching `setupTunnelLab`/
  *   `setupLightSourceLab`'s own `FUNDAMENTAL_DIMENSION` — "MATCHED CONTROLS ->
  *   MATCHED PHYSICS") raises each emitted leaf's CAPACITY
  *   (`SustainedSource.capacityAtDimension(dim)` = `(2^dim)^2`) so `options.
@@ -499,6 +500,18 @@
      */
     var RETIRED_OPTIONS = ['skipInit'];
 
+    /** The world's live base layer, asked of its owner. A universe that cannot answer throws. */
+    function _worldFundamentalDimension(universe) {
+        var dim = universe.fundamentalDimension;
+        if (typeof dim !== 'number' || !isFinite(dim) || dim < 0 || Math.floor(dim) !== dim) {
+            throw new Error('setupSphereEmitter3D: the universe did not report its fundamental ' +
+                'dimension (universe.fundamentalDimension = ' + String(dim) + '). An emitter that ' +
+                'declares no fundamentalDimension/leafDimension mints at the world\'s own layer, read ' +
+                'from EGPTUniverse.fundamentalDimension on an init\'d world.');
+        }
+        return dim;
+    }
+
 
     function setupSphereEmitter3D(universe, options) {
         options = options || {};
@@ -523,10 +536,17 @@
         var is2D = !!options.is2D;
 
         // `fundamentalDimension` = the universe's BASE (lowest) dimension the SKETCH
-        // init'd the world at (`worldCfg().dimension`). Default 0. Read here only to
-        // resolve `leafDimension` and the capacity clamp — never to init.
+        // init'd the world at (`worldCfg().dimension`). Read here only to resolve
+        // `leafDimension` and the capacity clamp — never to init. The WORLD owns this fact:
+        // a caller that declares NEITHER dimension gets the universe's live fundamental, so a
+        // part dropped into a dimension-2 world mints its leaves at layer 2. A caller that
+        // declares either keeps its declaration exactly (an undeclared base beside a declared
+        // `leafDimension` stays 0).
+        var declaresDimension = options.fundamentalDimension !== undefined ||
+            options.leafDimension !== undefined;
         var fundamentalDimension = options.fundamentalDimension !== undefined
-            ? options.fundamentalDimension : 0;
+            ? options.fundamentalDimension
+            : (declaresDimension ? 0 : _worldFundamentalDimension(universe));
 
         // `leafDimension` = the dimension THIS emitter births its leaves at (per-emitter
         // — the CEO's corrected 2026-07-19 model: dimension is an ADDABLE scale layer, and

@@ -64,11 +64,14 @@ function stackBootSrc() {
 // canonical '/lib/shim/...' absolute form (also consumed by router.test.mjs's
 // shimContractRelPaths() and the esm entry's buildShimContractScripts), so the
 // `shim/X` _u() arg is mapped back to `/lib/shim/X` for the parity comparison.
+// R2 (ws-stackboot-dev-map SEAM RULING) made the list LAZY —
+// `function _engineList() { return [...]; }`, called from inside the boot chain,
+// not a top-level `var`.
 function parseEngineShimEntries() {
     const src = stackBootSrc();
-    const m = src.match(/var\s+ENGINE\s*=\s*\[([\s\S]*?)\];/);
+    const m = src.match(/function\s+_engineList\s*\(\s*\)\s*\{\s*return\s*\[([\s\S]*?)\];\s*\}/);
     if (!m) {
-        throw new Error('[test] Could not find `var ENGINE = [...]` block in stack-boot.js');
+        throw new Error('[test] Could not find `function _engineList() { return [...]; }` block in stack-boot.js');
     }
     const block = m[1];
     const re = /src:\s*_u\('shim\/([^']+)'\)/g;
@@ -109,16 +112,28 @@ describe('shim-contract-manifest — ENGINE array parity (Bite 3 item 6)', funct
         assert.ok(idx < reg, 'controls/index.js must precede controls/registry.js');
     });
 
-    test('(c) THE STRUCTURAL GUARANTEE: stack-boot.js chains _seq(ENGINE) -> .then(_seq(RENDERER)) — ENGINE (frame-data) always fully resolves before RENDERER (RenderShape) starts', function () {
+    test('(c) THE STRUCTURAL GUARANTEE: stack-boot.js chains _seq(_engineList()) -> .then(_seq(_rendererList())) — ENGINE (frame-data) always fully resolves before RENDERER (RenderShape) starts', function () {
         // stackBootSrc() is already comment-stripped, so a docstring mentioning
-        // "_seq(ENGINE)" in prose cannot false-positive this structural check.
+        // "_seq(_engineList())" in prose cannot false-positive this structural check.
+        // R2 (ws-stackboot-dev-map SEAM RULING): the ENGINE/RENDERER lists are built
+        // LAZILY inside the chain (functions, not top-level `var`s) so a missing-map
+        // throw rejects into the chain's one .catch instead of aborting at
+        // script-parse time — the ENGINE-then-RENDERER ORDERING guarantee this test
+        // exists for is unchanged, only the literal spelling of the two calls moved.
         const stripped = stackBootSrc();
-        assert.ok(/_seq\(ENGINE\)/.test(stripped),
-            'stack-boot.js must kick off the ENGINE array via _seq(ENGINE)');
-        assert.ok(/\.then\(\s*function\s*\(\s*\)\s*\{\s*return\s+_seq\(RENDERER\)/.test(stripped),
-            'stack-boot.js must chain _seq(RENDERER) via a .then() off the ENGINE ' +
-            'sequence (never Promise.all/parallel) — this is the structural ' +
-            'guarantee that frame-data/index.js (ENGINE) always precedes ' +
-            'RenderShape.js (RENDERER), closing the previously-unguarded gap.');
+        const engineIdx = stripped.indexOf('_seq(_engineList())');
+        const rendererCallIdx = stripped.search(/\.then\(\s*function\s*\(\s*\)\s*\{\s*return\s+_seq\(_rendererList\(\)\)/);
+        assert.ok(engineIdx !== -1,
+            'stack-boot.js must kick off the ENGINE list via _seq(_engineList())');
+        assert.ok(rendererCallIdx !== -1,
+            'stack-boot.js must chain _seq(_rendererList()) via a .then() (never ' +
+            'Promise.all/parallel) — this is the structural guarantee that ' +
+            'frame-data/index.js (ENGINE) always precedes RenderShape.js (RENDERER), ' +
+            'closing the previously-unguarded gap.');
+        assert.ok(engineIdx < rendererCallIdx,
+            '_seq(_engineList()) must appear BEFORE the .then(_seq(_rendererList())) chain link');
+        // No Promise.all combining the two axes anywhere in the file.
+        assert.ok(!/Promise\.all\(\s*\[[^\]]*_engineList/.test(stripped),
+            'ENGINE must never be raced with RENDERER via Promise.all');
     });
 });

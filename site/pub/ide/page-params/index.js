@@ -15,7 +15,7 @@
  *
  * Four shared page-side files independently read `window.location.search` for
  * their OWN URL param, each with a hand-typed literal key string:
- *   - `lib/frqtl/experiments/_shared/fx-experiment.js` reads `seed`, `soloTier`.
+ *   - `lib/frqtl/experiments/_shared/fx-experiment.js` reads `seed`.
  *   - `lib/frqtl/experiments/_shared/render-boot.js` reads `renderer`.
  *   - `lib/frqtl/experiments/_shared/engine-boot.js` reads `engine`.
  * Plus one HOST-COMPOSITION token read INLINE (not by a downstream reader
@@ -102,7 +102,6 @@
  */
 var KEYS = Object.freeze({
     SEED:               'seed',
-    SOLO_TIER:          'soloTier',
     RENDERER:           'renderer',
     ENGINE:             'engine',
     EGPT3D:             'egpt3D',
@@ -126,11 +125,6 @@ var KEYS = Object.freeze({
 var PAGE_PARAMS = Object.freeze([
     Object.freeze({
         key:     KEYS.SEED,
-        reader:  'lib/frqtl/experiments/_shared/fx-experiment.js',
-        forward: true
-    }),
-    Object.freeze({
-        key:     KEYS.SOLO_TIER,
         reader:  'lib/frqtl/experiments/_shared/fx-experiment.js',
         forward: true
     }),

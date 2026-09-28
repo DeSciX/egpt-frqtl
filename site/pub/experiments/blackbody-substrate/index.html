@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Blackbody Substrate (L1+L2+L3+L4+L5)</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .bs-outer {
+            display: flex;
+            flex-direction: row;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .bs-outer .experiment-canvas {
+            flex: 0 0 600px;
+            max-width: 600px;
+        }
+        /* Histogram panel — matches blackbody/index.html layout exactly (shared RadiationHistogram) */
+        .histogram-panel {
+            flex: 1 1 auto;
+            min-width: 150px;
+            max-width: 220px;
+            background: #111;
+            border-left: 1px solid #2a2a2a;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .histogram-label {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 10px;
+            color: #666;
+            padding: 6px 8px 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex: 0 0 auto;
+        }
+        .histogram-sub {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 9px;
+            color: #444;
+            padding: 0 8px 4px;
+            flex: 0 0 auto;
+        }
+        .histogram-status {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            padding: 2px 8px 5px;
+            flex: 0 0 auto;
+            min-height: 14px;
+        }
+        .histogram-status.warming  { color: #ffb14e; }
+        .histogram-status.counting { color: #5a8a5a; }
+        #histogram-canvas {
+            flex: 1 1 auto;
+            display: block;
+            width: 100%;
+        }
+        .experiment-controls {
+            flex: 0 0 auto;
+            padding: 8px 14px;
+            background: #181818;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .experiment-controls label { white-space: nowrap; }
+        .experiment-controls input[type="range"] { flex: 1; max-width: 240px; cursor: pointer; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 40px; }
+    </style>
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Canonical shared loader: engine + renderer + game layer. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupBlackbodySubstrate.js,
+            ../_shared/experiment-metrics.js,
+            ../_shared/radiation-histogram.js
+        "></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+
+        <div class="bs-outer">
+            <div class="experiment-canvas" id="canvas-wrapper"></div>
+            <!-- Radiation histogram panel — identical to blackbody/index.html.
+                 Uses shared RadiationHistogram from _shared/radiation-histogram.js (DRY).
+                 Bins non-leaf frames (compound/parent frames) by child count from
+                 tickData.frameData (engine-agnostic — works on both JS and WASM). -->
+            <div class="histogram-panel" id="histogram-panel">
+                <div class="histogram-label">Intensity frequency (non-leaf)</div>
+                <div class="histogram-sub" id="histogram-sub">↑ children (intensity) · → # frames · ┊ mean</div>
+                <div class="histogram-status warming" id="hist-status">Warming up…</div>
+                <canvas id="histogram-canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="experiment-controls">
+            <label for="temp-slider">Target quanta (temperature):</label>
+            <input id="temp-slider" type="range" min="50" max="3000" value="300" step="50">
+            <span class="val" id="temp-value">300</span>
+        </div>
+
+        <div id="metrics-panel"></div>
+    </div>
+
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Blackbody Substrate — L1–L5 experiment page (slice-3 L5).
+     *
+     * L1–L4: OvenBox walls (NONE + eject op-programs + bounce), thermostat.
+     * L5: withInterQuantumCollisions=true (default in setupBlackbodySubstrate) —
+     *     compound/parent frames form inside the cavity via the engine's native
+     *     Phase-C merge→promote pipeline.
+     *
+     * Radiation histogram: shared RadiationHistogram from _shared/radiation-histogram.js.
+     *   Reads tickData.frameData (engine-agnostic). Bins non-leaf frames (childCount > 0)
+     *   that have crossed past exitX=405 (the oven slit exit) by child count. This is the
+     *   same histogram as blackbody/index.html — not a copy, just a consumer of the
+     *   shared module.
+     *
+     * JS↔WASM NOTE: Enabling L5 (parenting) diverges JS↔WASM on parent-frame count —
+     *   the histogram will look different between engines (deferred gap, handoff §6,
+     *   DEFERRED_quadtree_nonsquare_finding.md). The page displays whatever the active
+     *   engine produces; it does NOT attempt to paper over or hide the divergence.
+     */
+
+    var CANVAS_W = 600;
+    var CANVAS_H = 400;
+
+    var runner      = null;
+    var metrics     = null;
+    var tickCount   = 0;
+    var setupResult = null;
+
+    var HIST_UPDATE_INTERVAL = 30;
+    var WARMUP_SECONDS       = 90;
+    var warmupStartMs        = null;
+
+    // RadiationHistogram is the shared module from _shared/radiation-histogram.js.
+    // DRY: blackbody and blackbody-substrate both consume it.
+    var histogram = null;
+
+    function warmupRemainingSec() {
+        if (warmupStartMs === null) return WARMUP_SECONDS;
+        return Math.max(0, Math.ceil(WARMUP_SECONDS - (Date.now() - warmupStartMs) / 1000));
+    }
+    function isWarm() { return warmupRemainingSec() <= 0; }
+
+    window.setup = function () {
+        histogram = new RadiationHistogram({ exitX: 405 });
+
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: CANVAS_W,
+            canvasH: CANVAS_H,
+            seed: 42,
+            onTick: function (tickData) {
+                tickCount++;
+
+                // ── CONTROL (single-source thermostat, runs before display) ──
+                // thermostatStep(tickData): reads tickData.objects[ovenHandle].count
+                // (B5.1), resets oven.count=0, computes burst, CRUDs emitters.
+                // This is the SAME function run.js calls — one implementation, both hosts.
+                if (setupResult) setupResult.thermostatStep(tickData);
+
+                // ── RADIATION HISTOGRAM ───────────────────────────────────────
+                // Engine-agnostic: reads tickData.frameData (FrameData[] from doTick()).
+                // Accumulates non-leaf frames (childCount > 0, rect.x > 405) per tick.
+                // Shared RadiationHistogram module — NOT a copy of blackbody's draw code.
+                var warm = isWarm();
+                if (warm) {
+                    histogram.update(tickData);
+                    if (tickCount % HIST_UPDATE_INTERVAL === 0) {
+                        histogram.draw('histogram-canvas', 'histogram-panel');
+                    }
+                } else if (tickCount % HIST_UPDATE_INTERVAL === 0) {
+                    histogram.drawWarmup('histogram-canvas', 'histogram-panel', warmupRemainingSec());
+                }
+
+                var statusEl = document.getElementById('hist-status');
+                if (statusEl) {
+                    if (warm) {
+                        statusEl.className = 'histogram-status counting';
+                        statusEl.textContent = '● counting radiation';
+                    } else {
+                        statusEl.className = 'histogram-status warming';
+                        statusEl.textContent = '⏳ Warming up — ' + warmupRemainingSec() + 's';
+                    }
+                }
+
+                // ── METRICS ───────────────────────────────────────────────────
+                var aq = runner.universe.activeQuanta;
+                if (typeof aq === 'function') aq = aq();
+                var target = setupResult ? setupResult.target : 300;
+
+                // Read cavityCount from TickData.objects (B5.1) for display.
+                var cavityCount = 0;
+                if (setupResult && tickData && tickData.objects &&
+                        tickData.objects[setupResult.ovenHandle] !== undefined) {
+                    cavityCount = tickData.objects[setupResult.ovenHandle].count || 0;
+                }
+                // Derive burst the same way thermostatStep does (display-only mirror).
+                var burst = (setupResult && cavityCount < target)
+                    ? Math.max(1, Math.floor((target - cavityCount) / setupResult.emitters.length))
+                    : 0;
+
+                if (metrics) {
+                    metrics.update({
+                        'Active Quanta':      Math.round(aq),
+                        'Target':             target,
+                        'Thermostat burst':   burst,
+                        'Escaped (non-leaf)': histogram.escapedNonLeaf,
+                        'Avg intensity':      histogram.escapedNonLeaf > 0
+                            ? (histogram.massSum / histogram.escapedNonLeaf) : 0
+                    });
+                }
+            }
+        });
+
+        runner.createCanvas();
+        setupResult = runner.setup(setupBlackbodySubstrate, { temperature: 300 });
+
+        warmupStartMs = Date.now();
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Active Quanta', expected: null,
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Target', expected: '300 quanta', unit: 'quanta',
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Thermostat burst', expected: null,
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Escaped (non-leaf)', expected: null,
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Avg intensity', expected: null,
+              format: function (v) { return (v || 0).toFixed(1); } }
+        ]);
+
+        var slider  = document.getElementById('temp-slider');
+        var display = document.getElementById('temp-value');
+        slider.addEventListener('input', function () {
+            var temp = parseInt(slider.value, 10);
+            display.textContent = temp;
+            if (setupResult && setupResult.setTemperature) {
+                setupResult.setTemperature(temp);
+            }
+            // Reset histogram + warmup on temperature change
+            if (histogram) histogram.reset();
+            warmupStartMs = Date.now();
+        });
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+    };
+
+    window.addEventListener('resize', function () {
+        if (histogram) histogram.draw('histogram-canvas', 'histogram-panel');
+    });
+
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var s = document.createElement('script');
+            s.src = '../../js/lib/p5.min.js';
+            document.body.appendChild(s);
+        });
+    });
+    </script>
+</body>
+</html>

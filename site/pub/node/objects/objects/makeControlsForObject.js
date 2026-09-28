@@ -834,18 +834,18 @@ var MakeControlsForObject = {
     // ── Reuse seam for makeControlsForRenderSurface.js (WS Studio Controls ────
     //    Realignment §7 r2, architect condition: "REUSES makeControlsForObject's
     //    TYPE_DISPATCH — the big DRY win", NOT a third hand-parallel conversion).
-    // Exposes ONLY the two per-field-type handlers a renderCapabilities()
-    // descriptor actually needs (`number`, `enum`) — deliberately NOT the full
-    // TYPE_DISPATCH map: the other ten handlers bake in Frame/Universe-specific
-    // assumptions (the rect z/d component ordering, the Frame writable-boolean
-    // engine-ABI coercion trap in scope note #1(a)) that do not apply to a
-    // render capability (render options are never JSON.stringify'd into a Rust
-    // serde bool field the way a Frame prop is). `_numberHandler`/`_enumHandler`
-    // themselves have NO Frame/Universe-specific logic — they call the generic
-    // `_readValue` fallback (`wrapper[propName]`) for any `env.kind` outside
-    // {'Frame','Universe'}, so calling them with `env.kind:'RenderSurface'` and
-    // a synthetic single-field `wrapper` reuses them UNMODIFIED.
-    RENDER_TYPE_HANDLERS: { number: _numberHandler, enum: _enumHandler }
+    // Exposes ONLY the per-field-type handlers a renderCapabilities() descriptor
+    // uses (`number`, `enum`, `boolean`, `string`) — deliberately NOT the full
+    // TYPE_DISPATCH map: the rest bake in Frame/Universe-specific assumptions (the
+    // rect z/d component ordering, the Frame writable-boolean engine-ABI coercion
+    // trap in scope note #1(a)). A boolean render capability declares
+    // `engineVisible:false` (it is render-only), so `_booleanHandler` emits its 0/1
+    // control; a `string` capability (an OPEN-ID asset id) is a display entry, which
+    // the render factory does not turn into a control. These handlers call the
+    // generic `_readValue` fallback (`wrapper[propName]`) for any `env.kind` outside
+    // {'Frame','Universe'}, so `env.kind:'RenderSurface'` with a synthetic
+    // single-field `wrapper` reuses them UNMODIFIED.
+    RENDER_TYPE_HANDLERS: { number: _numberHandler, enum: _enumHandler, boolean: _booleanHandler, string: _stringHandler }
 };
 
 if (typeof module !== 'undefined' && module.exports) {

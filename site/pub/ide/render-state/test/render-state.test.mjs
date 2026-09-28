@@ -14,10 +14,12 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve, join } from 'node:path';
+import { createRequire } from 'node:module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const {
-    normalizeSavedRenderState, pickCameraReplay, applySavedUrlOverrides, renderStateToBootOptions
+    normalizeSavedRenderState, pickCameraReplay, applySavedUrlOverrides, renderStateToBootOptions,
+    partitionRenderRows
 } = await import(join(resolve(__dirname, '..'), 'index.js'));
 
 describe('render-state shim module', function () {
@@ -80,5 +82,54 @@ describe('render-state shim module', function () {
         assert.strictEqual(boot.egpt3D, false);
         assert.deepEqual(boot.renderOptions, []);
         assert.strictEqual(boot.camera, null);
+    });
+});
+
+describe('partitionRenderRows — saved rows resolved against the TARGET renderer', function () {
+    const require = createRequire(import.meta.url);
+    const repoRoot = resolve(__dirname, '../../../..');
+    const R = join(repoRoot, 'lib/frqtl/compat/renderer');
+    const { _renderCapabilitiesThree } = require(join(R, 'providers/three-provider.js'));
+    const { _renderCapabilitiesP5 } = require(join(R, 'providers/p5-provider.js'));
+    const { knownRenderCapabilityNames } = require(join(R, 'renderCapabilities-common.js'));
+    const known = knownRenderCapabilityNames({
+        p5: { renderCapabilities: _renderCapabilitiesP5 },
+        three: { renderCapabilities: _renderCapabilitiesThree }
+    });
+    const names = (caps) => caps().map((c) => c.name);
+    // The r8-sun rung's own rows — a three project.
+    const SUN_ROWS = [
+        { key: 'shape', value: 'sphere' }, { key: 'colorScheme', value: 'warmcool' },
+        { key: 'godrays', value: 1.08 }, { key: 'godrayDensity', value: 1.085 },
+        { key: 'glowIntensity', value: 0.93 }, { key: 'heat', value: 0.35 }, { key: 'smoke', value: 0 }
+    ];
+
+    test('a three project replayed on p5: no throw; p5-declared rows apply, three-only rows are retained', function () {
+        const parts = partitionRenderRows(SUN_ROWS, names(_renderCapabilitiesP5), known);
+        assert.deepEqual(parts.apply, { shape: 'sphere', colorScheme: 'warmcool' });
+        assert.deepEqual(parts.retained.map((r) => r.key), ['godrays', 'godrayDensity', 'glowIntensity', 'heat', 'smoke']);
+        assert.equal(parts.retained[0].value, 1.08);
+    });
+
+    test('toggling back: the same rows on three apply in full, nothing retained', function () {
+        const parts = partitionRenderRows(SUN_ROWS, names(_renderCapabilitiesThree), known);
+        assert.deepEqual(parts.retained, []);
+        assert.equal(parts.apply.godrays, 1.08);
+        assert.equal(Object.keys(parts.apply).length, SUN_ROWS.length);
+    });
+
+    test('a later row with the same key wins (the ordered base+mode concat)', function () {
+        const parts = partitionRenderRows([{ key: 'godrays', value: 1 }, { key: 'godrays', value: 2 }],
+            names(_renderCapabilitiesThree), known);
+        assert.deepEqual(parts.apply, { godrays: 2 });
+    });
+
+    test('FAIL-LOUD: a key no renderer declares (godRays) throws naming the known set', function () {
+        assert.throws(() => partitionRenderRows([{ key: 'godRays', value: 1 }], names(_renderCapabilitiesThree), known),
+            /"godRays" is declared by no registered renderer \(known: \[.*godrays.*\]\)/);
+    });
+
+    test('FAIL-LOUD: non-array arguments', function () {
+        assert.throws(() => partitionRenderRows(null, [], []), /three arrays/);
     });
 });

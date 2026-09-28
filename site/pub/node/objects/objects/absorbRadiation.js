@@ -148,8 +148,9 @@
         var capacity = cfg.capacity, rect = cfg.rect;
         var exit = cfg.exit || _rectRightExit(rect);
         // Emission happens AT a layer the wall absorbed from (per-layer ledgers below), and an
-        // absorbed frame lived in its own declared dimension — so every emission layer already
-        // exists; injection's fail-loud-on-undeclared can never fire here by construction.
+        // absorbed frame lived in its own dimension — so every emission layer already exists.
+        // Nothing here can make routing allocate a layer, and so nothing here can re-base the
+        // world's floor (universe.rs::route_injected_frames).
         var BASE = 1;                        // the mass-1 empty baseline (see attach)
         var absorbedTotal = 0, radiatedTotal = 0, referenceMass = BASE;
         var emissivity = (cfg.emissivity === undefined || cfg.emissivity === null)

@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Blackbody Radiation</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .bb-outer {
+            display: flex;
+            flex-direction: row;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .bb-outer .experiment-canvas {
+            flex: 0 0 600px;
+            max-width: 600px;
+        }
+        .histogram-panel {
+            flex: 1 1 auto;
+            min-width: 150px;
+            max-width: 220px;
+            background: #111;
+            border-left: 1px solid #2a2a2a;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .histogram-label {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 10px;
+            color: #666;
+            padding: 6px 8px 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex: 0 0 auto;
+        }
+        .histogram-sub {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 9px;
+            color: #444;
+            padding: 0 8px 4px;
+            flex: 0 0 auto;
+        }
+        .histogram-status {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11px;
+            padding: 2px 8px 5px;
+            flex: 0 0 auto;
+            min-height: 14px;
+        }
+        .histogram-status.warming { color: #ffb14e; }
+        .histogram-status.counting { color: #5a8a5a; }
+        #histogram-canvas {
+            flex: 1 1 auto;
+            display: block;
+            width: 100%;
+        }
+        .experiment-controls {
+            flex: 0 0 auto;
+            padding: 8px 14px;
+            background: #181818;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .experiment-controls label { white-space: nowrap; }
+        .experiment-controls input[type="range"] { flex: 1; max-width: 240px; cursor: pointer; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 40px; }
+    </style>
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Canonical shared loader: engine + renderer + game layer in ONE order.
+         Box.js and OvenBox.js are now part of the canonical GAME layer
+         (game-layer-manifest.js) and load globally via stack-boot.js — no
+         longer needed here in data-page-scripts. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupBlackbody.js,
+            ../_shared/experiment-metrics.js,
+            ../_shared/radiation-histogram.js
+        "></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+
+        <div class="bb-outer">
+            <div class="experiment-canvas" id="canvas-wrapper"></div>
+            <div class="histogram-panel" id="histogram-panel">
+                <div class="histogram-label">Intensity frequency (non-leaf)</div>
+                <div class="histogram-sub" id="histogram-sub">↑ children (intensity) · → # frames · ┊ mean</div>
+                <div class="histogram-status warming" id="hist-status">Warming up…</div>
+                <canvas id="histogram-canvas"></canvas>
+            </div>
+        </div>
+
+        <div class="experiment-controls">
+            <label for="temp-slider">Temperature (target quanta):</label>
+            <input id="temp-slider" type="range" min="50" max="5000" value="1500" step="50">
+            <span class="val" id="temp-value">1500</span>
+        </div>
+
+        <div id="metrics-panel"></div>
+    </div>
+
+    <!-- Experiment sketch -->
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Blackbody Radiation — canonical per-experiment page.
+     * Engine-agnostic: runs JS or WASM identically via FrqtlApp + the
+     * compat façade. Engine is chosen by ?engine= and boots fail-loud (engine-boot.js).
+     * Renderer is chosen by ?renderer= and boots fail-loud (render-boot.js).
+     */
+
+    var CANVAS_W = 600;
+    var CANVAS_H = 400;
+
+    var runner  = null;
+    var metrics = null;
+    var tickCount = 0;
+
+    var HIST_UPDATE_INTERVAL = 30;
+
+    var WARMUP_SECONDS = 90;
+    var warmupStartMs  = null;
+    var temperatureControl = null;
+
+    // RadiationHistogram is loaded from _shared/radiation-histogram.js (DRY — shared
+    // with blackbody-substrate/index.html). Both experiments read the same module.
+    var histogram = null;
+
+    function warmupRemainingSec() {
+        if (warmupStartMs === null) return WARMUP_SECONDS;
+        return Math.max(0, Math.ceil(WARMUP_SECONDS - (Date.now() - warmupStartMs) / 1000));
+    }
+    function isWarm() { return warmupRemainingSec() <= 0; }
+
+    function resetSpectrum() {
+        if (histogram) histogram.reset();
+        warmupStartMs = Date.now();
+    }
+
+    window.setup = function () {
+        histogram = new RadiationHistogram({ exitX: 405 });
+
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: CANVAS_W,
+            canvasH: CANVAS_H,
+            seed: 42,
+            onTick: function (tickData, setupResult) {
+                tickCount++;
+
+                var warm = isWarm();
+
+                if (warm) {
+                    histogram.update(tickData);
+                    if (tickCount % HIST_UPDATE_INTERVAL === 0) {
+                        histogram.draw('histogram-canvas', 'histogram-panel');
+                    }
+                } else if (tickCount % HIST_UPDATE_INTERVAL === 0) {
+                    histogram.drawWarmup('histogram-canvas', 'histogram-panel', warmupRemainingSec());
+                }
+
+                var statusEl = document.getElementById('hist-status');
+                if (statusEl) {
+                    if (warm) {
+                        statusEl.className = 'histogram-status counting';
+                        statusEl.textContent = '● counting radiation';
+                    } else {
+                        statusEl.className = 'histogram-status warming';
+                        statusEl.textContent = '⏳ Blackbody warming up — ' + warmupRemainingSec() + 's';
+                    }
+                }
+
+                if (metrics) {
+                    var quanta = runner.universe.activeQuanta;
+                    var temp   = temperatureControl ? temperatureControl.getTemperature() : 1500;
+                    metrics.update({
+                        'Active Quanta':           quanta,
+                        'Temperature':             temp,
+                        'Escaped (non-leaf)':      histogram.escapedNonLeaf,
+                        'Avg fill (leaves/frame)': histogram.escapedNonLeaf > 0
+                            ? (histogram.massSum / histogram.escapedNonLeaf) : 0
+                    });
+                }
+            }
+        });
+
+        runner.createCanvas();
+        var result = runner.setup(setupBlackbody, { temperature: 1500 });
+        temperatureControl = result.temperatureControl;
+
+        warmupStartMs = Date.now();
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Active Quanta', expected: null,
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Temperature', expected: '1500 quanta', unit: 'quanta',
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Escaped (non-leaf)', expected: null,
+              format: function (v) { return Math.round(v).toString(); } },
+            { name: 'Avg fill (leaves/frame)', expected: null,
+              format: function (v) { return (v || 0).toFixed(1); } }
+        ]);
+
+        var slider  = document.getElementById('temp-slider');
+        var display = document.getElementById('temp-value');
+        slider.addEventListener('input', function () {
+            var temp = parseInt(slider.value, 10);
+            display.textContent = temp;
+            if (temperatureControl) {
+                temperatureControl.setTemperature(temp);
+            }
+            resetSpectrum();
+        });
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+    };
+
+    window.addEventListener('resize', function () {
+        if (histogram) histogram.draw('histogram-canvas', 'histogram-panel');
+    });
+
+    // Load p5 (which invokes window.setup) ONLY once BOTH the engine AND renderer are live.
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var s = document.createElement('script');
+            s.src = '../../js/lib/p5.min.js';
+            document.body.appendChild(s);
+        });
+    });
+    </script>
+</body>
+</html>

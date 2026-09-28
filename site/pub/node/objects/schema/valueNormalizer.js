@@ -65,9 +65,10 @@
 //                `constraint.min`/`max` are ENFORCED (out of the declared range
 //                throws — a clamp would silently store something the caller never
 //                asked for).
-//   boolean    — coerced `!!value` (generic controls carry booleans as a 0/1 scalar,
-//                and every consumer tests IDENTITY: a stored 0 reads as "still
-//                visible" and the write silently does nothing).
+//   boolean    — true | false | 0 | 1, stored as the boolean (generic controls carry
+//                booleans as a 0/1 scalar, and every consumer tests IDENTITY: a stored
+//                0 reads as "still visible"). Anything else throws — `'false'` is truthy
+//                and would silently store `true`.
 //   string     — a JS string (empty allowed).
 //   enum       — a declared member: a KEY or a VALUE of `constraint.values` (that map
 //                is identity for every enum but SlitScreen.detectAtSlits, whose
@@ -177,7 +178,11 @@ var VALUE_NORMALIZERS = {
         }
         return out;
     },
-    boolean: function (field, value) { return !!value; },
+    boolean: function (field, value, kind) {
+        if (value === true || value === 1) { return true; }
+        if (value === false || value === 0) { return false; }
+        _valueFail(kind, field, 'true, false, 0 or 1', value);
+    },
     string: function (field, value, kind) {
         if (typeof value !== 'string') { _valueFail(kind, field, 'a string', value); }
         return value;

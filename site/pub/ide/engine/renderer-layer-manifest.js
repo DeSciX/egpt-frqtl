@@ -87,8 +87,6 @@ export var RENDERER_LAYER_SCRIPTS = [
     // Per-frame render-family decode; COMPOSES the two above (ferried at
     // module-eval time) — MUST come after both, before the providers.
     'compat/renderer/RenderFamily.js',
-    // Per-layer-range render-tier table.
-    'compat/renderer/RenderTiers.js',
     'compat/renderer/FieldBuilder.js',
     // The CODE OWNER of the RendererProvider method lists (required/optional split
     // + validateRendererProvider). A dependency, not a provider: it installs its

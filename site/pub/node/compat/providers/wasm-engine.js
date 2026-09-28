@@ -211,8 +211,6 @@
           effect: 'the minimum fullness a merged/promoted composite must reach to survive.' },
         { key: 'wavelengthScale', def: 1, unit: 'multiplier',
           effect: 'the GLOBAL multiplier on every frame per-frame (capacity/mass) wavelength: lambda_eff = (capacity/mass) * wavelengthScale. Raising it widens fringes. init() re-reads this.' },
-        { key: 'lowestDimension', def: 0, unit: 'dimension index',
-          effect: 'the pre-init record of the base (fundamental) scale layer. init(rect, fundamentalDim, …) is the authority and overwrites it.' },
     ];
 
     /**
@@ -309,7 +307,17 @@
         universe_rect: "renamed to 'rect'",
         wavelength_constant: "renamed to 'wavelengthScale'",
         wavelengthConstant: "renamed to 'wavelengthScale'",
-        lowest_dimension: "renamed to 'lowestDimension'",
+        // RETIRED because it was INERT, which is the worst kind of accepted key: create()
+        // recorded it and nothing ever read it, so `create({lowestDimension: 2})` ran a
+        // dimension-0 world and reported success. The base scale layer has one authority and
+        // always did — init()'s SECOND ARGUMENT. Both spellings get the same sentence.
+        lowest_dimension: "is RETIRED, and it is NOT a rename. The base (fundamental) scale " +
+            "layer is the SECOND ARGUMENT of init(rect, dim, opts) — pass it there: " +
+            "universe.init(rect, 2). create() does not carry it.",
+        lowestDimension: "is RETIRED, and it was INERT: create() recorded it and init() never " +
+            "read it, so create({lowestDimension: 2}) silently ran a dimension-0 world. The " +
+            "base (fundamental) scale layer is the SECOND ARGUMENT of init(rect, dim, opts) " +
+            "and always was — pass it there: universe.init(rect, 2).",
         withFrames: "deleted — it was inert (the WASM engine always has frames). Remove it.",
         // DELETED, not renamed. Read the inversion carefully before migrating a saved
         // recipe by hand — getting its SENSE backwards silently swaps the walk law.
@@ -414,7 +422,6 @@
             minMBFillRate: cfg.minMBFillRate,
             universe_rect: cfg.rect,
             wavelength_scale: cfg.wavelengthScale,
-            lowest_dimension: cfg.lowestDimension,
             seed: cfg.seed,
         };
         this._wasm = null;
@@ -525,7 +532,6 @@
      * | frameGenMode               | groundUp| 'groundUp' \| 'topDown'  |
      * | minMBFillRate              | 0.1     | fraction of capacity    |
      * | wavelengthScale            | 1       | multiplier              |
-     * | lowestDimension            | 0       | dimension index         |
      *
      * `rect` accepts EITHER a `Rectangle` OR a plain bounds literal
      * (`{left|x, top|y, w, h}`), which is normalised here to a non-centered
@@ -640,6 +646,39 @@
         get: function () {
             if (!this._wasm) return 0;
             return this._wasm.active_quanta();
+        }
+    });
+
+    // initDimension — the dimension this world was INIT'd at: the one layer `init(rect, dim, opts)`
+    // allocates, and the seed every part's own layer declaration is re-applied from when a scene
+    // is rebuilt. A DIFFERENT fact from `fundamentalDimension` below: that one is the LIVE lowest
+    // allocated layer and moves when a part adds a lower dimension; this one never moves until the
+    // world is re-init'd. A saved scene's world step re-emits THIS value. Throws before init.
+    Object.defineProperty(EGPTUniverse.prototype, 'initDimension', {
+        get: function () {
+            this._ensureInit();
+            return this._initDimension;
+        },
+        set: function () {
+            throw new Error("EGPTUniverse: 'initDimension' is read-only — its one writer is " +
+                'universe.init(rect, dim, opts).');
+        }
+    });
+
+    // fundamentalDimension — [GLOBAL] the world's LIVE base scale layer, ENGINE TRUTH, ASKED
+    // ON EVERY READ. It is the layer a leaf is minted at when its caller declares none, so a
+    // part that needs "the world's layer" reads it HERE and never keeps its own copy. It moves
+    // only through `addDimension` (the engine self-lowers it to the lowest allocated layer),
+    // so a write is refused rather than silently ignored. Before `init()` there is no world
+    // and no layer to report.
+    Object.defineProperty(EGPTUniverse.prototype, 'fundamentalDimension', {
+        get: function () {
+            this._ensureInit();
+            return this._wasm.fundamental_dimension();
+        },
+        set: function () {
+            throw new Error("EGPTUniverse: 'fundamentalDimension' is read-only — the world's base " +
+                'layer is set by init() and lowered only by universe.addDimension(layer).');
         }
     });
 
@@ -956,6 +995,10 @@
 
         // _WasmUniverse is captured in the closure created by makeProvider()
         this._wasm = new _WasmUniverse(config);
+        // The INIT dimension of THIS world (re-init overwrites it): the input a consumer that
+        // re-declares the world re-emits. Read through `initDimension`, never the live
+        // `fundamentalDimension`, which a lower addDimension ratchets down.
+        this._initDimension = fundamental_dimension_number;
         // NO wavelength-scale read-back here either. The universe that just consumed the
         // config bag IS the answer, and `universe.wavelengthScale` asks it on every read —
         // so there is nothing to copy out at init time and nothing that could go stale
@@ -966,12 +1009,6 @@
         // answer, and `universe.brownianMotion` asks it on every read — so there is nothing to
         // copy out at init time and nothing that could go stale afterwards. (A read-back
         // assignment lived here for one bite; it was a better-SOURCED cache, not engine truth.)
-        // Record the post-init fundamental dimension on _params (the constructor left it at the
-        // pre-init default, usually 0). makeLeafFrame derives the leaf level from this — without
-        // it, dim-2 experiments (wave-interference/double-slit) emit level-0 leaves (capacity 1,
-        // wavelength collapsed) instead of level-2 (capacity 16). Mirrors the JS reference, whose
-        // init sets _fundamental_dimension_number/lowest_dimension.
-        this._params.lowest_dimension = fundamental_dimension_number;
         // Register this universe as the active one so BoundaryFrame.makeLeafFrame
         // can forward to the WASM ABI without holding an explicit reference.
         _activeWasmUniverse = this._wasm;
@@ -1136,15 +1173,10 @@
         // at dimension N has level N (Rust make_leaf_frame: width=2^N, capacity=width², wavelength
         // derived). The emitter passes null; only an explicit override passes a number. Mirrors the
         // JS reference makeLeafFrame.
-        // DYNAMIC DIMENSIONS: read the LIVE fundamental from the engine — it self-lowers when a
-        // lower dimension is allocated (add_dimension), so the init-time snapshot on
-        // `_params.lowest_dimension` goes stale. Ferry the live value (canonical-contract rule:
-        // the engine owns it, the provider never snapshots it); fall back to the snapshot only if
-        // the ABI getter is absent (older wasm build).
-        var liveFundamental = (this._wasm && typeof this._wasm.fundamental_dimension === 'function')
-            ? this._wasm.fundamental_dimension()
-            : (this._params && this._params.lowest_dimension != null ? this._params.lowest_dimension : 0);
-        var lvl = (level != null) ? level : liveFundamental;
+        // DYNAMIC DIMENSIONS: the LIVE fundamental self-lowers when a lower dimension is
+        // allocated (add_dimension), so it is read through the one `fundamentalDimension`
+        // getter on every mint, never snapshotted.
+        var lvl = (level != null) ? level : this.fundamentalDimension;
         // I2 BUGFIX (2026-07-13, discovered by the LightSource source-invariance
         // oracle — docs/internal/physics-lab/directed-tunnel-scale-sweep/source-invariance.cjs):
         // the Rust wasm binding's `charge: i32` contract is "0=Positive, 1=Negative,

@@ -93,12 +93,16 @@ globalThis.URL.revokeObjectURL = function () { /* data: URLs need no revocation 
 const { Runtime } = await import(path.join(repoRoot, 'lib/shim/runtime/index.js'));
 const { synthesizeBuilderSource } = await import(path.join(repoRoot, 'lib/shim/notebook/setup-builder.js'));
 
-// A fake FrqtlApp constructor. Runtime.init({_routerResolve}) is required
-// for caps.frqtl.ensureEngine to exist at all; pre-setting window.FrqtlApp
-// makes ensureEngineStack's early-return fire immediately (it checks
-// `typeof window.FrqtlApp === 'function'` BEFORE touching the router
-// resolve or injecting any script) — no fake network/script-load machinery needed.
+// A fake FrqtlApp constructor on a page where stack-boot has already executed and BOTH of
+// its published signals are ready: engine-ready (`_egptWhenEngineReady`) and the GAME-layer
+// roster (`_egptGameLayerReadyPromise`). Runtime.init({_router}) is required for
+// caps.frqtl.ensureEngine to exist at all; with stack-boot already executed,
+// ensureEngineStack skips only the injection (neither .resolve nor .ensureBrowserPathMap()
+// is ever called) and still awaits the composed contract — so the stand-in must play both
+// signals. A pre-set window.FrqtlApp alone is not a stand-in for either (FRAQTL #73).
 function installFakeFrqtlApp() {
+    globalThis.window._egptWhenEngineReady = function (onReady) { onReady(); };
+    globalThis.window._egptGameLayerReadyPromise = Promise.resolve();
     globalThis.window.FrqtlApp = function (opts) {
         this.opts = opts;
         this.setup = function (fn, knobOpts) { this._fn = fn; this._opts = knobOpts; };
@@ -112,7 +116,7 @@ const MODULE_SET = {
 };
 
 async function runtimeInitOnce() {
-    await Runtime.init({ _routerResolve: function (rel) { return '/frqtl/' + rel; } });
+    await Runtime.init({ _router: { resolve: function (rel) { return '/frqtl/' + rel; } } });
 }
 
 describe('Runtime.runCell forceModulePath gate (C15) — the REAL runtime gate, not a reimplementation', () => {

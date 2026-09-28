@@ -10,8 +10,8 @@
  * `null`, so a correctly-stamped PER-FRAME `render.shape` / `render.mesh` was silently ignored
  * (the bug class the resolver-only unit tests structurally cannot see: a resolver is 100%
  * correct while its ONLY caller feeds it null). This file lifts that routing DECISION into a
- * PURE, Node-testable decode function with a SINGLE caller — mirroring RenderTiers.js
- * (RenderTiers.resolveTierAppearance), the existing precedent for "extract the tick-loop routing
+ * PURE, Node-testable decode function with a SINGLE caller — mirroring RenderShape.js
+ * (RenderShape.resolve), the existing precedent for "extract the tick-loop routing
  * decision into a pure decode fn." A future call-site cannot re-pass null silently because this
  * function has NO null-frame code path — it composes the two authorities per-frame.
  *

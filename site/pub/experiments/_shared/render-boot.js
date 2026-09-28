@@ -440,19 +440,32 @@
         // Loaded ONLY when an experiment opts in via window._egptMeshLoaders (most experiments
         // don't use render.mesh, so they don't pay the ~445KB cost). They are UMD globals that
         // attach to THREE, so they MUST load AFTER three (here) and BEFORE provider init. The
-        // base dir is window._egptMeshLoadersBase or the vendored /frqtl mount default; the
-        // provider points DRACOLoader at <base>/draco/. FAIL LOUD if a requested loader can't
-        // load — a mesh experiment with no loader is a broken experiment, not a silent sprite.
+        // base dir is derived through the router's 'assets/vendor/' key (via
+        // window._egptResolveFrqtl, published by stack-boot.js) — THIS is the ONE place the
+        // base is computed AND published (window._egptMeshLoadersBase); the provider
+        // (three-provider.js) only ever READS what is published here, never re-derives it (two
+        // defaults for one fact is the mirror this bite closes). No override knob: grepping the
+        // tree turns up zero writers of _egptMeshLoadersBase other than this function, so a
+        // second input here would be a knob nobody sets (the same no-writer class B1b deleted).
+        // FAIL LOUD if a requested loader can't load — a mesh experiment with no loader is a
+        // broken experiment, not a silent sprite.
         function _loadMeshLoaders(done) {
             if (!window._egptMeshLoaders) { done(); return; }
-            var base = window._egptMeshLoadersBase || '/frqtl/assets/vendor/three-loaders';
+            if (typeof window._egptResolveFrqtl !== 'function') {
+                rejectBoot('render.mesh loaders requested (window._egptMeshLoaders) but ' +
+                           'window._egptResolveFrqtl is unavailable — this page must load through ' +
+                           'stack-boot.js, which publishes it.');
+                return;
+            }
+            var base = window._egptResolveFrqtl('assets/vendor/three-loaders');
             window._egptMeshLoadersBase = base;   // publish for the provider's DRACO decoder path
             var scripts = [base + '/GLTFLoader.js', base + '/DRACOLoader.js'];
             (function next(i) {
                 if (i >= scripts.length) {
                     if (typeof THREE.GLTFLoader === 'undefined' || typeof THREE.DRACOLoader === 'undefined') {
                         rejectBoot('render.mesh loaders loaded but THREE.GLTFLoader/DRACOLoader undefined.\n' +
-                                   'Base: ' + base + ' (run scripts/vendor-three-loaders.mjs to populate).');
+                                   'Base: ' + base + ' (router key \'assets/vendor/three-loaders\' — ' +
+                                   'run scripts/vendor-three-loaders.mjs to populate the vendored dir).');
                         return;
                     }
                     done();
@@ -463,7 +476,8 @@
                 ms.onload = function () { next(i + 1); };
                 ms.onerror = function () {
                     rejectBoot('render.mesh loader failed to load: ' + scripts[i] + '\n' +
-                               'Set window._egptMeshLoadersBase or run scripts/vendor-three-loaders.mjs.');
+                               'Router key \'assets/vendor/three-loaders\' resolved to this base — ' +
+                               'run scripts/vendor-three-loaders.mjs to populate the vendored dir.');
                 };
                 document.head.appendChild(ms);
             })(0);

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — FX: Glow</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="range"] { width: 100px; cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 28px; display: inline-block; text-align: right; }
+        .cam-preset { background:#1a1a1a; color:#aaa; border:1px solid #2a2a2a; border-radius:3px; font-size:11px; padding:2px 7px; cursor:pointer; margin:0 2px; }
+        .cam-preset:hover { color:#7ec8e3; border-color:#7ec8e3; }
+    </style>
+</head>
+<body>
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egpt3D = true;</script>
+
+    <!-- FX demo config (read by _shared/fx-experiment.js, which provides window.setup). -->
+    <script>
+    window._egptFx = {
+        title: 'FX — Glow',
+        setup: 'setupParticleWalk3D',
+        renderDefaults: { glowIntensity: 2.2, heat: 0.6 },
+        // controls: RETIRED (WS Studio Controls Realignment §7 r2 item 3(b)) — the
+        // effect-slider set for glowIntensity/heat is now mechanically derived from
+        // renderCapabilities() by fx-experiment.js's _buildControls, filtered to the
+        // keys declared in renderDefaults above. See fx-experiment.js's own docstring.
+        presets: [
+            { name: 'Off',       render: { glowIntensity: 0,   heat: 0   } },
+            { name: 'Ember',     render: { glowIntensity: 1.2, heat: 0.4 } },
+            { name: 'Comet',     render: { glowIntensity: 2.4, heat: 0.8 } },
+            { name: 'Supernova', render: { glowIntensity: 3.0, heat: 1.0 } }
+        ]
+    };
+    </script>
+
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupParticleWalk3D.js,
+            ../_shared/experiment-metrics.js,
+            ../_shared/fx-experiment.js
+        "></script>
+
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <span id="camera-controls" style="display:none; align-items:center; gap:16px;">
+                <label title="Orbit the camera horizontally">cam azimuth:
+                    <input type="range" id="cam-azimuth" min="-180" max="180" step="1" value="35">
+                    <span class="val" id="cam-azimuth-val">35</span></label>
+                <label title="Orbit the camera vertically">cam elevation:
+                    <input type="range" id="cam-elevation" min="-85" max="85" step="1" value="22">
+                    <span class="val" id="cam-elevation-val">22</span></label>
+                <label title="Dolly the camera in/out">cam distance:
+                    <input type="range" id="cam-distance" min="200" max="2400" step="20" value="960">
+                    <span class="val" id="cam-distance-val">960</span></label>
+                <span title="Pre-computed perspectives">view:
+                    <button type="button" id="cam-preset-table-top" class="cam-preset">table-top</button>
+                    <button type="button" id="cam-preset-down-barrel" class="cam-preset">down-barrel</button>
+                    <button type="button" id="cam-preset-rooftop" class="cam-preset">rooftop</button>
+                </span>
+            </span>
+        </div>
+        <div id="metrics-panel"></div>
+    </div>
+</body>
+</html>

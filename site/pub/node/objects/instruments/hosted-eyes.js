@@ -104,17 +104,22 @@
     var path = (typeof require === 'function') ? require('path') : null;
     var url  = (typeof require === 'function') ? require('url')  : null;
 
-    /** Resolve a sibling/upward CJS contract with a named FAIL-LOUD guard. @private */
-    function _req(rel, what) {
+    /**
+     * Resolve a sibling/upward CJS contract with a named FAIL-LOUD guard. `load` is a thunk
+     * holding a literal `require(...)`, so the static require-closure gate over the node dist
+     * sees every contract this instrument claims; the MODULE_NOT_FOUND message names the path.
+     * @private
+     */
+    function _req(load, what) {
         if (typeof require !== 'function') {
             throw new Error('[FrqtlHostedEyes] this instrument is NODE-ONLY: it drives a ' +
                 'headless browser. In a browser you already have the display renderer — ' +
                 'capture through it directly. (FAIL-LOUD.)');
         }
-        try { return require(rel); }
+        try { return load(); }
         catch (e) {
-            throw new Error('[FrqtlHostedEyes] canonical contract ' + what + ' (' + rel +
-                ') is unreachable: ' + (e && e.message) + '. Fail-loud, not a fallback.');
+            throw new Error('[FrqtlHostedEyes] canonical contract ' + what +
+                ' is unreachable: ' + (e && e.message) + '. Fail-loud, not a fallback.');
         }
     }
 
@@ -123,13 +128,14 @@
     var PageParams       = null;
     function _contracts() {
         if (!FrqtlCapture) {
-            FrqtlCapture     = _req('./capture.js', 'the tap MECHANISM');
-            FrqtlCaptureHost = _req('./capture-host.js', 'the capture-host KIND');
+            FrqtlCapture     = _req(function () { return require('./capture.js'); }, 'the tap MECHANISM');
+            FrqtlCaptureHost = _req(function () { return require('./capture-host.js'); }, 'the capture-host KIND');
             // 3-up from objects/instruments/ lands at lib/ (shim is a SIBLING of frqtl) —
             // the same relative math every Node-guarded game-layer require uses, and the
             // same depth the sdk build mirrors under dist/.
-            PageParams = _req(path.resolve(__dirname, '..', '..', '..', 'shim', 'page-params', 'index.js'),
-                'the page-param vocabulary');
+            PageParams = _req(function () {
+                return require(path.resolve(__dirname, '..', '..', '..', 'shim', 'page-params', 'index.js'));
+            }, 'the page-param vocabulary');
         }
         return { RS: _resolveRenderStages(), CH: FrqtlCaptureHost, PP: PageParams };
     }
@@ -139,8 +145,9 @@
         var RS = (typeof globalThis !== 'undefined' && globalThis.RenderStages)
             ? globalThis.RenderStages : null;
         if (!RS) {
-            RS = _req(path.resolve(__dirname, '..', '..', '..', 'shim', 'render', 'render-stages.js'),
-                'RenderStages');
+            RS = _req(function () {
+                return require(path.resolve(__dirname, '..', '..', '..', 'shim', 'render', 'render-stages.js'));
+            }, 'RenderStages');
             globalThis.RenderStages = RS;      // the node BOOT seam the core barrel uses
         }
         return RS;
@@ -303,10 +310,36 @@
         return window.FrqtlPage.displayResolution();
     };
 
-    /** One tick, awaited by the caller: the control-plane step warmUpRealm drives. */
-    var _IN_PAGE_STEP = function () {
-        var td = window._frqtlApp.step();
-        return (td && td.universeData) ? td.universeData.tick : null;
+    /**
+     * One tick, awaited by the caller: the control-plane step warmUpRealm drives.
+     *
+     * It HONOURS THE HOLD rather than racing it: an in-page recorder holds the clock from a
+     * sampled tick until that capture settles, and `step()` refuses to advance a held clock. So
+     * the step waits (a macrotask at a time) for `ticksSuspended` to clear, bounded by the
+     * handle's timeout, and throws naming the hold if it never does.
+     */
+    var _IN_PAGE_STEP = function (args) {
+        var r = window._frqtlApp;
+        var deadline = Date.now() + args.timeoutMs;
+        return new Promise(function (resolve, reject) {
+            (function attempt() {
+                if (r.ticksSuspended) {
+                    if (Date.now() > deadline) {
+                        reject(new Error('[FrqtlHostedEyes/in-page] the tick clock stayed HELD ' +
+                            '(runner.ticksSuspended) for ' + args.timeoutMs + 'ms — a capture or ' +
+                            'waypoint handler in the page never settled, so the drive cannot ' +
+                            'advance. (FAIL-LOUD.)'));
+                        return;
+                    }
+                    setTimeout(attempt, 0);
+                    return;
+                }
+                try {
+                    var td = r.step();
+                    resolve((td && td.universeData) ? td.universeData.tick : null);
+                } catch (e) { reject(e); }
+            })();
+        });
     };
 
     /** The current tick, read (never advanced). */
@@ -366,8 +399,8 @@
         _assertHostable(opts);
         if (!opts.pageUrl || typeof opts.pageUrl !== 'string') {
             throw new Error('[FrqtlHostedEyes.open] `pageUrl` is REQUIRED: the URL of the ' +
-                'CANONICAL empty experiment page in your deployment — a dev server serves it at ' +
-                '<origin>/frqtl/experiments/empty/index.html, a published dist at ' +
+                'CANONICAL empty experiment page (lib/frqtl/experiments/empty/index.html) in your ' +
+                'deployment — a dev server exposes it at its /frqtl mount, a published dist at ' +
                 '<origin>/experiments/empty/index.html. A library may not invent the address of ' +
                 'your deployment, and it must not ship a second copy of that page. (FAIL-LOUD.)');
         }
@@ -445,6 +478,9 @@
             // ── The KIND, over this page ────────────────────────────────────
             var identity = { build: pageScene.build, projection: pageScene.projection };
             var disposed = false;
+            // The in-page recorder subscribes when its BEGIN lands; a drive waits on this gate so
+            // no tick runs between a record() call and the page-side subscription.
+            var gate = { opened: Promise.resolve(), seq: 0 };
             var host = {
                 kind: C.CH.CAPTURE_HOST_KIND,
                 // FERRIED, never a local list: the PAGE's dispatcher is the authority on which
@@ -460,6 +496,43 @@
                     }
                     return page.evaluate(C.CH.IN_PAGE_CAPTURE, { stage: stage })
                         .then(function (env) { return C.CH.decodeStillEnvelope(env); });
+                },
+                record: function (recordOpts) {
+                    if (disposed) {
+                        return Promise.reject(new Error('[FrqtlHostedEyes] this handle is DISPOSED — ' +
+                            'its browser is closed. Open a new one. (FAIL-LOUD.)'));
+                    }
+                    gate.seq += 1;
+                    var id = gate.seq;
+                    // A signal cannot cross `evaluate`: the page-side record gets its own
+                    // controller (parked by BEGIN), and this signal is ferried to it by ABORT.
+                    var signal = recordOpts.signal || null;
+                    var pageOpts = {};
+                    for (var k in recordOpts) { if (k !== 'signal') { pageOpts[k] = recordOpts[k]; } }
+                    var begun = page.evaluate(C.CH.IN_PAGE_RECORD_BEGIN, { id: id, opts: pageOpts });
+                    gate.opened = begun.then(null, function () {});
+                    var onAbort = null;
+                    var aborted = null;
+                    if (signal) {
+                        var sendAbort = function () {
+                            return begun.then(function () {
+                                return page.evaluate(C.CH.IN_PAGE_RECORD_ABORT, { id: id });
+                            });
+                        };
+                        if (signal.aborted) { aborted = sendAbort(); }
+                        else {
+                            onAbort = function () { aborted = sendAbort(); };
+                            signal.addEventListener('abort', onAbort, { once: true });
+                        }
+                    }
+                    var detach = function () { if (onAbort) { signal.removeEventListener('abort', onAbort); } };
+                    return begun.then(function () {
+                        return page.evaluate(C.CH.IN_PAGE_RECORD_END, { id: id });
+                    }).then(function (env) {
+                        detach();
+                        // A failed ABORT delivery is surfaced, never swallowed.
+                        return Promise.resolve(aborted).then(function () { return env; });
+                    }, function (e) { detach(); throw e; });
                 },
                 dispose: function () {
                     if (disposed) { return Promise.resolve(); }
@@ -492,7 +565,7 @@
                         'still filed under the wrong scene verifies forever against the wrong ' +
                         'header.)');
                 }
-                return _handle(browser, page, host, inst, nodeScene);
+                return _handle(browser, page, host, inst, nodeScene, gate, timeout);
             });
         }).catch(function (e) {
             // A half-opened handle that leaked a browser would poison the zero-orphans gate
@@ -511,10 +584,14 @@
     }
 
     /** The consumer-facing handle. @private */
-    function _handle(browser, page, host, inst, scene) {
-        var FrqtlVision = _req('../objects/FrqtlVision.js', 'the vision FACE');
+    function _handle(browser, page, host, inst, scene, gate, timeout) {
+        var FrqtlVision = _req(function () { return require('../objects/FrqtlVision.js'); }, 'the vision FACE');
         var self = {
-            /** The SAME face as everywhere else: getScene / getStill / stages / toDataURL. */
+            /**
+             * The SAME face as everywhere else: getScene / getStill / stages / toPNG, and
+             * `record(opts)`, which runs the one recorder IN the hosted page. Issue the drive
+             * after it: `const p = eyes.vision.record(opts); await eyes.driveToTick(n); await p`.
+             */
             vision: FrqtlVision.attach(inst),
             /** The tap MECHANISM, for a consumer that wants `capture(stage)` directly. */
             capture: inst,
@@ -539,7 +616,7 @@
                     return Promise.reject(new Error('[FrqtlHostedEyes.driveToTick] a tick is a ' +
                         'non-negative integer coordinate; got ' + String(n) + '. (FAIL-LOUD.)'));
                 }
-                return self.tick().then(function (now) {
+                return gate.opened.then(function () { return self.tick(); }).then(function (now) {
                     var at = (typeof now === 'number') ? now : 0;
                     if (at > n) {
                         throw new Error('[FrqtlHostedEyes.driveToTick] the hosted world is ' +
@@ -548,7 +625,7 @@
                             'the seed is for). (FAIL-LOUD.)');
                     }
                     return _warmup().then(function (W) {
-                        return W.warmUpRealm({ step: function () { return page.evaluate(_IN_PAGE_STEP); } },
+                        return W.warmUpRealm({ step: function () { return page.evaluate(_IN_PAGE_STEP, { timeoutMs: timeout }); } },
                                              n - at, 0, W.MAX_PRODUCE_AFTER_TICKS);
                     });
                 }).then(function () {
@@ -592,9 +669,40 @@
                     throw new Error('[FrqtlHostedEyes.saveStill] a destination path is REQUIRED ' +
                         '— saveStill(still, "out.png"). (FAIL-LOUD.)');
                 }
-                var fs = _req('fs', 'the node filesystem');
+                var fs = _req(function () { return require('fs'); }, 'the node filesystem');
                 fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-                fs.writeFileSync(file, _req('../objects/FrqtlVision.js', 'the vision FACE').toPNG(still));
+                fs.writeFileSync(file, _req(function () { return require('../objects/FrqtlVision.js'); }, 'the vision FACE').toPNG(still));
+                return file;
+            },
+
+            /**
+             * saveVideo(envelope, file) — write a recording's MP4 bytes to disk.
+             *
+             * The twin of `saveStill`: the envelope is re-validated by its OWNER
+             * (`CaptureEnvelope.videoEnvelope`) and its base64 bytes are decoded to the file.
+             * SYNCHRONOUS — the bytes are already in this process.
+             *
+             * @param {object} envelope — what `vision.record` resolved
+             * @param {string} file — the destination path (directories created)
+             * @returns {string} `file`
+             */
+            saveVideo: function (envelope, file) {
+                if (typeof file !== 'string' || !file) {
+                    throw new Error('[FrqtlHostedEyes.saveVideo] a destination path is REQUIRED ' +
+                        '— saveVideo(envelope, "out.mp4"). (FAIL-LOUD.)');
+                }
+                if (!envelope || envelope.kind !== 'video') {
+                    throw new Error('[FrqtlHostedEyes.saveVideo] expected the video envelope ' +
+                        'vision.record resolves, got kind ' + JSON.stringify(envelope && envelope.kind) +
+                        '. (FAIL-LOUD.)');
+                }
+                var CE = _req(function () {
+                    return require('../../../shim/render/capture-envelope.js');
+                }, 'the capture-envelope contract');
+                var env = CE.videoEnvelope({ track: envelope.track, encoded: envelope.encoded, truncated: envelope.truncated });
+                var fs = _req(function () { return require('fs'); }, 'the node filesystem');
+                fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+                fs.writeFileSync(file, Buffer.from(env.encoded.bytes, 'base64'));
                 return file;
             },
 

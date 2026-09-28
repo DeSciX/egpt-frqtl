@@ -206,6 +206,18 @@ test('router: mode=static FAILS LOUD on a supplied base, a missing document, and
     assert.equal(engineRouter({ mode: 'dev-core' }).resolve('unmapped/thing.js'), '/frqtl/unmapped/thing.js');
 });
 
+test('router: mode=static documentRelative resolves STATIC_PROFILE\'s document-relative values through resolve(), and fails loud off-contract', () => {
+    const r = engineRouter({ mode: 'static', documentRelative: true });
+    assert.equal(r.vendorBase, STATIC_PROFILE.__vendorBase);
+    assert.equal(r.resolve('objects/setup-esm/setupDoubleSlit.js'), './pub/js/game/setup-esm/setupDoubleSlit.js');
+    // The same URL the absolute static router yields once the document resolves it.
+    const doc = 'https://h/prod/app/site/index.html';
+    assert.equal(new URL(r.resolve('compat/providers/wasm-engine.js'), doc).href,
+        engineRouter({ mode: 'static', documentBaseURI: doc }).resolve('compat/providers/wasm-engine.js'));
+    assert.throws(() => engineRouter({ mode: 'dist', documentRelative: true }), /applies only to mode:"static"/);
+    assert.throws(() => engineRouter({ mode: 'static', documentRelative: true, documentBaseURI: doc }), /are exclusive/);
+});
+
 test('router: STATIC_PROFILE resolves the SAME dist sub-path as DIST_PROFILE for every shared key', () => {
     // STATIC_PROFILE serves the identical physical sdk/frqtl-sdk/dist/ tree as DIST_PROFILE,
     // re-anchored at the document-relative STATIC_SDK_DIR. Strip '../../' from DIST and
@@ -285,7 +297,7 @@ test('router: CDN URL targets exist as real files in the built dist (skips if di
 // (f) did NOT cover, because test (f) only iterated GAME_LAYER_SCRIPTS +
 // ENGINE_SHIM_CONTRACT_SCRIPTS, neither of which lists the ENGINE-base or
 // RENDERER scripts (chroma/quadtree/wasm-engine/wasm-load-browser/egpt-engine;
-// LightColor/RenderShape/RenderMesh/RenderTiers/FieldBuilder/p5-provider/Filters)
+// LightColor/RenderShape/RenderMesh/FieldBuilder/p5-provider/Filters)
 // — there is no separate canonical manifest for those, ONLY the ESM entry's own
 // buildScriptLists(). Rather than re-typing that list a third time (the exact
 // schema-mirror-drift class that caused the ObjectFactory/Experiment AND the
@@ -306,7 +318,7 @@ test('router: every ARTIFACT-SHOWCASE injectSequence URL (ENGINE+RENDERER+GAME) 
     const missing = [];
     // Check BOTH the double-slit SUBSET (buildScriptLists → bootDoubleSlit) and
     // the full SUPERSET (buildScriptListsFull → bootScene). The superset adds the
-    // FX/render-effect renderer layers (RenderTiers/renderCapabilities-common/
+    // FX/render-effect renderer layers (renderCapabilities-common/
     // three-provider) + the full GAME_LAYER_SCRIPTS roster — every one of those
     // URLs must resolve on disk or bootScene fails-loud with no render.
     for (const [fnName, buildFn] of [['buildScriptLists', buildScriptLists], ['buildScriptListsFull', buildScriptListsFull]]) {

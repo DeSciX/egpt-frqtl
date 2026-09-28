@@ -17,8 +17,8 @@
  * The render pipeline already EXISTS as an ordered sequence of transforms, and each of
  * its transform-registration surfaces already exists too:
  *
- *   - `scene` appearance registers as `RenderTiers` table rows + the per-provider
- *     `renderCapabilities()` descriptor knobs (R4/R5 effect layers).
+ *   - `scene` appearance registers as the per-provider `renderCapabilities()`
+ *     descriptor knobs (R4/R5 effect layers).
  *   - the scene→composite segment registers as the ORDERED `filterSpec` queue
  *     (`Filters.js` catalog + `renderer.filter({name, glsl, uniforms})`).
  *   - `field` registers as ONE authored canonical module (`FieldBuilder`).
@@ -207,7 +207,7 @@ var STAGE_FORMATS = {
  * regenerated corpus cannot be safely mixed across generations, and the mixing is invisible.
  * @type {number}
  */
-var SCHEMA_VERSION = 1;
+var SCHEMA_VERSION = 2;
 
 /**
  * SCENE_KEYS — the RUN-INVARIANT record. The regeneration input, hashed into an identity.
@@ -234,6 +234,8 @@ var SCHEMA_VERSION = 1;
  *                `null` is HONEST for an ad-hoc universe — the corpus row then carries the
  *                code itself. The two corpus modes live at the harness, not in the record.
  *   build      — the runtime build pin, DERIVED from the boot authorities, never a literal.
+ *                The package is pinned by CONTENT (`wasmSha256`), never by the URL that
+ *                served it: an origin is a deployment fact, not a regeneration input.
  *   physicsW/H — universe bounds, init-fixed. (NOTE: the CANVAS may be resized mid-run; the
  *                still's own `width`/`height` carry that. These are the physics bounds.)
  *   projection — camera intrinsics, provider-stamped. Scene-level because the DISPLAY

@@ -69,7 +69,9 @@ import { Bus, Runtime } from '../../lib/shim/index.js';
 
 | Export | File | Role |
 |---|---|---|
-| `buildImportMap` / `importMapScriptBody` | `notebook/vendor-importmap.js` | Pure function: vendor manifest → browser `{ imports }` map. FraqtlIde builds the in-app realm host's import-map from this + `router.vendorBase`; `lib/server/realm-html.js` splices it server-side for the `.vsix` host. |
+| `buildImportMap` | `notebook/vendor-importmap.js` | Pure function: vendor manifest + `router.vendorBase` → browser `{ imports }` map. |
+| `buildRealmImportMap` / `spliceRealmImportMap` | `notebook/vendor-importmap.js` | The ONE document import map: vendor libs + `@frqtl/setups/*` bare specifiers, resolved through one `engineRouter()`. `spliceRealmImportMap` is called by `lib/server/realm-html.js` (dev + `.vsix`, serve time) and `apps/ide/vite.config.js` (static bundle, build time, `engineRouter({mode:'static', documentRelative:true})`). |
+| `buildFrqtlSetupsImportMap` / `FRQTL_SETUPS_MANIFEST` | `notebook/frqtl-setups-importmap.js` | The `@frqtl/setups/<id>` surface: manifest, `appendEsmExports` transform, `frqtlSetupsEsmModules()` list (consumed by the dev handler, `sdk/frqtl-sdk/build.js` and the static assembler). |
 
 ---
 

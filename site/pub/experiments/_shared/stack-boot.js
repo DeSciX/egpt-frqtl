@@ -52,7 +52,6 @@
  *
  *   RENDERER:
  *     LightColor.js            — single color source
- *     RenderTiers.js           — per-layer-range render-tier table (2026-07-02)
  *     FieldBuilder.js          — height-field builder (before providers)
  *     renderCapabilities-common.js — shared universal-knob + filter-loop owner
  *       (WS Studio Controls Realignment S5b) — MUST load before providers
@@ -113,6 +112,16 @@
  *   The shims drain their queues once engine-boot.js and render-boot.js have
  *   run and replaced the shims with real implementations.
  *
+ * ── GAME-LAYER READY ───────────────────────────────────────────────────────
+ *
+ *   window._egptGameLayerReadyPromise resolves when the ENTIRE GAME phase (every
+ *   GAME_LAYER_SCRIPTS entry, in order) has loaded, and rejects with the boot
+ *   error if the sequence stopped. This loader owns the roster, so it publishes
+ *   "the roster is complete" rather than leaving a consumer to watch one global
+ *   and infer the rest: `_egptWhenEngineReady` fires long BEFORE the GAME phase
+ *   (it drains right after engine-boot.js), so engine-ready alone never implies a
+ *   loaded game layer. lib/shim/engine/engine-stack-boot.js awaits both.
+ *
  * ── IDEMPOTENT / FAIL-LOUD ─────────────────────────────────────────────────
  *
  *   Each src is injected at most once. Any load failure surfaces as a visible
@@ -125,21 +134,6 @@
     /* ── Capture currentScript synchronously (invalid after parse) ──────── */
     var _tag = document.currentScript;
 
-    /* ── frqtl base URL ────────────────────────────────────────────────────
-       This file is at frqtl/experiments/_shared/stack-boot.js.
-       Derive the frqtl root by stripping 3 path segments.                  */
-    var _base = (function () {
-        var src = _tag && _tag.src;
-        if (src) {
-            var p = src.split('/');
-            p.pop();  // stack-boot.js
-            p.pop();  // _shared
-            p.pop();  // experiments
-            return p.join('/') + '/';
-        }
-        return '/frqtl/';
-    })();
-
     /* ── Page-specific scripts from data-page-scripts attribute ─────────── */
     var _pageScripts = (function () {
         var raw = _tag && _tag.getAttribute('data-page-scripts');
@@ -150,48 +144,83 @@
             /* data-page-scripts paths are relative to the experiment page.
                We resolve them from the page's base URL.                    */
             if (trimmed.indexOf('http') === 0 || trimmed.indexOf('/') === 0) {
-                return { src: trimmed };
+                return { src: trimmed, entry: trimmed };
             }
             /* Relative path — resolve from document.baseURI which is the page URL */
             try {
-                return { src: new URL(trimmed, document.baseURI).href };
+                return { src: new URL(trimmed, document.baseURI).href, entry: trimmed };
             } catch (e) {
-                return { src: trimmed };
+                return { src: trimmed, entry: trimmed };
             }
         }).filter(Boolean);
     })();
 
-    /* ── Path resolution — router-driven (RED TEAM BLOCKER 2, ws-egpt-frqtl-site-deploy) ──
+    /* resolved src → the frqtl-relative entry it was resolved from, recorded by _u so a
+       failed load names its manifest entry instead of re-deriving it from the URL. */
+    var _entryOf = {};
+
+    /* ── Path resolution — router-driven, ONE branch (RED TEAM BLOCKER 2,
+       ws-egpt-frqtl-site-deploy; collapsed to a single always-required branch,
+       ws-stackboot-dev-map) ──────────────────────────────────────────────────
        Consult the router's SINGLE browser projection window._egptEnginePathMap — the
-       SAME omit/remap map lib/components/graphics-render/index.js _url() reads (it is
-       DIST_PROFILE-derived, the one path authority). First matching prefix wins in
-       insertion order; a '' replacement is the router's __distOmit signal → returns ''
-       so _inject() SKIPS the tag, exactly like engineScripts()/_injectScript skip empty
-       resolves. When no map is present (dev-core) it falls through to _base + rel. */
+       SAME omit/remap map lib/components/graphics-render/index.js _url() reads, built
+       by buildBrowserPathMap() (lib/shim/engine/router.js, the ONE path authority).
+       First matching prefix wins in insertion order; a '' replacement is the router's
+       __distOmit signal → returns '' so _inject() SKIPS the tag, exactly like
+       engineScripts()/_injectScript skip empty resolves.
+
+       THREE host classes inject the map before this <script> tag runs:
+         - dev-core:     lib/server/mounts.js's experiment-page path-map handler
+                          (buildBrowserPathMap(DEV_CORE_PROFILE), spliced at request time,
+                          via lib/shim/engine/experiment-page-map.js's spliceEnginePathMap —
+                          the ONE injection-contract authority both this class and the next
+                          share).
+         - dist/static:  sdk/frqtl-sdk/build.js's rewriteExperimentHtml
+                          (buildBrowserPathMap(DIST_PROFILE), baked at build time, via the
+                          SAME spliceEnginePathMap).
+         - programmatic:  a host that INJECTS this tag into a page it already owns (not one
+                          of the two above, which SERVE an already-authored page) — sets the
+                          map itself, from its OWN engineRouter() instance, BEFORE injecting
+                          the tag: router.ensureBrowserPathMap() (lib/shim/engine/router.js).
+                          The two are: GraphicsPane.prototype.boot()
+                          (lib/components/graphics-render/index.js — the notebook canvas
+                          cell, and the static bundle's CODE canvas) and ensureEngineStack()
+                          (lib/shim/engine/engine-stack-boot.js — the builder cell's
+                          frqtl.ensureEngine). Two routers on one page is a HOST BUG, not a
+                          silent merge — ensureBrowserPathMap() throws if a DIFFERENT map is
+                          already present, no-ops if it is byte-identical, sets it if absent.
+       A missing map is a HOST BUG, not a state _u() papers over with a guessed dev
+       literal — it FAILS LOUD naming the two SERVING injectors (the programmatic class
+       fails loud earlier still, at router.ensureBrowserPathMap() itself, before this tag
+       even runs). */
     function _u(rel) {
+        var src = _resolve(rel);
+        if (src) { _entryOf[src] = rel; }
+        return src;
+    }
+
+    function _resolve(rel) {
         var map = window._egptEnginePathMap;
-        if (map && typeof map === 'object') {
-            var keys = Object.keys(map);
-            for (var i = 0; i < keys.length; i++) {
-                var prefix = keys[i];
-                if (rel === prefix || rel.indexOf(prefix) === 0) {
-                    return map[prefix] + rel.slice(prefix.length);
-                }
+        if (!map || typeof map !== 'object') {
+            throw new Error(
+                '[stack-boot] window._egptEnginePathMap is missing — refusing to guess a path for "' +
+                rel + '". Every host serving this page must inject it (buildBrowserPathMap(<profile>), ' +
+                'lib/shim/engine/router.js) BEFORE this <script> tag: dev-core via ' +
+                'lib/server/mounts.js\'s experiment-page path-map handler; dist/static via ' +
+                'sdk/frqtl-sdk/build.js\'s rewriteExperimentHtml.'
+            );
+        }
+        var keys = Object.keys(map);
+        for (var i = 0; i < keys.length; i++) {
+            var prefix = keys[i];
+            if (rel === prefix || rel.indexOf(prefix) === 0) {
+                return map[prefix] + rel.slice(prefix.length);
             }
         }
-        // No-map (dev-core) fallback. The 'shim/' contract scripts (ast-schema.js,
-        // frame-data/index.js, controls/*, rpc/index.js, ...) live at the /lib/shim
-        // mount — a SEPARATE dev mount from _base's /frqtl — so they cannot resolve
-        // through _base. Fall through to the /lib/shim absolute literal: byte-identical
-        // to the prior hardcoded '/lib/shim/...' ENGINE entries AND to
-        // DEV_CORE_PROFILE's 'shim/' value (router.js, the dev-core path authority).
-        // In dist/static the projected map's 'shim/' key (build.js, DIST_PROFILE-
-        // derived) is matched above, so this branch is dev-only. Every OTHER prefix
-        // resolves under /frqtl via _base — byte-identical to the prior behavior.
-        if (rel === 'shim/' || rel.indexOf('shim/') === 0) {
-            return '/lib/shim/' + rel.slice('shim/'.length);
-        }
-        return _base + rel;
+        throw new Error(
+            '[stack-boot] window._egptEnginePathMap has no prefix entry for "' + rel + '". ' +
+            'Add the prefix to every profile in lib/shim/engine/router.js (profile parity).'
+        );
     }
 
     /* ── chrome=canvas mode ───────────────────────────────────────────────
@@ -281,7 +310,11 @@
             s.src = src;
             if (attrs) { Object.keys(attrs).forEach(function (k) { s.setAttribute(k, attrs[k]); }); }
             s.onload  = res;
-            s.onerror = function () { rej(new Error('[stack-boot] load failed: ' + src)); };
+            s.onerror = function () {
+                var err = new Error('[stack-boot] load failed: ' + src);
+                err.src = src;
+                rej(err);
+            };
             (document.body || document.head).appendChild(s);
         });
         return _done[src];
@@ -302,9 +335,17 @@
     window._egptResolveFrqtl = _u;
     window._egptInjectScript = function (relPath) { return _inject(_u(relPath)); };
 
-    /* ── Canonical script lists ────────────────────────────────────────── */
+    /* ── Canonical script lists — LAZY (R2, ws-stackboot-dev-map SEAM RULING) ──
+       Each list is built by a FUNCTION, called only from inside the boot chain
+       below (not at IIFE top level). Every entry calls _u(), which THROWS when
+       window._egptEnginePathMap is missing/incomplete — building these as plain
+       top-level `var` array literals made that throw happen at SCRIPT-PARSE time,
+       before the promise chain (and its one .catch → painter) existed, so the
+       page went blank with only a console witness. Calling the builder INSIDE a
+       .then() turns that same throw into a promise REJECTION that flows into the
+       existing .catch → _bootFailureMessage → painter — no second painter. */
 
-    var ENGINE = [
+    function _engineList() { return [
         { src: _u('assets/vendor/chroma.min.js') },
         // Rectangle — the sole spatial-rect authority (objects/geometry/Rectangle.js).
         // Loaded here in the ENGINE phase because the WASM provider wrapper's createUniverse
@@ -383,15 +424,20 @@
         // objects/objects/FrqtlVision.js (the sugar), both GAME-layer classic scripts
         // loaded later, both through a named FAIL-LOUD guard at CALL time — so no
         // eval-time ordering dependency on the other shim entries.
-        { src: _u('shim/render/render-stages.js') }
-    ];
+        { src: _u('shim/render/render-stages.js') },
+        // CaptureEnvelope: the TRANSPORT contract of a capture (lib/shim/render/capture-envelope.js).
+        // Publishes window.CaptureEnvelope — the video shape FrqtlVision.record returns. Resolves
+        // RenderStages at CALL time; no eval-time ordering dependency.
+        { src: _u('shim/render/capture-envelope.js') }
+    ]; }
 
     /* RENDERER — literal copy of lib/shim/engine/renderer-layer-manifest.js
        RENDERER_LAYER_SCRIPTS (same discipline as the GAME array below: stack-boot
        is a classic injected script and cannot import the ESM manifest). Parity is
        enforced by lib/shim/engine/test/renderer-layer-manifest.test.mjs.
-       Do NOT edit here without updating the manifest (and vice versa). */
-    var RENDERER = [
+       Do NOT edit here without updating the manifest (and vice versa). LAZY — see
+       the _engineList() comment above; called only from inside the boot chain. */
+    function _rendererList() { return [
         /* THE DISPLAY SLOT — the one "which provider owns the display" authority.
            Heads the phase: render-boot.js (next) is its one writer. */
         { src: _u('compat/renderer/display-slot.js') },
@@ -399,7 +445,6 @@
         { src: _u('compat/renderer/RenderShape.js') },   // shape authority — MUST load before providers
         { src: _u('compat/renderer/RenderMesh.js') },    // render.mesh resolver — before providers
         { src: _u('compat/renderer/RenderFamily.js') },  // per-frame render-family decode (composes Shape+Mesh) — AFTER both, before providers
-        { src: _u('compat/renderer/RenderTiers.js') },   // per-layer-range render-tier table — before providers
         { src: _u('compat/renderer/FieldBuilder.js') },
         // renderer-provider-contract.js: the CODE OWNER of the RendererProvider
         // method lists (the required/optional split + validateRendererProvider).
@@ -452,12 +497,13 @@
         { src: _u('compat/renderer/providers/three-camera-geometry.js') },
         { src: _u('compat/renderer/providers/three-provider.js') },
         { src: _u('compat/renderer/Filters.js') }
-    ];
+    ]; }
 
     /* GAME — literal copy of lib/shim/engine/game-layer-manifest.js GAME_LAYER_SCRIPTS.
        Parity is enforced by lib/shim/engine/test/game-layer-manifest.test.mjs.
-       Do NOT edit here without updating the manifest (and vice versa). */
-    var GAME = [
+       Do NOT edit here without updating the manifest (and vice versa). LAZY — see
+       the _engineList() comment above; called only from inside the boot chain. */
+    function _gameList() { return [
         { src: _u('objects/constants/CollisionTypes.js') },
         { src: _u('objects/constants/CollisionActions.js') },
         { src: _u('objects/constants/WallBehaviors.js') },
@@ -507,7 +553,6 @@
         { src: _u('objects/objects/CameraControls.js') },
         { src: _u('objects/objects/FrqtlVision.js') },
         { src: _u('objects/objects/CameraPath.js') },
-        { src: _u('objects/objects/FlightRecorder.js') },
         { src: _u('objects/setup/_setupOptions.js') },
         { src: _u('objects/setup/_collisionMatrixLanes.js') },
         { src: _u('objects/setup/setupSphereEmitter3D.js') },
@@ -531,13 +576,88 @@
         { src: _u('objects/FrqtlApp.js') },
         { src: _u('objects/Experiment.js') },
         { src: _u('objects/RecipeContext.js') }
-    ];
+    ]; }
+
+    /* ── Boot failure text — derived from the phase that failed ───────────
+       Each phase's list is a literal copy of the manifest named here, so a failed
+       load names the manifest ENTRY the host did not serve and that entry's owner.
+       No phase of this sequence loads the WASM module (engine-boot.js does, and paints
+       its own ENGINE banner with the build remedy), so no text here offers one. */
+    var _MANIFEST_OF = {
+        GAME: 'GAME_LAYER_SCRIPTS (lib/shim/engine/game-layer-manifest.js)',
+        RENDERER: 'RENDERER_LAYER_SCRIPTS (lib/shim/engine/renderer-layer-manifest.js)',
+        SHIM: 'ENGINE_SHIM_CONTRACT_SCRIPTS (lib/shim/engine/shim-contract-manifest.js)'
+    };
+    var _BOOT_SCRIPT_PHASE = {
+        'experiments/_shared/engine-boot.js': 'ENGINE',
+        'experiments/_shared/render-boot.js': 'RENDERER'
+    };
+
+    function _listed(list, src) {
+        for (var i = 0; i < list.length; i++) { if (list[i].src === src) { return list[i]; } }
+        return null;
+    }
+
+    function _bootFailureMessage(err) {
+        var detail = '[stack-boot] ' + String(err && err.message ? err.message : err)
+            .replace(/^\[stack-boot\]\s*/, '');
+        var src = err && err.src;
+        var entry = src ? _entryOf[src] : null;
+        var phase = null, owner = null;
+        var page = src ? _listed(_pageScripts, src) : null;
+        // Recomputing a list here (_engineList() etc.) is safe and cheap: `src` is only
+        // truthy for a script that already resolved successfully once (the map is
+        // proven present/complete by that point), so re-calling the builder can never
+        // re-throw the map-missing error these lists exist to surface — it just re-runs
+        // the same _u() lookups against the same, already-set window._egptEnginePathMap.
+        if (src && _listed(_engineList(), src)) {
+            phase = 'ENGINE';
+            // No absolute-URL literal here: the resolved `src` (printed by the message
+            // template below) already names where the host actually tried to fetch it —
+            // hardcoding a dev-only '/lib/shim/...' guess here would be the SAME
+            // duplicated-path-authority bug this ENGINE list's own router-driven _u()
+            // resolution was fixed to stop making (ws-stackboot-dev-map).
+            owner = entry.indexOf('shim/') === 0
+                ? '`' + entry + '`, its ' + _MANIFEST_OF.SHIM + ' entry'
+                : '`' + entry + '`, an entry of stack-boot.js\'s own ENGINE list ' +
+                  '(lib/frqtl/experiments/_shared/stack-boot.js)';
+        } else if (src && _listed(_rendererList(), src)) {
+            phase = 'RENDERER';
+            owner = '`' + entry + '`, its ' + _MANIFEST_OF.RENDERER + ' entry';
+        } else if (src && _listed(_gameList(), src)) {
+            phase = 'GAME';
+            owner = '`' + entry + '`, its ' + _MANIFEST_OF.GAME + ' entry';
+        } else if (page) {
+            phase = 'PAGE';
+            owner = '`' + page.entry + '`, its data-page-scripts entry on this experiment page';
+        } else if (entry && _BOOT_SCRIPT_PHASE[entry]) {
+            phase = _BOOT_SCRIPT_PHASE[entry];
+            owner = '`' + entry + '`, the ' + phase + ' phase\'s boot script in stack-boot.js';
+        }
+        if (!phase) {
+            return 'STACK BOOT FAILED\n\n' + detail + '\n\n' +
+                'The failure is not a script load, so no manifest entry owns it; the ' +
+                'boot sequence stopped here and nothing after it ran.';
+        }
+        return 'STACK BOOT FAILED — ' + phase + ' phase\n\n' + detail + '\n\n' +
+            'The host did not serve ' + owner + '.\n' +
+            'The sequence stops at the first script that fails; nothing after it loaded.\n\n' +
+            'Remedy: make the host serve ' + src + ' — the file is missing from this tree,\n' +
+            'or a built host\'s build did not copy it.';
+    }
 
     /* Default renderer unless already set by page or build */
     if (!window._egptDefaultRenderer) { window._egptDefaultRenderer = 'p5'; }
 
     /* ── Sequential boot ───────────────────────────────────────────────── */
-    _seq(ENGINE)
+    var _throughGameLayer = Promise.resolve()
+        /* R2 (ws-stackboot-dev-map SEAM RULING): _engineList() is called HERE, inside
+           the chain, not as a top-level `var`. A missing/incomplete map makes _u() throw
+           while this list is built — that throw now REJECTS this .then() (a promise
+           rejection) instead of throwing synchronously at script-parse time (before any
+           .catch existed to see it, which is why the page used to go blank with only a
+           console witness — see the module docstring's "no second painter" note). */
+        .then(function () { return _seq(_engineList()); })
         .then(function () { return _inject(_u('experiments/_shared/engine-boot.js')); })
         .then(function () {
             /* Drain the early-shim engine queue into the real _egptWhenEngineReady.
@@ -553,7 +673,7 @@
                 window._egptStackBootEngineQueue = null;
             }
         })
-        .then(function () { return _seq(RENDERER); })
+        .then(function () { return _seq(_rendererList()); })
         .then(function () { return _inject(_u('experiments/_shared/render-boot.js')); })
         .then(function () {
             /* Drain the renderer queue into the real _egptWhenRendererReady
@@ -566,24 +686,88 @@
                 window._egptStackBootRendererQueue = null;
             }
         })
-        .then(function () { return _seq(GAME); })
+        .then(function () { return _seq(_gameList()); });
+
+    /* ── THE GAME-LAYER READY CONTRACT ──────────────────────────────────────
+       window._egptGameLayerReadyPromise settles when the ENTIRE GAME phase — every
+       entry of GAME_LAYER_SCRIPTS, in order — has loaded; it REJECTS with the boot
+       error if the sequence stopped. This loader is the only thing that knows when
+       that roster is complete, so it publishes the fact rather than leaving each
+       consumer to guess a sentinel global: a programmatic host that injects this
+       file (lib/shim/engine/engine-stack-boot.js, behind caps.frqtl.ensureEngine)
+       must not hand a builder cell an engine-ready promise that resolves while the
+       roster's LAST entries are still in flight — a recipe canvas reads
+       window.RecipeContext, installed by the final entry, on the line after the
+       await (FRAQTL #73).
+
+       `.catch` here marks the promise HANDLED so a page that never consumes it
+       produces no unhandled-rejection noise; the rejection still reaches any
+       consumer's own .then/.catch (the same idiom engine-boot.js uses for
+       window._wasmReadyPromise). */
+    window._egptGameLayerReadyPromise = _throughGameLayer;
+    _throughGameLayer.catch(function () {});
+
+    _throughGameLayer
         .then(function () {
             /* Load page-specific scripts (data-page-scripts attr) after game layer. */
             return _seq(_pageScripts);
         })
         .catch(function (err) {
-            var msg = '[stack-boot] ' + (err && err.message ? err.message : String(err));
+            var msg = _bootFailureMessage(err);
             if (window.console && console.error) { console.error(msg); }
-            if (typeof window._egptFailLoud === 'function') {
-                window._egptFailLoud(msg);
+            /* The ONE boot-failure painter (engine-boot.js) when it is installed — it is
+               not when the ENGINE phase itself failed, since engine-boot.js loads last in
+               that phase. stack-boot writes its OWN phase-labeled text: engine-boot's
+               failLoud is the ENGINE banner and carries the WASM build remedy, which is the
+               wrong remedy for a script the host did not serve. */
+            if (typeof window._egptPaintFailOverlay === 'function') {
+                window._egptPaintFailOverlay({
+                    msg: msg,
+                    fullViewportId: 'egpt-engine-error',
+                    scopedMarkerAttr: 'data-egpt-engine-error'
+                });
             } else if (!document.getElementById('egpt-engine-error')) {
                 var b = document.createElement('div');
                 b.id = 'egpt-engine-error';
+                b.setAttribute('data-egpt-boot-error', '1');
                 b.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#1a0000;' +
                     'color:#ff6b6b;font:13px/1.55 ui-monospace,monospace;padding:22px;' +
                     'white-space:pre-wrap;overflow:auto;border:2px solid #b6161c;';
                 b.textContent = msg;
                 (document.body || document.documentElement).appendChild(b);
+            }
+            /* R2 (ws-stackboot-dev-map SEAM RULING): REJECT the early-shim queues too —
+               painting the overlay is not enough. A caller that already registered via
+               the QUEUE-BASED shim (window._egptWhenEngineReady/_egptWhenRendererReady,
+               installed above BEFORE engine-boot.js/render-boot.js can replace them) is
+               left with a promise that never settles unless its onError fires here — this
+               is exactly why a notebook canvas cell used to HANG at "running"/"Booting
+               engine…" forever instead of flipping to an error badge: the overlay painted
+               (console-loud) but nothing ever told the waiting caller. Only the phase(s)
+               that never got as far as installing their REAL implementation still have a
+               non-null queue here (a phase that succeeded already nulled its own queue in
+               the .then() above) — drain exactly those, then replace the shim itself so a
+               caller that calls IN AFTER this failure is told immediately too, rather than
+               queuing into an array nothing will ever drain again. */
+            var eq = window._egptStackBootEngineQueue;
+            if (eq) {
+                for (var ei = 0; ei < eq.length; ei++) {
+                    if (typeof eq[ei].onError === 'function') { eq[ei].onError(err); }
+                }
+                window._egptStackBootEngineQueue = null;
+                window._egptWhenEngineReady = function (onReady, onError) {
+                    if (typeof onError === 'function') { onError(err); }
+                };
+            }
+            var rq = window._egptStackBootRendererQueue;
+            if (rq) {
+                for (var ri = 0; ri < rq.length; ri++) {
+                    if (typeof rq[ri].onError === 'function') { rq[ri].onError(err); }
+                }
+                window._egptStackBootRendererQueue = null;
+                window._egptWhenRendererReady = function (onReady, onError) {
+                    if (typeof onError === 'function') { onError(err); }
+                };
             }
         });
 

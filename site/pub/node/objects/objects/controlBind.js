@@ -26,16 +26,11 @@
  *                    non-render channel.
  *     universe:      the live EGPTUniverse — `setFrameProperty`/`getFrameProperty`
  *                    (Frame kind ONLY — see below). Required for the Frame channel.
- *     renderCapabilityIds: optional `string[]` — the OPT-IN FAIL-LOUD gate for
- *                    render-channel writes (§7 r2 item 1). Typically
- *                    `makeControlsForRenderSurface(...).capabilityIds`.
- *                    Omitted OR EMPTY -> the render branch stays exactly as
- *                    permissive as it always was (an empty list carries no
- *                    declaration information, so it cannot arm an opt-in gate).
  *     runner:        the FrqtlApp. Required for the render channel
- *                    (`runner.setRenderOption`/`getRenderOption` for ordinary
- *                    render options; `runner.setFilterActive`/`isFilterActive`
- *                    for a `filter.<name>` capability — §7 r2 item 2), for the LargeObject/backdrop
+ *                    (`runner.setRenderOption`/`getRenderOption` — the runner is the
+ *                    ONE render-option gate: it validates the key against the
+ *                    provider's declared capabilities, validates the value, and
+ *                    routes a `filter.<name>` toggle to its filter slots), for the LargeObject/backdrop
  *                    channel (`runner.updateObjectProperty(wrapper, prop, value)` —
  *                    the SAME uniform schema-driven accessor Studio's own Inspector
  *                    calls, per root CLAUDE.md §Object architecture: "Writes go
@@ -61,11 +56,7 @@
  *                    prop actually marshalled today). Callers that hold the
  *                    last TickData (ControlSync, Stage ii) supply this;
  *                    omitting it makes the LO `get()` a DEFINED SKIP
- *                    (returns undefined) — never a fabricated read. (The
- *                    render channel now HAS a read, via `runner.getRenderOption`/
- *                    `isFilterActive` — §7 r2 item 1 — but degrades to the
- *                    SAME defined-skip discipline when `ctx.runner` lacks
- *                    those methods, e.g. an older runner build.)
+ *                    (returns undefined) — never a fabricated read.
  *   }
  *
  * Registration precedent (`registry.js`'s own docstring/tests): a Frame-kind
@@ -142,96 +133,24 @@ function resolveBind(bind, ctx, channel) {
     ctx = ctx || {};
     var ch = channel || 'physics';
 
-    // ── RENDER CHANNEL (WS Studio Controls Realignment §7 r2 — updated) ──────
+    // ── RENDER CHANNEL ────────────────────────────────────────────────────────
     // `bind.object` is carried for shape uniformity only (the shim's BIND_KEYS
-    // contract does not vary by channel) and is not consulted here; the render
-    // option/capability NAME is `bind.prop` (e.g. 'colorScheme', 'shape',
-    // 'godrays', 'filter.water').
-    //
-    // TWO write/read primitives share this one channel (§7 r2 item 2, the
-    // ratified filter re-model — "the render surface's write primitive is the
-    // RendererProvider CONTRACT... not literally setRenderOption"):
-    //   - `bind.prop` starting with `filter.` (a MULTI-SLOT name-keyed toggle —
-    //     `Filters.water`/`Filters.bloom`) routes through
-    //     `runner.setFilterActive(name, bool)` / `runner.isFilterActive(name)`
-    //     — the provider's REQUIRED `filter()`/`removeFilter()` methods, NEVER
-    //     tunneled through `setRenderOption` (which cannot express "2 filters
-    //     concurrently active").
-    //   - every OTHER `bind.prop` routes through the PERMISSIVE
-    //     `runner.setRenderOption(prop, value)` (unchanged — a blanket write
-    //     validation there would break existing ad-hoc callers) and its new
-    //     validated read counterpart `runner.getRenderOption(prop)` (the
-    //     "getRenderOption absent" gap this closes — a render control can now
-    //     genuinely RECONCILE, not just write-and-forget).
-    //
-    // Optional FAIL-LOUD gate (§7 r2 item 1, "the factory boundary"): when the
-    // caller's `ctx` carries `renderCapabilityIds` (an array of declared
-    // capability names — `makeControlsForRenderSurface`'s own return value's
-    // `capabilityIds`, threaded in by whatever host registered its output), a
-    // write to a `bind.prop` NOT in that list throws — never a silent
-    // undeclared-key write. Omitting `ctx.renderCapabilityIds` keeps this
-    // branch exactly as permissive as it always was (opt-in gate, not a
-    // retrofit requirement on every existing render-channel bind).
-    //
-    // An EMPTY list carries NO declaration information and therefore does not
-    // arm the gate — it is the same state as "omitted". This is what the
-    // opt-in wording means and what every host's own fallback comment already
-    // assumes ("capabilityIds stays [] -> the gate becomes a no-op"): a
-    // provider that declares no capabilities, or a host whose generation step
-    // failed, must degrade to the PERMISSIVE pre-gate behavior — never to
-    // "reject every render write", which is how a single generation failure
-    // would otherwise black out an entire experiment's render state.
+    // contract does not vary by channel); the render option/capability NAME is
+    // `bind.prop` (e.g. 'colorScheme', 'shape', 'godrays', 'filter.water'). The
+    // runner owns everything about the write — declared-key check, value check,
+    // and the `filter.<name>` routing — so this branch FERRIES it and adds none.
     if (ch === 'render') {
-        var isFilterBind = bind.prop.indexOf('filter.') === 0;
-        var filterName = isFilterBind ? bind.prop.slice('filter.'.length) : null;
-        function _assertDeclared() {
-            if (ctx.renderCapabilityIds && ctx.renderCapabilityIds.length > 0 &&
-                    ctx.renderCapabilityIds.indexOf(bind.prop) === -1) {
-                throw new Error('[controlBind] render-channel write to "' + bind.prop + '" is not a ' +
-                    'member of ctx.renderCapabilityIds ([' + ctx.renderCapabilityIds.join(', ') +
-                    ']) — undeclared render-capability write. (FAIL-LOUD — §7 r2 item 1, "the factory ' +
-                    'boundary": a generated render control never names an undeclared capability; a ' +
-                    'hand-written bind reaching this throw is either stale or mistyped.)');
-            }
-        }
         return {
             set: function (value) {
                 if (!ctx.runner) {
                     throw new Error('[controlBind] render-channel bind on prop "' + bind.prop +
                         '" requires ctx.runner (an FrqtlApp). (FAIL-LOUD.)');
                 }
-                _assertDeclared();
-                if (isFilterBind) {
-                    if (typeof ctx.runner.setFilterActive !== 'function') {
-                        throw new Error('[controlBind] filter-channel bind on "' + bind.prop +
-                            '" requires ctx.runner.setFilterActive (an FrqtlApp build predating ' +
-                            'the §7 r2 filter accessor pair). (FAIL-LOUD.)');
-                    }
-                    ctx.runner.setFilterActive(filterName, !!value);
-                    return;
-                }
-                if (typeof ctx.runner.setRenderOption !== 'function') {
-                    throw new Error('[controlBind] render-channel bind on prop "' + bind.prop +
-                        '" requires ctx.runner (an FrqtlApp with setRenderOption). (FAIL-LOUD.)');
-                }
                 ctx.runner.setRenderOption(bind.prop, value);
             },
             get: function () {
                 if (!ctx.runner) { return undefined; } // defined skip — no runner, no read authority
-                if (isFilterBind) {
-                    return (typeof ctx.runner.isFilterActive === 'function')
-                        ? (ctx.runner.isFilterActive(filterName) ? 1 : 0)
-                        : undefined; // defined skip — older runner build, no filter-state accessor
-                }
-                if (typeof ctx.runner.getRenderOption === 'function') {
-                    // Propagates getRenderOption's own FAIL-LOUD (undeclared key) — same
-                    // discipline as the Frame/LargeObject branches below (they never
-                    // swallow their accessor's throw either; the caller — e.g.
-                    // frqtl-controls-panel.js's listControls — already wraps a bind's
-                    // get() in a try/catch/console.warn for exactly this reason).
-                    return ctx.runner.getRenderOption(bind.prop);
-                }
-                return undefined; // defined skip — older runner build, no getRenderOption
+                return ctx.runner.getRenderOption(bind.prop);
             }
         };
     }

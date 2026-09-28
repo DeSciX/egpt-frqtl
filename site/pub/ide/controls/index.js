@@ -20,12 +20,10 @@
  *     reused verbatim by `collision-matrix-3d` and `g3-lo-collide`.
  *   - `runner.cameraControl`       — the CAMERA orbit handle, from
  *     `three-provider.js getCameraControl()`.
- *   - `runner.tierMatrix`          — the MATRIX per-dim table, from
- *     `RenderTiers.buildTierMatrixSpec()` (`lib/frqtl/compat/renderer/RenderTiers.js`).
  *   - `runner.loopControl`         — the LOOP periodic-reset control, from
  *     `fx-experiment.js _buildLoopControl()`.
  *
- * This module does NOT invent new shapes — it CODIFIES these four already-shipped,
+ * This module does NOT invent new shapes — it CODIFIES these three already-shipped,
  * already-battle-tested shapes as a closed kind union, so a NEW sugar object can
  * `normalizeControlDescriptor({kind:'scalar', ...})` and get the SAME throw-or-apply
  * guarantee every future host (a control panel, the GYM, Studio) can rely on, instead
@@ -80,8 +78,6 @@
 //            with min:0,max:1,step:1 — NOT a separate kind (closed-union discipline).
 //   camera — an orbit-camera handle. THE PROVEN three-provider.js getCameraControl()
 //            shape: {presets,setOrbit,getOrbit,setPreset}.
-//   matrix — a per-row/per-column table of live mutators. THE PROVEN
-//            RenderTiers.buildTierMatrixSpec() shape: {effectOptions,columns,setAllHidden}.
 //   loop   — a periodic runner.setup() re-run control. THE PROVEN fx-experiment.js
 //            _buildLoopControl() shape: {enabled,ticks,setEnabled,setTicks}.
 //
@@ -131,7 +127,7 @@
 //     a color-picker WIDGET override via the kind-orthogonal `resolveWidget`
 //     seam (a rendering/widget-selection choice, not a value-shape difference —
 //     `normalizeControlDescriptor` never picks widgets, only validates shape).
-var KINDS = Object.freeze(['scalar', 'camera', 'matrix', 'loop', 'enum', 'flags', 'vector',
+var KINDS = Object.freeze(['scalar', 'camera', 'loop', 'enum', 'flags', 'vector',
                            'text', 'action']);
 
 // ── Game-layer ACTION vocabulary (closed) ───────────────────────────────────────
@@ -200,8 +196,8 @@ var WIDGETS = Object.freeze(['slider', 'toggle', 'checkbox', 'text', 'button']);
 // channel applies most meaningfully to 'scalar'/'enum'/'flags'/'vector' (the
 // kinds whose onChange is a bare function, otherwise indistinguishable from
 // either use). It is OPTIONAL, but VALIDATED IF PRESENT, on
-// 'camera'/'matrix'/'loop' — their own kind-specific methods
-// (setOrbit/setEffect/setEnabled) are already self-describing capability
+// 'camera'/'loop' — their own kind-specific methods
+// (setOrbit/setEnabled) are already self-describing capability
 // surfaces, so this schema does not force a channel value onto them.
 var CHANNELS = Object.freeze(['physics', 'render']);
 
@@ -221,7 +217,7 @@ var DEFAULT_CHANNEL = 'physics';
  * DEFAULT_CHANNEL (S1: extended from 'scalar'-only to every bare-onChange kind
  * — 'enum'/'flags'/'vector' share the exact same ambiguity `scalar` has: their
  * onChange is a plain function, otherwise indistinguishable between a physics
- * write and a render write). 'camera'/'matrix'/'loop' are NOT members — their
+ * write and a render write). 'camera'/'loop' are NOT members — their
  * own kind-specific methods are already self-describing capability surfaces.
  */
 var DEFAULT_CHANNEL_KINDS = Object.freeze(['scalar', 'enum', 'flags', 'vector', 'text']);
@@ -238,9 +234,6 @@ var SCALAR_KEYS = Object.freeze(['label', 'min', 'max', 'step', 'value', 'fmt', 
 
 /** CAMERA — {presets,setOrbit,getOrbit,setPreset}, the exact getCameraControl() shape. */
 var CAMERA_KEYS = Object.freeze(['presets', 'setOrbit', 'getOrbit', 'setPreset']);
-
-/** MATRIX — {effectOptions,columns,setAllHidden}, the exact buildTierMatrixSpec() shape. */
-var MATRIX_KEYS = Object.freeze(['effectOptions', 'columns', 'setAllHidden']);
 
 /** LOOP — {enabled,ticks,setEnabled,setTicks}, the exact _buildLoopControl() state shape. */
 var LOOP_KEYS = Object.freeze(['enabled', 'ticks', 'setEnabled', 'setTicks']);
@@ -278,7 +271,6 @@ var ACTION_KEYS = Object.freeze(['label', 'action']);
 var REQUIRED_KEYS_BY_KIND = Object.freeze({
     scalar: SCALAR_KEYS,
     camera: CAMERA_KEYS,
-    matrix: MATRIX_KEYS,
     loop:   LOOP_KEYS,
     enum:   ENUM_KEYS,
     flags:  FLAGS_KEYS,
@@ -286,15 +278,6 @@ var REQUIRED_KEYS_BY_KIND = Object.freeze({
     text:   TEXT_KEYS,
     action: ACTION_KEYS
 });
-
-/** MATRIX_COLUMN_KEYS — required keys on each `matrix.columns[i]` entry (the
- *  buildTierMatrixSpec() per-column descriptor: {label,isHidden,setHidden,
- *  effectValue,setEffect,count}). */
-var MATRIX_COLUMN_KEYS = Object.freeze(['label', 'isHidden', 'setHidden', 'effectValue', 'setEffect', 'count']);
-
-/** MATRIX_EFFECT_OPTION_KEYS — required keys on each `matrix.effectOptions[i]` entry
- *  (the EFFECT_OPTIONS shape: {value,label,mode,paint}). */
-var MATRIX_EFFECT_OPTION_KEYS = Object.freeze(['value', 'label', 'mode', 'paint']);
 
 /**
  * BIND_KEYS — required keys on a scalar/enum/flags/vector descriptor's optional
@@ -531,44 +514,6 @@ function _validateCamera(id, d) {
     if (!_isFn(d.setPreset)) { _fail(id, 'camera', '"setPreset" must be a function(name)->void.'); }
 }
 
-/** Validate one `matrix.columns[i]` entry. */
-function _validateMatrixColumn(id, col, i) {
-    if (!col || typeof col !== 'object') {
-        _fail(id, 'matrix', '"columns[' + i + ']" must be an object.');
-    }
-    for (var k = 0; k < MATRIX_COLUMN_KEYS.length; k++) {
-        var key = MATRIX_COLUMN_KEYS[k];
-        var v = col[key];
-        var ok = (key === 'label') ? _isStr(v) : _isFn(v);
-        if (!ok) {
-            _fail(id, 'matrix', '"columns[' + i + '].' + key + '" must be ' +
-                (key === 'label' ? 'a non-empty string.' : 'a function.'));
-        }
-    }
-}
-
-/** Validate one `matrix.effectOptions[i]` entry. */
-function _validateMatrixEffectOption(id, opt, i) {
-    if (!opt || typeof opt !== 'object') {
-        _fail(id, 'matrix', '"effectOptions[' + i + ']" must be an object.');
-    }
-    for (var k = 0; k < MATRIX_EFFECT_OPTION_KEYS.length; k++) {
-        var key = MATRIX_EFFECT_OPTION_KEYS[k];
-        if (!_isStr(opt[key])) {
-            _fail(id, 'matrix', '"effectOptions[' + i + '].' + key + '" must be a non-empty string.');
-        }
-    }
-}
-
-/** Validate a 'matrix' descriptor's kind-specific fields. */
-function _validateMatrix(id, d) {
-    if (!_isArr(d.effectOptions)) { _fail(id, 'matrix', '"effectOptions" must be an array.'); }
-    for (var i = 0; i < d.effectOptions.length; i++) { _validateMatrixEffectOption(id, d.effectOptions[i], i); }
-    if (!_isArr(d.columns)) { _fail(id, 'matrix', '"columns" must be an array.'); }
-    for (var j = 0; j < d.columns.length; j++) { _validateMatrixColumn(id, d.columns[j], j); }
-    if (!_isFn(d.setAllHidden)) { _fail(id, 'matrix', '"setAllHidden" must be a function(boolean)->void.'); }
-}
-
 /** Validate a 'loop' descriptor's kind-specific fields. */
 function _validateLoop(id, d) {
     if (!_isBool(d.enabled)) { _fail(id, 'loop', '"enabled" must be a boolean.'); }
@@ -580,7 +525,6 @@ function _validateLoop(id, d) {
 var _VALIDATORS_BY_KIND = {
     scalar: _validateScalar,
     camera: _validateCamera,
-    matrix: _validateMatrix,
     loop:   _validateLoop,
     enum:   _validateEnum,
     flags:  _validateFlags,
@@ -651,7 +595,7 @@ function normalizeControlDescriptor(partial) {
     bag.kind = kind;
     bag.id = id;
     // channel resolution: DEFAULT_CHANNEL applies ONLY to DEFAULT_CHANNEL_KINDS
-    // members when omitted; camera/matrix/loop carry whatever was declared (or
+    // members when omitted; camera/loop carry whatever was declared (or
     // remain undefined — channel is optional metadata for them, never forced,
     // per the doc comment).
     if (channel === undefined) {
@@ -687,14 +631,11 @@ var ControlsSchema = {
     DEFAULT_CHANNEL_KINDS:     DEFAULT_CHANNEL_KINDS,
     SCALAR_KEYS:               SCALAR_KEYS,
     CAMERA_KEYS:               CAMERA_KEYS,
-    MATRIX_KEYS:               MATRIX_KEYS,
     LOOP_KEYS:                 LOOP_KEYS,
     ENUM_KEYS:                 ENUM_KEYS,
     FLAGS_KEYS:                FLAGS_KEYS,
     VECTOR_KEYS:               VECTOR_KEYS,
     REQUIRED_KEYS_BY_KIND:     REQUIRED_KEYS_BY_KIND,
-    MATRIX_COLUMN_KEYS:        MATRIX_COLUMN_KEYS,
-    MATRIX_EFFECT_OPTION_KEYS: MATRIX_EFFECT_OPTION_KEYS,
     BIND_KEYS:                 BIND_KEYS,
     normalizeControlDescriptor: normalizeControlDescriptor
 };

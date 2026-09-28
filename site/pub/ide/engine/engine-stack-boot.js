@@ -9,23 +9,44 @@
  * can boot the engine WITHOUT importing GraphicsPane (the upward-arrow veto) and
  * WITHOUT importing lib/frqtl/objects (the cross-arrow veto). It injects the SAME
  * canonical loader GraphicsPane.boot() injects — `experiments/_shared/stack-boot.js`
- * — via the caller's router resolve (the one path authority), then awaits the
- * `_egptWhenEngineReady` hook stack-boot/engine-boot install. ONE engine-boot
- * authority (stack-boot.js); no second loader.
+ * — via the caller's router resolve (the one path authority), then awaits BOTH of
+ * stack-boot's published signals: the `_egptWhenEngineReady` hook (engine + WASM) AND
+ * `window._egptGameLayerReadyPromise` (the WHOLE GAME_LAYER_SCRIPTS roster). ONE
+ * engine-boot authority (stack-boot.js); no second loader.
+ *
+ * ── WHAT THE RETURNED PROMISE PROMISES (FRAQTL #73) ─────────────────────────
+ *
+ * Resolving means EVERY game-layer global the roster installs is reachable — not
+ * one sampled global. It used to mean only `window.FrqtlApp`, polled. But
+ * `objects/FrqtlApp.js` is not the LAST roster entry (`Experiment.js` and
+ * `RecipeContext.js` follow it) and stack-boot loads the roster strictly
+ * sequentially, so the sentinel went true while later entries were still in
+ * flight. A synthesized recipe builder reads `window.RecipeContext` on the line
+ * AFTER the awaited ensureEngine() (lib/shim/notebook/setup-builder.js
+ * `shape="recipe"`), so it intermittently got nothing. The fix is not a longer
+ * poll: the roster's OWNER (stack-boot.js) publishes when the roster is complete
+ * and this module awaits that fact.
  *
  * Why the runtime needs this: in the builder+canvas split, the builder js cell
  * (the producer) runs BEFORE the canvas cell (the consumer) — but the builder
  * calls frqtl.FrqtlApp, which needs window.FrqtlApp already
  * installed. GraphicsPane installs it only when the canvas cell boots, which is
  * too late. So frqtl.ensureEngine boots the engine stack first. We boot only up to
- * `_egptWhenEngineReady` (engine + game layer) — NOT p5/the renderer, which is the
- * canvas cell's GraphicsPane concern.
+ * the END of the GAME phase (engine + game layer) — NOT p5/the renderer, which is
+ * the canvas cell's GraphicsPane concern.
  *
  * Idempotent + cached: stack-boot.js's own <script> idempotency plus a cached
  * promise here mean repeated builder cells (and the StrictMode double-run) boot
  * the stack exactly once. FAIL-LOUD: if engine-boot never installs the ready hook
- * (the JS engine is missing) or the WASM ready promise rejects, the returned
- * promise rejects — never a silent half-boot.
+ * or the WASM ready promise rejects, the returned promise rejects — never a
+ * silent half-boot.
+ *
+ * R1 (ws-stackboot-dev-map SEAM RULING): this is a PROGRAMMATIC host — it injects
+ * stack-boot.js into a page it owns, so it must set window._egptEnginePathMap from
+ * its OWN router BEFORE the tag executes (router.ensureBrowserPathMap()), the same
+ * precondition discipline GraphicsPane.boot() applies. That is why this function
+ * takes the whole router (not a bare resolve function): the path authority IS the
+ * natural argument.
  */
 
 'use strict';
@@ -61,58 +82,78 @@ function _injectScript(src) {
     });
 }
 
+// THE ONE COMPOSED WAIT — the whole meaning of the promise ensureEngineStack returns.
+// Both branches below end here; they differ ONLY in whether stack-boot.js still has to be
+// injected. Engine-ready and the GAME roster settle far apart (stack-boot starts the
+// RENDERER and GAME phases right after injecting engine-boot.js, while WASM is still
+// instantiating), so neither alone is the contract:
+//   1. engine-ready — `_egptWhenEngineReady(onReady, onError)`, the queue-safe hook that
+//      stack-boot shims and engine-boot.js replaces. The onError argument is what carries
+//      a WASM failure: at injection time `_wasmReadyPromise` does not exist yet, so a
+//      synchronous capture of it alone could never see the later rejection.
+//   2. THEN the roster — `window._egptGameLayerReadyPromise`, published by stack-boot.js,
+//      settling when every GAME_LAYER_SCRIPTS entry has loaded (FRAQTL #73: never a probe of
+//      one global such as window.FrqtlApp, which is two entries before the last).
+// `_wasmReadyPromise` is ALSO mirrored for the case where it already exists (a page whose
+// engine has already failed when this caller arrives).
+function _awaitStack() {
+    return new Promise(function (resolve, reject) {
+        if (typeof window === 'undefined' || typeof window._egptWhenEngineReady !== 'function') {
+            reject(new Error(
+                '[engine-stack-boot] engine-boot.js did not install _egptWhenEngineReady. (FAIL-LOUD.)'
+            ));
+            return;
+        }
+        window._egptWhenEngineReady(function () {
+            if (!window._egptGameLayerReadyPromise) {
+                reject(new Error(
+                    '[engine-stack-boot] stack-boot.js did not publish ' +
+                    'window._egptGameLayerReadyPromise — the game-layer READY contract ' +
+                    'is missing (lib/frqtl/experiments/_shared/stack-boot.js). (FAIL-LOUD.)'
+                ));
+                return;
+            }
+            window._egptGameLayerReadyPromise.then(function () { resolve(); }, reject);
+        }, reject);
+        (window._wasmReadyPromise || Promise.resolve()).catch(reject);
+    });
+}
+
 /**
- * ensureEngineStack(routerResolveFn) → Promise<void>
- * Resolves once window.FrqtlApp + the engine globals are live.
+ * ensureEngineStack(router) → Promise<void>
+ * Resolves once the engine is ready AND the whole GAME_LAYER_SCRIPTS roster is
+ * installed (see the module docstring — never a single-global probe).
  *
- * @param {(relPath:string)=>string} routerResolveFn — the engineRouter resolve.
+ * @param {import('./router.js').EngineRouter} router — an engineRouter() instance
+ *   (its `.resolve` locates stack-boot.js; its `.ensureBrowserPathMap()` sets the
+ *   page's window._egptEnginePathMap precondition BEFORE the tag runs — R1).
  */
-export function ensureEngineStack(routerResolveFn) {
-    if (typeof window !== 'undefined' && typeof window.FrqtlApp === 'function') {
-        // Already booted (e.g. a canvas cell ran first, or a prior builder cell).
-        return Promise.resolve();
-    }
+export function ensureEngineStack(router) {
     if (_bootPromise) { return _bootPromise; }
-    if (typeof routerResolveFn !== 'function') {
-        return Promise.reject(new Error(
-            '[engine-stack-boot] ensureEngineStack requires a router-resolve function (FAIL-LOUD).'
-        ));
+    var injected;
+    if (typeof window !== 'undefined' && window._egptGameLayerReadyPromise) {
+        // stack-boot.js already EXECUTED on this page (a canvas cell's GraphicsPane.boot(),
+        // an experiment page's own tag). Skip only the INJECTION — never the wait: the
+        // roster promise existing (or even having settled) says nothing about WASM.
+        injected = Promise.resolve();
+    } else {
+        if (!router || typeof router.resolve !== 'function') {
+            return Promise.reject(new Error(
+                '[engine-stack-boot] ensureEngineStack requires a router (an engineRouter() ' +
+                'instance, not a bare resolve function). (FAIL-LOUD.)'
+            ));
+        }
+        // R1: set the page's window._egptEnginePathMap from THIS router BEFORE injecting the
+        // tag — stack-boot.js throws without it. Throws here (never a silent stale map) if a
+        // DIFFERENT map is already on the page (two routers/injectors is a host bug).
+        try {
+            router.ensureBrowserPathMap();
+        } catch (mapErr) {
+            return Promise.reject(mapErr);
+        }
+        injected = _injectScript(router.resolve('experiments/_shared/stack-boot.js'));
     }
-    _bootPromise = _injectScript(routerResolveFn('experiments/_shared/stack-boot.js'))
-        .then(function () {
-            return new Promise(function (resolve, reject) {
-                if (typeof window === 'undefined' || typeof window._egptWhenEngineReady !== 'function') {
-                    reject(new Error(
-                        '[engine-stack-boot] engine-boot.js did not install _egptWhenEngineReady — ' +
-                        'JS engine missing. (FAIL-LOUD.)'
-                    ));
-                    return;
-                }
-                // stack-boot.js drains the _egptWhenEngineReady queue right after
-                // engine-boot.js, but BEFORE the GAME layer (which loads
-                // FrqtlApp.js, EGPTUniverse, LargeObject, …) finishes. The
-                // builder cell needs window.FrqtlApp, so we wait past the
-                // engine-ready hook for the GAME layer's FrqtlApp global to
-                // appear (it loads async immediately after). Poll with a hard
-                // timeout → FAIL-LOUD rather than hang.
-                window._egptWhenEngineReady(function () {
-                    var start = Date.now();
-                    (function pollRunner() {
-                        if (typeof window.FrqtlApp === 'function') { resolve(); return; }
-                        if (Date.now() - start > 15000) {
-                            reject(new Error(
-                                '[engine-stack-boot] window.FrqtlApp did not appear within 15s ' +
-                                'after the engine became ready — the game layer failed to load. (FAIL-LOUD.)'
-                            ));
-                            return;
-                        }
-                        setTimeout(pollRunner, 50);
-                    })();
-                });
-                // Mirror engine-boot's rejection surface (WASM path).
-                (window._wasmReadyPromise || Promise.resolve()).catch(function (err) { reject(err); });
-            });
-        });
+    _bootPromise = injected.then(_awaitStack);
     // On failure, clear the cache so a later retry can re-attempt rather than
     // forever resolving the rejected promise.
     _bootPromise.catch(function () { _bootPromise = null; });

@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Single-Source Self-Interference (omni, 2D)</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="checkbox"] { cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls input[type="range"] { width: 120px; cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls select { background: #1a1a1a; color: #7ec8e3; border: 1px solid #2a2a2a; border-radius: 3px; padding: 2px 6px; cursor: pointer; }
+        .experiment-controls button { background: #1a2a33; color: #7ec8e3; border: 1px solid #2a4a5a; border-radius: 3px; padding: 3px 9px; cursor: pointer; font-size: 12px; }
+        .experiment-controls button:hover { background: #234050; }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 28px; display: inline-block; text-align: right; }
+        #ssi-metrics { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- WASM pkg URL (resolved relative to this page) -->
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+
+    <!-- Vendor three.js (r128 UMD) for the 3D mode — must be set BEFORE
+         stack-boot.js so render-boot.js can load it when the page boots with
+         ?egpt3D=1 (renderer=three). Harmless in the default 2D/p5 mode:
+         render-boot only FETCHES three when the three renderer is selected. -->
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+
+    <!-- render.mesh external-geometry loaders (GLTFLoader + DRACOLoader) — opt-in
+         for the 3D "source mesh (glTF)" toggle (below). render-boot.js loads them
+         ONLY on the three path (after three), so in the default 2D/p5 mode this
+         costs nothing (three is never fetched). Same opt-in flag mesh-demo/gun use. -->
+    <script>window._egptMeshLoaders = true;</script>
+
+    <!-- DEFAULT presentation — 2D flat p5 (the classic x-y canvas, matching Wave
+         Interference). The disk of directions (bench S5) is the 2D analogue of
+         the sphere of directions (S4) with one fewer axis. A 2D/3D toggle
+         (below) re-selects the RENDERER via the ONE existing render-boot
+         mechanism: it reloads with ?egpt3D=1, which render-boot.js reads to
+         auto-switch to the three.js provider (the SAME `?egpt3D=1` reinit idiom
+         dse-lab/dsewall-lab use to switch p5↔three — dimensionality/renderer is
+         a reinit, activeAxes.z + the renderer script stack are fixed at boot, so
+         it is NOT a live-knob reload). In 3D the SAME emitter particles render as
+         SPHERES (ball glow) via three-provider; color/alpha come from the SAME
+         render-intent contract (scheme parity), only the primitive + projection
+         differ. NO window._egpt3D inline: render-boot sets it from ?egpt3D=1. -->
+
+    <!-- Canonical shared loader: engine + renderer + game layer in ONE order. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupSphereEmitter3D.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <!-- Page structure -->
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <label title="Toggle sustained burst emission on/off">
+                <input type="checkbox" id="ctrl-autofire" checked> Emit
+            </label>
+            <!-- EMISSION RATE (D3, 2026-07-20) — LIVE, applies to every running emitter via the
+                 sphere-emitter control's existing setEmitEveryTicks setter (the same live-setter
+                 shape as setWavelength; sugar-side, ZERO engine/physics). This is emit-every-N-ticks:
+                 1 = fire every tick (densest), higher = sparser. LOWERING the rate (raising N) thins
+                 the cloud so the interference NODES (destructive minima) stay dark against fewer
+                 bright particles → higher RELATIVE contrast → the braided concentric bands read more
+                 clearly, especially at small effective wavelengths. Same per-leaf walk (SU1); only
+                 HOW OFTEN a burst is injected changes — not mass/dimension/charge/momentum. -->
+            <label title="EMISSION RATE — LIVE emit-every-N-ticks for every running emitter (reuses the sphere-emitter control's setEmitEveryTicks; sugar-side, zero engine/physics). 1 = fire every tick (densest cloud); higher N = sparser. Lower the rate (raise N) to thin the cloud so the destructive interference nodes stay dark against fewer bright particles → higher relative contrast → the braided bands read more clearly (pairs with force-red in 3D). New emitters inherit the current rate.">
+                emit every:
+                <input type="range" id="ctrl-emit-rate" min="1" max="20" step="1" value="1">
+                <span class="val" id="ctrl-emit-rate-val">1</span>
+            </label>
+            <label title="wavelengthScale — the GLOBAL multiplier on every leaf's capacity/mass ratio (the universe's wavelengthScale), consumed LIVE each tick (frame.rs set_wavelength). Leaves are born at fundamentalDimension=2 (capacity 16) with a wavelength=32 arg (mass 1), so capacity/mass=16 gives the knob REAL leverage: per-leaf EFFECTIVE wavelength = floor(16 × scale) px. Default 16 is the CEO's sweet spot (two clear fringe bands with room to separate on a 600px canvas → eff λ 256px). Drag DOWN and the concentric self-interference bands tighten; drag UP and they widen. Speed is UNCHANGED (always 1px/tick, bench M1) — only the transverse oscillation period changes (bench M4 / CLAUDE.md Invariant 6B). The live 'eff λ' readout shows floor((capacity/mass) × scale).">
+                &lambda; scale (global):
+                <!-- min=1 (was 4, widened ws-walk-unification Bite 1): the LEGAL floor of
+                     wavelengthScale is 1 (worldCfg derives max(1, floor(fWL/4)); the universe
+                     default is 1), and the wave-interference reference sweep {2,8,16,32} needs
+                     wlc=2 reachable BY DRAGGING — a min of 4 silently clamped the low end of a
+                     published sweep out of the UI. Range is single-sourced from this element by
+                     runner.experimentControls (no hand-mirrored min/max). -->
+                <input type="range" id="ctrl-wlscale" min="1" max="64" step="1" value="16">
+                <span class="val" id="ctrl-wlscale-val">16</span>
+            </label>
+            <label title="Read-only: the resulting EFFECTIVE per-leaf transverse wavelength = floor((capacity/mass) × wavelengthScale) px — makes the interaction of the global scale with the per-leaf capacity/mass legible.">
+                eff &lambda;:
+                <span class="val" id="ctrl-effwl-val" style="min-width:44px;">—</span>
+            </label>
+
+            <!-- EMISSION KNOB 1: DIMENSION (0-5) — PER-EMITTER (CEO 2026-07-19 model).
+                 The dimension the SELECTED emitter births its leaves at (makeLeafFrame explicit
+                 level + addDimension — the Blackbody pattern). Sets the leaf CAPACITY=(2^dim)²
+                 (Invariant #6). Higher dim (at fixed mass) → lower fullness → (a) longer eff
+                 wavelength → color toward RED, and (b) move-gate slower (Invariant 6A: dim0 is
+                 light P=1; dim>0 steps P=fullness). Changing this EDITS the selected emitter
+                 (re-births its field at the new dimension — dimension is a birth property, not
+                 a live per-leaf one). ADD makes a NEW emitter at this dim while KEEPING the
+                 others → emitters at different dimensions coexist. -->
+            <label title="STAGED birth dimension (0-5) for ADD/EDIT — this experiment STAGES params and commits them as a unit (ADD = new emitter, EDIT = apply to selected), it does NOT live-mutate. Each emitter births leaves AT its own dimension via makeLeafFrame's explicit level + addDimension (the Blackbody pattern); multiple emitters at different dimensions coexist. Sets CAPACITY=(2^dim)²: dim0→1, dim1→4, dim2→16, dim3→64, dim4→256, dim5→1024. Changing the staged dimension re-defaults the staged MASS to the new dimension's capacity (fullness=1 → moves at c → no pile-up). Higher dim at fixed mass → lower fullness → longer eff wavelength (redder) AND move-gate slower (at-fundamental light P=1; above steps P=fullness — the intended observable).">
+                dimension:
+                <select id="ctrl-dimension">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2" selected>2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </label>
+
+            <!-- EMISSION KNOB 2: VIRTUAL MASS. The emitted leaf's mass. The emitter's only
+                 leaf-creation lever on mass is makeLeafFrame's wavelength arg (mass=capacity/arg),
+                 exposed LIVE via the sugar handle's setWavelength: virtual mass m → arg =
+                 round(capacity/m). LIVE (M5 — affects the NEXT emitted leaf, no restart). Higher
+                 mass → shorter effective wavelength → color shifts toward VIOLET. -->
+            <label title="STAGED virtual MASS (1 … capacity) for ADD/EDIT — staged, not live. DEFAULTS to capacity (fullness=1 → the leaf moves at c / P=1 at ANY dimension → no pile-up even when the fundamental self-lowers below it). LOWER it to deliberately see the slowdown + redder color: mass→wavelength arg (mass=capacity/arg), higher mass → higher fullness → SHORTER eff wavelength = floor((capacity/mass)×scale) → VIOLET; lower mass → longer wavelength → RED (and slower above the fundamental). Its max + default track the staged dimension's capacity.">
+                virtual mass:
+                <input type="range" id="ctrl-vmass" min="1" max="16" step="1" value="16">
+                <span class="val" id="ctrl-vmass-val">16</span>
+            </label>
+            <label title="Read-only: the current per-leaf mass / capacity — the two inputs to wavelength = floor((capacity/mass) × wavelengthScale). Capacity = (2^dimension)². Dimension sets capacity; the virtual-mass knob sets mass.">
+                mass/cap:
+                <span class="val" id="ctrl-masscap-val" style="min-width:56px;">16/16</span>
+            </label>
+
+            <!-- EMITTER MANAGER (CEO 2026-07-19, per-emitter dimension): MULTIPLE sphere-emitter
+                 host tick-functions on ONE universe, each at its OWN DIMENSION (and mass). Built
+                 on the FrqtlApp emitter-tracking API (addEmitter / removeObject /
+                 _emitters) + setupSphereEmitter3D's `leafDimension` — NOT a parallel
+                 registry. Emitters at DIFFERENT dimensions COEXIST (e.g. a dim2 + a dim4 emitter
+                 both run, each its own scale layer with its own move-gate/mass/color). ADD =
+                 new emitter at the current (dim, mass), keeps the others → multi-dimension
+                 coexistence; EDIT = change the selected emitter's dim/mass (dispose + re-add in
+                 place, so it doesn't stack); DELETE = remove the selected one. -->
+            <label title="Registered emitters on this universe (each is one sphere emitter at its OWN dimension). Selecting one loads its dimension + mass into the controls and targets it for the mass slider's LIVE updates, the dimension dropdown's EDIT, and DELETE. Emitters at different dimensions coexist.">
+                emitters:
+                <select id="ctrl-emitter-list"></select>
+            </label>
+            <button type="button" id="ctrl-emitter-add" title="ADD a NEW emitter at the current (dimension, mass), KEEPING the existing ones — emitters at different dimensions run concurrently on one universe (e.g. a dim2 + a dim4 emitter, each its own layer/move-gate/color; the two-source-interference foundation). Registers via the runner emitter API + setupSphereEmitter3D leafDimension; no universe re-init, no stacking.">+ add</button>
+            <button type="button" id="ctrl-emitter-edit" title="EDIT the SELECTED emitter: apply the current dimension + mass to it — dispose its old tick-function and register the updated one in place (recompiles that emitter only, re-births its field at the new dim/mass). This is where the dispose-before-add fix applies so an EDIT replaces in place without stacking.">edit</button>
+            <button type="button" id="ctrl-emitter-del" title="DELETE the SELECTED emitter — removes its tick-function from the run (runner.removeObject → dispose → splice). Disabled when only one emitter remains (there must always be a source).">del</button>
+            <button type="button" id="ctrl-emitter-restart" title="RESTART the sim locally — re-inits the universe (clears ALL particles / wipes the canvas) and RE-REGISTERS the SAME emitter set on the fresh universe, so it restarts with the identical emitters running. Distinct from DELETE (removes an emitter) and from ADD/EDIT (commit staged params). Keeps the N tick-functions; only the particles are cleared.">restart</button>
+
+            <!-- SUGAR COLOR OVERRIDE (render-intent, NO engine): force render.color independent of
+                 the wavelength→LightColor mapping. Staged like dim/mass; commit via ADD/EDIT. -->
+            <label title="COLOR OVERRIDE (render-intent, ZERO engine): forces every emitted leaf's render color to RED via string_map['render.color'] (owned by lib/shim/frame-data; the engine carries it OPAQUE, the renderer deserializes it with priority over the colorScheme) — INDEPENDENT of the wavelength→LightColor mapping. Staged (commit via ADD/EDIT). Proves the sugar→renderer color path. Red is sourced from the canonical LightColor (roygbiv red), no re-implemented map.">
+                <input type="checkbox" id="ctrl-force-red"> force red
+            </label>
+            <!-- CLASSIC self-interference PRESET — restore the ORIGINAL pre-tweak defaults as a preset. -->
+            <button type="button" id="ctrl-classic-preset" title="CLASSIC self-interference PRESET — stages the ORIGINAL pre-tweak defaults (dim2, mass 1 = fullness 1/16 but AT the dim2 fundamental seed so P=1/FAST, chargeMode random = braiding, emissionShell surface + innerR ring = empty center, wavelengthScale 16) AND forces red, then applies them as a SINGLE emitter. Reproduces the original red braided single-source self-interference (empty center, sharp-ish concentric fringes).">classic self-interference</button>
+            <!-- TWO-SOURCE interference PRESET (Bite 3) — reproduce the classic wave-interference golden. -->
+            <button type="button" id="ctrl-two-source-preset" title="TWO-SOURCE interference PRESET — composes TWO of the SAME sphere emitters, each with the CLASSIC self-interference per-emitter config (dim2 / mass 1 → capacity/mass 16, chargeMode random = braiding, emissionShell surface + innerR 16 = ring launch/PointSource topology, wavelengthScale 16 → effective λ 256 px = the self-interference sweet spot), separated by 64 px along x (centers ±32) — the ABSOLUTE center separation setupWaveInterference.js uses (2×fundamentalWaveLength 32). Colorless (fullness-scheme color, NOT red). Each source self-interferes crisply at eff λ 256; their overlap = a crisp two-source interference web. The radial web of light/dark fringes BETWEEN the two visible sources is EMERGENT — the density of two overlapping independent IID charged omni walks (bench SU1), no wave equation. The ONLY new machinery vs the single-source page is the per-emitter source POSITION (setupSphereEmitter3D.center).">two-source interference</button>
+
+            <!-- REUSED render toggles from Wave Interference (BYO-renderer
+                 contract, WS_RENDERER_BYO_CONTRACT.md). Zero new shader/physics:
+                 "water surface" = the shared Filters.water GLSL pass toggled via
+                 renderer.filter()/removeFilter('water'); "shade particles" =
+                 the renderBaseCanvas render option (does the particle/base layer
+                 composite before the pass) via setRenderOption. Same TickData,
+                 nothing recomputed — pure output-boundary render intent. -->
+            <label title="Toggle the shared Filters.water GLSL pass (BYO-shader path). Same physics — this is only how the field is shaded for display.">
+                <input type="checkbox" id="water-toggle"> water surface
+            </label>
+            <label title="renderBaseCanvas — whether the particle/base layer is drawn at all (README §3; the SAME on/off render toggle Wave Interference exposes). These two toggles are COMPOSABLE render modes: particles-only, water-only (ripples alone), both, or neither. Same TickData; zero physics.">
+                <input type="checkbox" id="base-canvas-toggle" checked> render particles
+            </label>
+
+            <div class="control-divider" style="width:1px;align-self:stretch;background:#2a2a2a;margin:0 2px;"></div>
+
+            <!-- SHAPE dropdown (render-intent, ZERO engine/physics) — the canonical
+                 render.shape key owned by lib/shim/frame-data, applied LIVE via
+                 runner.setRenderOption('shape', …). BOTH providers resolve it through
+                 the ONE RenderShape authority (no per-provider shape map). Mode-aware:
+                 round → 'ball' (2D: filled circle) / 'sphere' (3D: TRUE instanced sphere,
+                 symmetric with 'cube'), boxy → 'box' (2D square) / 'cube' (3D instanced-mesh
+                 cube). Default 'round' preserves the existing 2D look. 'sphere' honors
+                 render.color per instance (force-red = red sphere). Same TickData; SU1. -->
+            <label title="Particle SHAPE (render.shape render-intent — ZERO engine/physics, applied LIVE via setRenderOption). round = 'ball' (2D filled circle) / 'sphere' (3D: TRUE instanced-mesh sphere, symmetric with 'cube', honors render.color per instance); boxy = 'box' (2D square) / 'cube' (3D instanced-mesh cube). Both providers read the ONE RenderShape authority — no per-provider shape map. Only the primitive changes; per-particle color/alpha (the render-intent contract) is identical across shapes and across 2D↔3D.">
+                shape:
+                <select id="ctrl-shape">
+                    <option value="round" selected>round (circle / sphere)</option>
+                    <option value="boxy">boxy (square / cube)</option>
+                </select>
+            </label>
+
+            <!-- 2D/3D TOGGLE — re-selects the RENDERER via the ONE existing render-boot
+                 mechanism (dse-lab/dsewall-lab's established `?egpt3D=1` reinit idiom):
+                 checking it reloads with ?egpt3D=1, which render-boot.js reads to
+                 auto-switch p5 → three.js (window._egpt3D). This is a reinit-class switch
+                 (activeAxes.z + the renderer script stack are fixed at universe.init()/
+                 boot time), NOT a live-knob reload. In 3D the SAME emitter particles
+                 render as SPHERES; scheme parity is preserved (both providers consume the
+                 same render.color/render.colorScheme/render.shape contract). -->
+            <label title="2D (p5, flat x-y) ↔ 3D (three.js, orbit sphere-particles). REINIT — reloads with ?egpt3D=1 so render-boot.js re-selects the renderer (the SAME p5↔three switch mechanism dse-lab/dsewall-lab use; dimensionality + renderer are fixed at boot, so this is a reinit, not a live-knob reload). Same physics field; in 3D the particles spread in z (is2D=false → the sphere-of-directions) and render as spheres, with identical per-particle colors/alpha from the render-intent contract.">
+                <input type="checkbox" id="ctrl-3d"> 3D (spheres)
+            </label>
+
+            <!-- SOURCE MESH (glTF) — exercises the canonical render.mesh EXTERNAL-GEOMETRY
+                 path (the pluggable GLTFLoader+DRACOLoader gated by _egptMeshLoaders +
+                 RenderMesh.resolve + the load-time RECENTER pivot) on ONE representative
+                 SOURCE-BODY LargeObject, live (add/remove). 3D-ONLY (mesh needs three.js —
+                 hidden in 2D/p5). Feasibility: this is a DENSE emitter (thousands of leaves),
+                 so per-particle glTF (mesh-demo's setRenderOption('mesh') on every frame) is
+                 infeasible AND capping the population is forbidden (no emission change) —
+                 hence a representative LO (the render.mesh tier the Gun body uses:
+                 lo.mesh/meshScale, RenderMesh priority #2). Reuses mesh-demo's flamingo-draco.glb
+                 (the DRACO-compressed fixture that exercises the FULL loader+decoder path). -->
+            <label id="mesh-toggle-wrap" style="display:none;" title="SOURCE MESH (glTF) — 3D only. Renders ONE representative source-body LargeObject as an external glTF (flamingo-draco.glb, reused from mesh-demo) via the canonical render.mesh path: the pluggable GLTFLoader+DRACOLoader (opt-in _egptMeshLoaders), RenderMesh.resolve, and the load-time RECENTER pivot — the SAME lo.mesh tier the Gun body uses. NOT per-particle (thousands of leaves = infeasible, and capping the population would be an emission change) — a representative object that exercises the external-geometry render-intent path end-to-end, engine-opaque. FAIL-LOUD if the asset can't load.">
+                <input type="checkbox" id="ctrl-mesh"> source mesh (glTF)
+            </label>
+
+            <!-- CAMERA (3D only) — driven ENTIRELY by the REUSABLE CameraControls sugar
+                 object (lib/frqtl/objects/objects/CameraControls.js), which mounts two
+                 on-screen joysticks (MOVE bottom-left, LOOK bottom-right) OVER the canvas
+                 + binds arrow/WASD keys, all onto the existing runner.cameraControl handle
+                 (capability-checked, never renderer-sniffed). The old preset-dropdown +
+                 manual-zoom-slider pair was retired (Bite 3B) — the camera is reachable
+                 ONLY through the joysticks/keys now. A small on-canvas hint label appears
+                 in 3D via the CameraControls mount; no page HTML control is needed.
+                 "3D only" is DERIVED, not asserted: the sketch mounts the widget only for a
+                 camera whose own poseFields declare the angular axes these pads drive (see
+                 the framingForCamera block) — the flat p5 camera declares {distance,target}
+                 only, so it gets no pads and this hint stays hidden. -->
+            <span id="cam-hint-wrap" style="display:none; align-items:center; gap:6px; color:#7ec8e3; font-size:12px;">
+                🎮 camera: drag the on-canvas joysticks (MOVE / LOOK) or use arrow / WASD keys
+            </span>
+
+            <!-- FX RENDER-EFFECT SWITCHES (3D / three-provider only) ─────────────
+                 The render-effect knobs (godrays / glow / smoke / heat /
+                 god-ray spread) surfaced the SAME way fx-experiment.js
+                 surfaces them: mechanically DERIVED from the ACTIVE provider's
+                 renderCapabilities() via the ONE public makeControlsForRenderSurface
+                 factory (the SAME factory fx-experiment.js's _deriveEffectControls uses —
+                 reused, NOT a hardcoded FX list). One LIVE runner.setRenderOption(key,v)
+                 slider per advertised effect-layer scalar capability. p5 advertises NONE
+                 of these → this strip stays hidden (clean no-op — never a hardcoded label
+                 or a throw). Zero engine / zero physics (bench SU1): FX are output-
+                 boundary render options; per-particle color/shape (the render-intent
+                 contract) is byte-identical FX on vs off. Populated by _buildFxControls(). -->
+            <span id="fx-controls-wrap" style="display:none; align-items:center; gap:14px;"></span>
+        </div>
+        <div id="metrics-panel"></div>
+        <!--
+            Realm-observable proof hook for Playwright.
+            data-active-quanta : count of active leaf frames this tick.
+            data-wl-scale      : the CURRENT wavelengthScale (global λ multiplier).
+            data-preset        : locked to 'spherical' (single omni source).
+            data-is2d          : locked to 'true' (disk of directions).
+            data-charge-mode   : locked to 'random' (per-leaf ± → braiding).
+            data-emission-shell: locked to 'surface' (ring/shell launch — PointSource topology).
+            data-inner-r       : the shell radius (px) leaves are seeded on.
+            data-eff-wavelength: floor((capacity/mass) × wavelengthScale) px — the effective transverse λ.
+            data-fundamental-dimension : the dimension the emitter creates leaves at (0-5) — DIMENSION knob.
+            data-capacity      : (2^dimension)² — the leaf capacity that dimension sets.
+            data-virtual-mass  : the current per-leaf virtual mass (1..capacity) — VIRTUAL MASS knob.
+            data-fx-keys       : CSV of the FX render-effect capabilities surfaced from the ACTIVE
+                                 provider's renderCapabilities() (three: godrays,godrayDensity,
+                                 glowIntensity,heat,smoke; p5: "" — the capability-check no-op).
+            data-stepping      : the ACTIVE walk sampler this run is using — 'fixed' | 'average'
+                                 (from ?stepping=), or 'engine-default' when the page declared
+                                 none and the engine's own default is in force. Resolved state,
+                                 never the raw URL string; also shown as the visible "Stepping"
+                                 row in #metrics-panel so a screenshot is self-labeling.
+        -->
+        <div id="ssi-metrics"
+             data-role="ssi-metrics"
+             data-active-quanta="0"
+             data-wl-scale="16"
+             data-preset="spherical"
+             data-is2d="true"
+             data-charge-mode="random"
+             data-emission-shell="surface"
+             data-inner-r="16"
+             data-eff-wavelength="0"
+             data-fundamental-dimension="2"
+             data-capacity="16"
+             data-virtual-mass="16"
+             data-emitter-count="1"
+             data-source-centers=""
+             data-selected-dim="2"
+             data-selected-mass="16"
+             data-render-color="none"
+             data-render-shape="ball"
+             data-renderer="p5"
+             data-mesh-active="false"
+             data-mesh-asset=""
+             data-fx-keys=""
+             data-emit-every-ticks="1"
+             data-shape-mesh-3d="false"
+             data-stepping="engine-default"
+             data-restored="false"></div>
+    </div>
+
+    <!-- Experiment sketch -->
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Single-Source Self-Interference (omni, 2D) — Phase-2 dogfood Golden #1.
+     *
+     * ONE central omni-directional emitter, rendered flat in 2D — the "Wave
+     * Interference reduced to a SINGLE source": one radial spray filling a
+     * roughly circular region with visible emergent DENSITY STRUCTURE (the
+     * particles of opposite charge BRAID, and that braiding IS the concentric
+     * self-interference), not a flat uniform disk.
+     *
+     * MATCH-THE-INITIAL-CONDITIONS (CEO 2026-07-18): to reproduce the old
+     * PointSource/setupWaveInterference look with the unified Emitter, the
+     * per-leaf CREATION conditions must match — same fundamentalDimension,
+     * mass/capacity (via the wavelength arg), CHARGE, momenta and globals →
+     * identical Particle Walk → identical picture. The two ICs that were
+     * missing (and made both the smooth-spray look AND the inert λ-knob):
+     *   1. CHARGE. PointSource passes charge=null → a random ± per leaf
+     *      (emitterProgram.js: `universe.random()<0.5?0:1`). The Emitter used to
+     *      hardcode charge 0 (all positive) → no braid. Fixed via the new opt-in
+     *      `chargeMode:'random'` on setupSphereEmitter3D (byte-identical default).
+     *   2. capacity/mass LEVERAGE. PointSource runs at fundamentalDimension=2
+     *      (capacity 16) with a wavelength=32 arg (mass 1) → capacity/mass=16, so
+     *      per-leaf wavelength = floor(16 × scale) has real leverage. Born at
+     *      dim 0 (capacity=mass=1) the ratio is 1 → wavelength = floor(1 × scale),
+     *      a near-flat 8–56px response that read as "the knob does nothing".
+     *      INSTRUMENTED (pkg-node): dim0 λ 8→56px (Δ48) vs dim2 λ 128→896px
+     *      (Δ768) at scale 8→56. This page now matches dim2 + wavelength32 and
+     *      boots at the CEO's sweet-spot wavelengthScale 16 (eff λ 256px, two
+     *      clear fringe bands with room to separate on a 600px canvas).
+     *   3. RING LAUNCH. PointSource seeds particles around a RING, not a point —
+     *      single-occupancy forbids many quanta starting on the EXACT same pixel.
+     *      Fixed via the opt-in `emissionShell:'surface'` + `innerR:16` (=
+     *      PointSource's diameter/2) — seed the START PIXEL on a circle (2D) /
+     *      sphere shell (3D). VERIFIED (pkg-node): surface start-radius mean 16.5
+     *      (min 12, max 20) vs volume box=0 mean 3.0 (center cluster).
+     *
+     * REUSE (this page adds ZERO new engine code; the ONLY sugar changes are the
+     * opt-in `chargeMode` + `emissionShell`/`innerR` params on the shared factory):
+     *   - The emitter is `setupSphereEmitter3D` locked to `preset:'spherical'` +
+     *     `is2D:true` + point source. In 2D the ball-rejected velocity sampler
+     *     collapses to a DISK of directions (bench S5) — a single omni source,
+     *     isomorphic to PointSource's 72 trig rays (integer (vx,vy) in [-R,R] =
+     *     the direction ratio; speed always 1px/tick).
+     *   - The λ knob is the universe's `wavelengthScale` global, exposed LIVE via
+     *     the same `runner.universe.wavelengthScale` setter Particle Walk
+     *     uses (consumed live each tick by frame.rs set_wavelength).
+     *
+     * PHYSICS (zero new physics — canonical-bench SU1). The structure is
+     * EMERGENT from many INDEPENDENT charged omni walks, never a computed
+     * superposition curve (no field equation, no "constant speed", no Gaussian):
+     *   - S5: disk-rejected integer (vx,vy) => near-uniform DISK of directions.
+     *     Speed ALWAYS 1px/tick (M1); (vx,vy) is DIRECTION ONLY.
+     *   - M4 / Invariant 6B: each leaf is a transverse oscillator, wavelength =
+     *     (capacity/mass) × wavelengthScale; charge shifts its spin quadrant
+     *     (compute_spin), so opposite charges braid.
+     *   - S1: x and y run the identical update rule — the 2D disk is the sphere
+     *     emitter's 3D ball with one fewer axis.
+     *
+     * Engine-agnostic: runs WASM via FrqtlApp + the compat facade.
+     */
+    var runner    = null;
+    var metrics   = null;
+    var tick      = 0;
+    var _metricsEl = null;
+
+    // Locked golden config — shared by every emitter the manager creates (CEO
+    // 2026-07-19 per-emitter-dimension model). Each emitter births its leaves at its
+    // OWN leafDimension (the per-emitter dim knob) via makeLeafFrame's explicit level
+    // + addDimension (the Blackbody pattern). BASE_FUNDAMENTAL is the universe's
+    // fundamental (lowest) dimension, set once at init.
+    //
+    // WHY BASE_FUNDAMENTAL = DEFAULT_LEAF_DIM = 2 (regression fix + dynamic-fundamental
+    // engine, 2026-07-19): the move-gate (Invariant 6A) makes a leaf AT the fundamental
+    // "light" (steps P=1 → FAST) REGARDLESS of fullness, and a leaf ABOVE the fundamental
+    // steps P=fullness (heavier/SLOWER at low fullness). Measured: dim2/mass1/fullness0.063
+    // → |Δ|≈92px/60t (fast full spray) when the fundamental is 2, but |Δ|≈0 (frozen
+    // pile-up) when it is 0. So BASE_FUNDAMENTAL is the INIT SEED = the DEFAULT emitter's
+    // dimension, so the default is the fast full-canvas red spray while STILL carrying
+    // capacity 16 (eff λ 256, the color leverage). The fundamental is DYNAMIC: the engine
+    // SELF-LOWERS it to min(allocated dimensions) on addDimension (merged 2026-07-19). So
+    // an emitter at a HIGHER dim (dim3/4/5, above the fundamental) is move-gated/slower/
+    // redder — the intended observable (dim4 |Δ|=0, eff λ 4096); and adding a LOWER-dim
+    // emitter (dim0/1) SELF-LOWERS the fundamental to it (those leaves become at-fundamental
+    // FAST, and the previously-fast dim2 leaves re-base to above-fundamental → slower). The
+    // page never re-sets the fundamental — every per-emitter dimension goes through
+    // addDimension and the engine derives it. chargeMode:'random' → per-leaf ± braiding; emissionShell:'surface' +
+    // innerR:16 → RING launch (PointSource topology). fundamentalWaveLength:64 → initial
+    // wavelengthScale floor(64/4)=16 (λ sweet spot). burstSize:72 = one PointSource's
+    // per-tick rays. `wavelength` is a harmless template — the manager overrides each
+    // emitter's mass via setWavelength(massToWl(mass, capacity)) right after creation.
+    var DEFAULT_LEAF_DIM = 2;         // the default single emitter's birth dimension (capacity 16, color leverage)
+    var BASE_FUNDAMENTAL = DEFAULT_LEAF_DIM; // universe fundamental = default emitter's dim → default is "light"/FAST
+    var LOCKED = {
+        is2D:            true,
+        preset:          'spherical',
+        emissionBoxSide: 0,         // (unused in surface mode) — one central source
+        emissionShell:   'surface', // RING launch (PointSource topology)
+        innerR:          16,        // ring radius (px) = PointSource diameter/2
+        fundamentalDimension: BASE_FUNDAMENTAL, // universe base — leaves born at per-emitter leafDimension
+        wavelength:      32,        // template only — overridden per-emitter by setWavelength
+        chargeMode:      'random',  // per-leaf ± → braiding (THE self-interference)
+        fundamentalWaveLength: 64,  // → initial wavelengthScale floor(64/4)=16 (sweet spot)
+        burstSize:       72,        // one PointSource's per-tick ray count
+        emitEveryTicks:  1
+    };
+
+    window.__frqtlSSI = { activeQuanta: 0, wlScale: 16, effWavelength: 0 };
+
+    // PageParams contract (lib/shim/page-params) — the ONE owner of every URL param
+    // key name this page reads (?egpt3D=, ?stepping=). Live-imported from
+    // window.PageParams, which stack-boot.js's ENGINE array installs before any page
+    // script runs; a named FAIL-LOUD guard (the fx-experiment.js/_getAstSchema pattern),
+    // never a raw TypeError and never a hand-typed literal key.
+    function _getPageParams() {
+        if (typeof window !== 'undefined' && window.PageParams) { return window.PageParams; }
+        throw new Error(
+            '[single-source-interference] PageParams not available. ' +
+            'Ensure lib/shim/page-params/index.js is loaded before this page\'s sketch ' +
+            '(stack-boot.js\'s ENGINE array).'
+        );
+    }
+
+    window.setup = function () {
+        _metricsEl = document.getElementById('ssi-metrics');
+
+        // ── 2D vs 3D MODE (renderer + physics dimensionality) ────────────────────────
+        // render-boot.js sets window._egpt3D=true when the page booted with ?egpt3D=1
+        // (and therefore already selected the three.js provider). is3D drives BOTH:
+        //   - the RENDERER (already selected by render-boot: three when is3D, else p5), and
+        //   - the PHYSICS dimensionality: LOCKED.is2D = !is3D, so in 3D the emitter's
+        //     ball-of-directions actually spreads in z (the SPHERE field), in 2D the disk.
+        // Mutated on LOCKED BEFORE any makeEmitter call below so the default + every
+        // manager-created emitter is born at the correct dimensionality. Zero new physics
+        // (bench SU1): is2D only picks which axes the SAME base-walk/wave rules run on.
+        var is3D = (typeof window !== 'undefined' && !!window._egpt3D);
+        LOCKED.is2D = !is3D;
+        if (_metricsEl) {
+            _metricsEl.setAttribute('data-is2d', String(!is3D));
+            _metricsEl.setAttribute('data-renderer', is3D ? 'three' : 'p5');
+        }
+
+        // ── ?stepping= — THE WALK SAMPLER (ws-walk-unification Bite 1) ────────────────
+        // 'fixed'   = deterministic error-accumulator walk (the engine's default): the
+        //             along-ray deviation stays BOUNDED, so off-axis fringes stay as crisp
+        //             as on-axis ones.
+        // 'average' = the historic per-axis Bernoulli walk: same MEAN step (1 px/tick along
+        //             the momentum vector), but variance (L1/L2 − 1) px²/tick — zero on-axis,
+        //             0.414 at 45° — so the walk diffuses ALONG the ray off-axis and the
+        //             2nd/3rd-order rings wash out there while staying sharp on-axis.
+        // Both are the SAME physics knob the engine already owns; this page adds none.
+        //
+        // FERRIED RAW, exactly as read (architect ruling §2.3): no page-side validation, no
+        // page-side default, no sanitize. Absent ⇒ the key is never added ⇒ the ENGINE's
+        // default applies (one authority for the default). Garbage ⇒ rides through to
+        // universe.init(), which throws naming both legal samplers (one validator). The
+        // value lands on LOCKED because LOCKED is the opts bag every makeEmitter copies —
+        // so the sampler survives ADD/EDIT/DELETE, both presets, localRestart, and the
+        // 2D↔3D snapshot restore, all of which re-run initWorld from that same bag.
+        var _steppingParam = new URLSearchParams(window.location.search)
+            .get(_getPageParams().KEYS.STEPPING);
+        if (_steppingParam !== null) { LOCKED.stepping = _steppingParam; }
+
+        // The ACTIVE sampler, for the badge/metrics readout — TRUTH-IN-LABELING: prefer the
+        // universe's own RESOLVED read-back (what actually ran) over the URL string; fall
+        // back to the value this page DECLARED at init (exact whenever ?stepping= was given
+        // — the A/B case); and when nothing was declared, say so rather than COPYING the
+        // engine's default value into the page (that default has exactly one home, the
+        // engine's own config enum, and a copy here could silently drift from it).
+        function _resolvedStepping() {
+            var u = runner ? runner.universe : null;
+            if (u && u.stepping !== undefined && u.stepping !== null) { return String(u.stepping); }
+            if (LOCKED.stepping !== undefined) { return String(LOCKED.stepping); }
+            return 'engine-default';
+        }
+
+        // ── EMITTER MANAGER STATE (declared before the runner so onTick closes over it) ──
+        // Ordered list of registered emitters — each {id, mass, control}; `control` is a
+        // setupSphereEmitter3D handle owning its own host tick-fn + dispose. This is the
+        // canonical "user-space holds its emitter handles and CRUDs them" pattern (the same
+        // one the IDE Layers panel uses via runner._emitters), NOT a parallel tick-fn
+        // registry — the real registry is universe.experimentTickFunctions, add via the
+        // factory + runner.addEmitter, remove via runner.removeObject → control.dispose.
+        var emitters   = [];
+        var emitterSeq = 0;
+        function primaryControl() { return emitters.length ? emitters[0].control : null; }
+
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 600,
+            canvasH: 600,
+            seed: 42,
+            onTick: function (tickData) {
+                tick++;
+                var frames = tickData && tickData.frameData ? tickData.frameData : [];
+                var count = frames.length;
+                window.__frqtlSSI.activeQuanta = count;
+
+                // EFFECTIVE transverse wavelength readout — computed for the SELECTED emitter
+                // (multiple emitters at DIFFERENT dimensions coexist, so a single "newest leaf"
+                // is ambiguous; the readout tracks the emitter you're editing). effWl =
+                // floor((capacity(selectedDim) / max(1, selectedMass)) × wavelengthScale), min 4
+                // — the engine's EXACT compute_wavelength from the emitter's own dim+mass (both
+                // exact, so it equals the real leaf). Updates live with dimension / mass / λscale.
+                var wlScale = (runner.universe && runner.universe.wavelengthScale !== undefined)
+                    ? runner.universe.wavelengthScale : 0;
+                window.__frqtlSSI.wlScale = wlScale;
+                var effWl = updateEffReadout();   // reads selected emitter + live wlScale, updates DOM + data-attrs
+
+                if (_metricsEl) {
+                    _metricsEl.setAttribute('data-active-quanta', count);
+                    _metricsEl.setAttribute('data-wl-scale', wlScale);
+                    _metricsEl.setAttribute('data-emitter-count', emitters.length);
+                    // WHICH WALK SAMPLER IS ACTUALLY RUNNING — stamped every tick from the
+                    // RESOLVED state (not the URL), so an A/B capture can never be a silent
+                    // no-op: the evidence carries the mode it ran under, in the DOM.
+                    _metricsEl.setAttribute('data-stepping', _resolvedStepping());
+                    var _ctl = primaryControl();
+                    if (_ctl) {
+                        if (_ctl.getChargeMode) { _metricsEl.setAttribute('data-charge-mode', _ctl.getChargeMode()); }
+                        if (_ctl.getEmissionShell) { _metricsEl.setAttribute('data-emission-shell', _ctl.getEmissionShell()); }
+                        if (_ctl.getInnerR) { _metricsEl.setAttribute('data-inner-r', _ctl.getInnerR()); }
+                    }
+                }
+                if (metrics) {
+                    metrics.update({
+                        'Active Quanta': count, 'Tick': tick, 'Eff. λ (px)': effWl,
+                        // VISIBLE in the metrics panel (and therefore IN the screenshot) —
+                        // an A/B still is self-labeling for the sampler it ran under.
+                        'Stepping': _resolvedStepping()
+                    });
+                }
+            }
+        });
+
+        runner.createCanvas();
+
+        // ── EMITTER MANAGER (ADD / EDIT / DELETE / LIST) — PER-EMITTER DIMENSION ──────
+        // (CEO 2026-07-19 corrected model.) Dimensions are ADDABLE scale LAYERS (like
+        // Frames); an emitter births its leaves AT a chosen dimension via makeLeafFrame's
+        // explicit level + addDimension (the setupBlackbody pattern). So DIMENSION is
+        // PER-EMITTER: each emitter (tick-fn) holds its own dim and emits at that layer, and
+        // MULTIPLE emitters at DIFFERENT dimensions COEXIST on one universe (init once at
+        // BASE_FUNDAMENTAL = the DEFAULT emitter's dim, so the default is "light"/FAST). The
+        // whole emission→wavelength→COLOR pipeline runs per-emitter:
+        //   capacity = (2^dim)²                                    (PER-EMITTER dim knob)
+        //   mass                                                   (PER-EMITTER, wavelength arg)
+        //   effective wavelength = floor((capacity/mass) × wavelengthScale)   (bench M4)
+        //   color = LightColor(fullness = mass/capacity)                       (render-intent)
+        //   move-gate (Invariant 6A): a leaf AT the fundamental is LIGHT (P=1 → fast)
+        //     regardless of fullness — the default dim2 FULL SPRAY; a leaf ABOVE the
+        //     fundamental steps P=fullness → heavier/SLOWER at fixed mass — the intended
+        //     higher-dimension observable (dim4 barely moves), NOT a bug. The fundamental is
+        //     DYNAMIC: the engine SELF-LOWERS it to min(allocated dims) on addDimension, so
+        //     adding a LOWER-dim emitter self-lowers the fundamental to it (that emitter
+        //     becomes at-fundamental/fast; previously-fast higher leaves re-base to slower).
+        // Controls are STAGED (CEO 2026-07-19) — the dimension/mass controls edit PENDING
+        // params without live-mutating any emitter; they commit AS A UNIT. Default staged mass
+        // = capacity (fullness 1 → moves at c → no pile-up); the user lowers it to see slowdown.
+        // Manager actions (built on the runner emitter API addEmitter/removeObject/_emitters
+        // — no parallel registry, no engine change):
+        //   ADD     = new emitter at the STAGED (dim, mass), KEEPS existing → multi-dim coexist.
+        //   EDIT    = dispose the SELECTED emitter + re-add at the STAGED (dim, mass) — the
+        //             dispose-before-add fix applies HERE so an EDIT replaces in place (no stack).
+        //   DELETE  = remove the selected emitter.
+        //   RESTART = re-init the universe (CLEARS all particles) + re-register the SAME emitter
+        //             set on it — keeps the N tick-fns; distinct from DELETE and ADD/EDIT.
+        // Each entry {id, dim, mass, control}. The WORLD is init'd ONCE, by the page (the
+        // sketch), at BASE_FUNDAMENTAL — every emitter after that is just another PART on it.
+        // STAGED controls (CEO 2026-07-19 — THIS experiment stages-then-applies, unlike the
+        // live-hooked ones elsewhere). `stagedDim`/`stagedMass` are the PENDING per-emitter
+        // params the dimension dropdown + mass slider edit WITHOUT mutating any live emitter;
+        // they commit AS A UNIT via ADD (new emitter) or EDIT (replace the selected one).
+        // DEFAULT stagedMass = capacity (fullness=1 → moves at c/P=1 at ANY dimension → no
+        // pile-up); the user LOWERS mass to see the slowdown. When the staged dimension
+        // changes, stagedMass re-defaults to the new dimension's capacity.
+        var stagedDim  = DEFAULT_LEAF_DIM;
+        var stagedMass = 0;      // set below to capacityAt(stagedDim)
+        var stagedColor = null;  // render.color override ([r,g,b] or null=colorless/scheme-driven)
+        // D3 (2026-07-20) — LIVE emit-every-N-ticks applied to EVERY emitter (and inherited by new
+        // ones in makeEmitter). Starts at the LOCKED template rate (1 = every tick). Raising it
+        // thins the cloud → higher relative brightness at the interference nodes → bands read clearer.
+        var liveEmitEveryTicks = (typeof LOCKED.emitEveryTicks === 'number') ? LOCKED.emitEveryTicks : 1;
+        var selectedId = null;
+        var universeInited = false;
+        var dimSel       = document.getElementById('ctrl-dimension');
+        var vmassSlider  = document.getElementById('ctrl-vmass');
+        var vmassLabel   = document.getElementById('ctrl-vmass-val');
+        var masscapVal   = document.getElementById('ctrl-masscap-val');
+        var emitterList  = document.getElementById('ctrl-emitter-list');
+        var addBtn       = document.getElementById('ctrl-emitter-add');
+        var editBtn      = document.getElementById('ctrl-emitter-edit');
+        var delBtn       = document.getElementById('ctrl-emitter-del');
+        var restartBtn   = document.getElementById('ctrl-emitter-restart');
+        var forceRedChk  = document.getElementById('ctrl-force-red');
+        var classicBtn   = document.getElementById('ctrl-classic-preset');
+        // FORCE-RED sourced from the canonical LightColor (roygbiv red) — reuse the ONE color
+        // authority, never a re-implemented map. render.color takes priority over colorScheme.
+        var FORCE_RED    = window.LightColor.getRgbBySchemeName('roygbiv', 0);   // [255,0,0]
+
+        // capacityAt(dim) = (2^dim)² — the ONE authority (SustainedSource.capacityAtDimension,
+        // loaded on window by stack-boot). Used for STAGED params before any emitter exists.
+        function capacityAt(dim) { return window.SustainedSource.capacityAtDimension(dim); }
+        function massToWl(mass, cap) { return Math.max(1, Math.round(cap / Math.max(1, mass))); }
+        function selectedEntry() {
+            for (var i = 0; i < emitters.length; i++) { if (emitters[i].id === selectedId) return emitters[i]; }
+            return emitters[0] || null;
+        }
+        function labelFor(e) { return 'emitter ' + e.id + ' · dim' + e.dim + ' mass' + e.mass; }
+        stagedMass = capacityAt(stagedDim);   // default staged mass = capacity (fullness 1)
+
+        // Create ONE emitter that births leaves AT `dim` (per-emitter), on the SHARED
+        // universe. THE WORLD STEP IS SEPARATE and runs ONCE (setupSphereEmitter3D.initWorld
+        // at BASE_FUNDAMENTAL — a GLOBAL field reset); after that every emitter is just a PART
+        // construction (its tick-fn + addDimension(dim), no field wipe). There is no flag: the
+        // absence of the world call IS "don't re-init". setWavelength stamps the exact
+        // per-emitter mass; runner.addEmitter TRACKS it (_emitters).
+        function makeEmitter(dim, mass, color, center) {
+            var opts = {}; for (var k in LOCKED) { opts[k] = LOCKED[k]; }
+            opts.fundamentalDimension = BASE_FUNDAMENTAL;   // universe base (init once)
+            opts.leafDimension = dim;                       // THIS emitter's birth dimension
+            opts.renderColor = color || null;               // sugar render.color override (no engine)
+            // SOURCE POSITION (Bite 3) — absolute canvas px [x,y]. Omitted ⇒ canvas center
+            // (byte-identical single-source default). Two-source interference passes explicit
+            // ±separation/2 centers so the two rings don't sit on the shared center.
+            if (Array.isArray(center)) { opts.center = center.slice(); }
+            // WORLD first — once, before the first PART. Later emitters skip it by NOT
+            // calling it (that is what deleted the old skipInit flag).
+            if (!universeInited) { setupSphereEmitter3D.initWorld(runner.universe, opts); }
+            universeInited = true;
+            var control = setupSphereEmitter3D(runner.universe, opts).sphereEmitterControl;
+            control.setWavelength(massToWl(mass, control.getMaxWavelength()));  // exact per-emitter mass
+            control.setEmitEveryTicks(liveEmitEveryTicks);   // D3 — inherit the current live emission rate
+            runner.addEmitter(control);
+            return control;
+        }
+
+        // ── Commit staged params AS A UNIT ────────────────────────────────────────────
+        function addEmitter() {   // NEW emitter at the STAGED (dim, mass, color) — KEEPS existing (multi-dim)
+            var entry = { id: ++emitterSeq, dim: stagedDim, mass: stagedMass, color: stagedColor, center: null,
+                          control: makeEmitter(stagedDim, stagedMass, stagedColor, null) };
+            emitters.push(entry);
+            selectedId = entry.id;
+            refreshManagerUI();
+        }
+        function editSelected() { // apply the STAGED (dim, mass, color) to the SELECTED emitter (replace in place)
+            var e = selectedEntry(); if (!e) return;
+            runner.removeObject(e.control);
+            e.dim = stagedDim; e.mass = stagedMass; e.color = stagedColor;
+            e.control = makeEmitter(e.dim, e.mass, e.color, e.center);   // preserve this emitter's source position
+            refreshManagerUI();
+        }
+        function deleteSelected() {
+            if (emitters.length <= 1) return;   // always keep one source
+            var e = selectedEntry(); if (!e) return;
+            runner.removeObject(e.control);
+            emitters = emitters.filter(function (x) { return x.id !== e.id; });
+            selectedId = emitters[0] ? emitters[0].id : null;
+            var s = selectedEntry(); if (s) { stagedDim = s.dim; stagedMass = s.mass; stagedColor = s.color; }
+            refreshManagerUI();
+        }
+        // LOCAL RESTART — re-init the universe (fresh, CLEARS ALL PARTICLES) and RE-REGISTER
+        // the SAME emitter set on it, keeping the N tick-fns running. Distinct from DELETE
+        // (removes an emitter) and ADD/EDIT (commit staged params). Preserves each emitter's
+        // (id, dim, mass) + the live global λ-scale.
+        function localRestart() {
+            var wl = (runner.universe && runner.universe.wavelengthScale !== undefined)
+                ? runner.universe.wavelengthScale : undefined;
+            var specs = emitters.map(function (e) { return { id: e.id, dim: e.dim, mass: e.mass, color: e.color, center: e.center }; });
+            emitters.forEach(function (e) { runner.removeObject(e.control); });   // drop old tick-fns
+            emitters = [];
+            universeInited = false;   // force the next makeEmitter to RE-INIT → fresh universe (clears particles)
+            specs.forEach(function (s) {
+                emitters.push({ id: s.id, dim: s.dim, mass: s.mass, color: s.color, center: s.center, control: makeEmitter(s.dim, s.mass, s.color, s.center) });
+            });
+            if (!selectedEntry()) { selectedId = emitters[0] ? emitters[0].id : null; }
+            if (wl !== undefined && runner.universe) { runner.universe.wavelengthScale = wl; }  // restore live λ-scale
+            var af = document.getElementById('ctrl-autofire');
+            if (af) { emitters.forEach(function (e) { e.control.setActive(af.checked); }); }        // preserve emit on/off
+            refreshManagerUI();
+        }
+
+        // Eff-λ readout for the STAGED params — floor((capacity(stagedDim)/max(1,stagedMass)) ×
+        // wlScale), min 4 (the engine's exact compute_wavelength). Shows what ADD/EDIT will make.
+        function updateEffReadout() {
+            var cap = capacityAt(stagedDim);
+            var wlScale = (runner.universe && runner.universe.wavelengthScale !== undefined)
+                ? runner.universe.wavelengthScale : 0;
+            var effWl = Math.max(4, Math.floor((cap / Math.max(1, stagedMass)) * wlScale));
+            var effEl = document.getElementById('ctrl-effwl-val');
+            if (effEl) { effEl.textContent = effWl > 0 ? (effWl + 'px') : '—'; }
+            if (_metricsEl) { _metricsEl.setAttribute('data-eff-wavelength', effWl); }
+            window.__frqtlSSI.effWavelength = effWl;
+            return effWl;
+        }
+
+        // Re-sync the dimension dropdown + mass slider (max = staged dim's capacity) + readouts +
+        // the emitter dropdown + Playwright data-attrs. STAGED params drive the controls;
+        // data-selected-* reflect the SELECTED emitter's COMMITTED params (so a staged-but-not-
+        // applied change is visibly distinct until ADD/EDIT).
+        function refreshManagerUI() {
+            var cap = capacityAt(stagedDim);
+            stagedMass = Math.max(1, Math.min(cap, stagedMass));
+            dimSel.value = String(stagedDim);
+            vmassSlider.max = cap;
+            vmassSlider.value = stagedMass;
+            vmassLabel.textContent = stagedMass;
+            masscapVal.textContent = stagedMass + '/' + cap;
+            emitterList.innerHTML = '';
+            emitters.forEach(function (e) {
+                var opt = document.createElement('option');
+                opt.value = String(e.id);
+                opt.textContent = labelFor(e);
+                if (e.id === selectedId) { opt.selected = true; }
+                emitterList.appendChild(opt);
+            });
+            delBtn.disabled = emitters.length <= 1;
+            forceRedChk.checked = !!stagedColor;   // sync the color-override checkbox to the staged color
+            if (_metricsEl) {
+                var sel = selectedEntry();
+                _metricsEl.setAttribute('data-fundamental-dimension', stagedDim);   // STAGED dim
+                _metricsEl.setAttribute('data-capacity', cap);
+                _metricsEl.setAttribute('data-virtual-mass', stagedMass);           // STAGED mass
+                _metricsEl.setAttribute('data-emitter-count', emitters.length);
+                // Source POSITIONS (Bite 3) — 'x,y|x,y|…' of each emitter's center; a center of
+                // null (single-source default) reads as the canvas center. Lets Playwright confirm
+                // the two-source preset placed two sources at ±32 px in x.
+                _metricsEl.setAttribute('data-source-centers', emitters.map(function (e) {
+                    var c = e.control && e.control.getCenter ? e.control.getCenter() : null;
+                    return c ? (c[0] + ',' + c[1]) : '';
+                }).join('|'));
+                _metricsEl.setAttribute('data-selected-dim', sel ? sel.dim : '');   // COMMITTED dim of selected
+                _metricsEl.setAttribute('data-selected-mass', sel ? sel.mass : ''); // COMMITTED mass of selected
+                // COMMITTED render.color of the selected emitter (CSV 'r,g,b' or 'none') — the sugar override
+                _metricsEl.setAttribute('data-render-color', (sel && sel.color) ? sel.color.join(',') : 'none');
+            }
+            updateEffReadout();
+        }
+
+        // ── Wire controls (STAGED — no live emitter mutation) ─────────────────────────
+        // Mass slider — STAGES the mass (does NOT touch any live emitter). Commit via ADD/EDIT.
+        vmassSlider.addEventListener('input', function () {
+            var cap = capacityAt(stagedDim);
+            stagedMass = Math.max(1, Math.min(cap, parseInt(vmassSlider.value, 10)));
+            vmassLabel.textContent = stagedMass;
+            masscapVal.textContent = stagedMass + '/' + cap;
+            if (_metricsEl) { _metricsEl.setAttribute('data-virtual-mass', stagedMass); }
+            updateEffReadout();
+        });
+        // Dimension dropdown — STAGES the dim + re-defaults staged MASS to the new dim's
+        // capacity (tweak 1: full → moves at c → no pile-up). Commit via ADD/EDIT.
+        dimSel.addEventListener('change', function () {
+            stagedDim = parseInt(dimSel.value, 10);
+            stagedMass = capacityAt(stagedDim);   // re-default mass to capacity for the new dimension
+            refreshManagerUI();
+        });
+        // Selecting an emitter LOADS its committed (dim, mass, color) into the staged controls
+        // (so EDIT is coherent).
+        emitterList.addEventListener('change', function () {
+            selectedId = parseInt(emitterList.value, 10);
+            var s = selectedEntry(); if (s) { stagedDim = s.dim; stagedMass = s.mass; stagedColor = s.color; }
+            refreshManagerUI();
+        });
+        addBtn.addEventListener('click', addEmitter);
+        editBtn.addEventListener('click', editSelected);
+        delBtn.addEventListener('click', deleteSelected);
+        restartBtn.addEventListener('click', localRestart);
+        // COLOR OVERRIDE — STAGES render.color (red or null); commit via ADD/EDIT (no live mutation).
+        forceRedChk.addEventListener('change', function () {
+            stagedColor = forceRedChk.checked ? FORCE_RED.slice() : null;
+            if (_metricsEl) { _metricsEl.setAttribute('data-render-color', stagedColor ? stagedColor.join(',') : 'none'); }
+        });
+        // CLASSIC self-interference PRESET — stage the ORIGINAL pre-tweak defaults (dim2, mass 1,
+        // forced red) + set the global λ-scale to 16, then APPLY as a SINGLE emitter (reduce to one
+        // classic source on a fresh universe). Reproduces the original red braided self-interference.
+        classicBtn.addEventListener('click', function () {
+            stagedDim = 2; stagedMass = 1; stagedColor = FORCE_RED.slice();
+            if (runner.universe && runner.universe.wavelengthScale !== undefined) {
+                runner.universe.wavelengthScale = 16; window.__frqtlSSI.wlScale = 16;
+                slider.value = 16; label.textContent = 16;
+            }
+            // reduce to ONE classic emitter: dispose all, re-init a fresh universe, add the single source
+            emitters.forEach(function (e) { runner.removeObject(e.control); });
+            emitters = []; universeInited = false;
+            var e0 = { id: ++emitterSeq, dim: stagedDim, mass: stagedMass, color: stagedColor, center: null,
+                       control: makeEmitter(stagedDim, stagedMass, stagedColor, null) };
+            emitters.push(e0); selectedId = e0.id;
+            var af = document.getElementById('ctrl-autofire');
+            if (af) { e0.control.setActive(af.checked); }
+            refreshManagerUI();
+        });
+
+        // ── TWO-SOURCE INTERFERENCE PRESET (Bite 3, 2026-07-20; re-tuned Bite 3B, 2026-07-20) ──
+        // Reproduce the classic two-source interference web on the unified Emitter, by
+        // composing TWO of the SAME sphere emitters this page already builds — the ONLY new
+        // ingredient is the per-emitter SOURCE POSITION (setupSphereEmitter3D.center, Bite 3
+        // sugar). CEO re-tune (Bite 3B): give EACH emitter the SAME per-emitter config as the
+        // ctrl-classic-preset (the LOCKED self-interference config) so each source
+        // self-interferes CRISPLY at the sweet spot, and their overlap is a crisp two-source
+        // web — NOT the soft fringe the earlier wlc08-scale (eff λ 128) gave:
+        //   • two sources, dim2 / mass1 (capacity16, wavelength arg 16 → mass 1 → capacity/mass
+        //     16), colorless (fullness-scheme color, NOT force-red — CEO),
+        //   • chargeMode random (per-leaf ± → braiding) + emissionShell surface + innerR 16
+        //     (the RING launch = PointSource topology) — all from LOCKED,
+        //   • wavelengthScale/wavelengthScale = 16 → per-leaf EFFECTIVE λ = floor(16 × 16) =
+        //     256 px, the self-interference sweet spot (the SAME eff λ the classic single-source
+        //     preset uses; a clean concentric-band response on a 600 px canvas),
+        //   • separation = 2 × fundamentalWaveLength (32) = 64 px along x → centers [cx−32, cy]
+        //     and [cx+32, cy] — the ABSOLUTE center separation setupWaveInterference.js uses
+        //     (sourceSeparation default = 2 × desiredWaveLength; confirmed against its source and
+        //     wave-interference/build.js's `sep = 2 * wl = 64`). Each ring (radius 16) sits 64 px
+        //     apart with a clear 32 px gap; the two crisp self-interference disks overlap into the
+        //     two-source web.
+        // The fringes are EMERGENT (bench SU1): the density of two overlapping INDEPENDENT
+        // IID charged omni walks — no wave equation, no superposition curve. Applies as a
+        // fresh two-emitter universe (dispose all → re-init → add the pair).
+        var TWO_SRC_WLSCALE   = 16;   // classic self-interference sweet spot (eff λ = 16×16 = 256 px)
+        var TWO_SRC_SEPARATION = 64;  // 2 × fundamentalWaveLength (32) — matches setupWaveInterference exactly
+        var twoSrcBtn = document.getElementById('ctrl-two-source-preset');
+        twoSrcBtn.addEventListener('click', function () {
+            var cr = runner.canvas_rect;
+            var cx = Math.floor(cr ? cr.w / 2 : 300);
+            var cy = Math.floor(cr ? cr.h / 2 : 300);
+            var half = Math.round(TWO_SRC_SEPARATION / 2);
+            var centers = [[cx - half, cy], [cx + half, cy]];
+            // Stage the golden per-emitter params (dim2 / mass1 / colorless) so the manager UI
+            // reflects them; set the global λ-scale to the wave-interference default.
+            stagedDim = 2; stagedMass = 1; stagedColor = null;
+            if (runner.universe && runner.universe.wavelengthScale !== undefined) {
+                runner.universe.wavelengthScale = TWO_SRC_WLSCALE;
+                window.__frqtlSSI.wlScale = TWO_SRC_WLSCALE;
+                slider.value = TWO_SRC_WLSCALE; label.textContent = TWO_SRC_WLSCALE;
+            }
+            // Rebuild as EXACTLY two sources on a fresh universe (clears any prior field).
+            emitters.forEach(function (e) { runner.removeObject(e.control); });
+            emitters = []; universeInited = false;
+            centers.forEach(function (c) {
+                var e = { id: ++emitterSeq, dim: 2, mass: 1, color: null, center: c.slice(),
+                          control: makeEmitter(2, 1, null, c) };
+                emitters.push(e);
+            });
+            selectedId = emitters[0].id;
+            // re-apply the saved λ-scale (the first makeEmitter re-inited the universe → wiped it)
+            if (runner.universe && runner.universe.wavelengthScale !== undefined) {
+                runner.universe.wavelengthScale = TWO_SRC_WLSCALE;
+            }
+            var af = document.getElementById('ctrl-autofire');
+            if (af) { emitters.forEach(function (e) { e.control.setActive(af.checked); }); }
+            refreshManagerUI();
+        });
+
+        // ── Bootstrap: the default single emitter at the STAGED (DEFAULT_LEAF_DIM, capacity) —
+        //    inits the universe at BASE_FUNDAMENTAL, births leaves at dim 2 with mass=capacity
+        //    (fullness 1 → fast, no pile-up). ───────────────────────────────────────────────
+        emitters.push({ id: ++emitterSeq, dim: stagedDim, mass: stagedMass, color: stagedColor, center: null,
+                        control: makeEmitter(stagedDim, stagedMass, stagedColor, null) });
+        selectedId = emitters[0].id;
+        refreshManagerUI();
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Active Quanta', expected: null, format: function (v) { return String(Math.round(v)); } },
+            { name: 'Tick',          expected: null, format: function (v) { return String(v); } },
+            { name: 'Eff. λ (px)',   expected: null, format: function (v) { return String(Math.round(v)); } },
+            // The ACTIVE walk sampler (?stepping=) — a STRING row (ExperimentMetrics renders
+            // any value through its format fn), so the mode is legible on the page itself and
+            // in every screenshot of it, not only in a data-attribute a script must read.
+            { name: 'Stepping',      expected: null, format: function (v) { return String(v); } }
+        ]);
+
+        // Emit toggle (all emitters' sustained host tick-fns on/off).
+        document.getElementById('ctrl-autofire').addEventListener('change', function (e) {
+            emitters.forEach(function (em) { em.control.setActive(e.target.checked); });
+        });
+
+        // LIVE wavelengthScale knob — the golden knob. Same precedent as
+        // Particle Walk: set the universe's global wavelengthScale, which
+        // routes to the WASM engine's set_wavelength_scale() setter. Longer =>
+        // bolder self-interference banding. No reinit, no reload.
+        var slider = document.getElementById('ctrl-wlscale');
+        var label  = document.getElementById('ctrl-wlscale-val');
+        slider.addEventListener('input', function () {
+            var v = parseInt(slider.value, 10);
+            label.textContent = v;
+            if (runner.universe && runner.universe.wavelengthScale !== undefined) {
+                runner.universe.wavelengthScale = v;
+                window.__frqtlSSI.wlScale = v;
+            }
+        });
+
+        // ── EMISSION RATE (D3) — LIVE emit-every-N-ticks on every running emitter ─────
+        // Reuses the sphere-emitter control's existing setEmitEveryTicks live-setter (sugar,
+        // zero engine/physics). 1 = fire every tick (densest); higher N = sparser cloud →
+        // better relative contrast at the interference nodes. New emitters inherit the rate
+        // (applied in makeEmitter). No reload — applies to the emitters already running.
+        var rateSlider = document.getElementById('ctrl-emit-rate');
+        var rateLabel  = document.getElementById('ctrl-emit-rate-val');
+        function applyEmitRate(n) {
+            liveEmitEveryTicks = Math.max(1, Math.round(n));
+            rateSlider.value = liveEmitEveryTicks;
+            rateLabel.textContent = liveEmitEveryTicks;
+            emitters.forEach(function (e) { e.control.setEmitEveryTicks(liveEmitEveryTicks); });
+            if (_metricsEl) { _metricsEl.setAttribute('data-emit-every-ticks', liveEmitEveryTicks); }
+        }
+        rateSlider.addEventListener('input', function () { applyEmitRate(parseInt(rateSlider.value, 10)); });
+
+        // ── REUSED render toggles (Wave Interference; BYO-renderer contract) ──
+        // Both go through the EXISTING renderer provider capabilities — this page
+        // re-implements NO shader and adds NO physics (canonical-bench SU1). The
+        // renderer is grabbed lazily from runner.renderer inside each handler
+        // (identical to wave-interference/index.html), since it is created by
+        // runner.start()/the p5 provider init.
+
+        // "water surface" — the shared Filters.water GLSL pass (BYO-shader path),
+        // routed through the provider's filter()/removeFilter() contract methods.
+        // FAIL-LOUD: Filters.water is loaded by stack-boot.js's RENDERER sequence
+        // (Filters.js); if the box is checked and it is missing, throw rather than
+        // silently no-op.
+        document.getElementById('water-toggle').addEventListener('change', function () {
+            var rend = runner.renderer;
+            if (!rend) { return; }
+            if (this.checked) {
+                if (typeof Filters === 'undefined' || !Filters.water) {
+                    throw new Error('[single-source-interference] Filters.water not loaded — stack-boot must include Filters.js before the water toggle is used.');
+                }
+                rend.filter(Filters.water);
+            } else {
+                rend.removeFilter('water');
+            }
+        });
+
+        // "render particles" — the renderBaseCanvas render option (README §3), the
+        // SAME on/off particle-layer toggle Wave Interference exposes. The two
+        // toggles are INTENDED as COMPOSABLE render modes (CEO 2026-07-18): four
+        // valid combinations —
+        //   water OFF + particles OFF = black (nothing rendered)
+        //   water ON  + particles OFF = water ripples ALONE
+        //   water OFF + particles ON  = particles alone (the default look)
+        //   water ON  + particles ON  = both.
+        // Particles-off is NOT a bug; the plain "render particles" label makes the
+        // on/off meaning unmistakable. Same TickData; zero physics (bench SU1).
+        document.getElementById('base-canvas-toggle').addEventListener('change', function () {
+            runner.setRenderOption('renderBaseCanvas', this.checked);
+        });
+
+        // ── SHAPE dropdown (render-intent, ZERO engine/physics) ───────────────────────
+        // The canonical render.shape render-intent, applied LIVE via setRenderOption —
+        // BOTH providers resolve it through the ONE RenderShape authority (no per-provider
+        // shape map). Mode-aware mapping (render.shape now has a distinct 'sphere' value,
+        // symmetric with 'cube' — L2e fold-in retired the old shapeMesh3D flag):
+        //   round → 'ball' (2D p5: filled circle) / 'sphere' (3D three: TRUE instanced sphere
+        //           that honors render.color, so a force-red particle stays a red sphere)
+        //   boxy  → 'box' (2D) / 'cube' (3D instanced cube)
+        // In 2D, 'sphere' would degrade to the ball disc anyway, but we keep round→'ball' in
+        // 2D so the existing flat look is byte-identical. Same TickData; bench SU1 (zero physics).
+        var shapeSel = document.getElementById('ctrl-shape');
+        function shapeFor(choice) {
+            if (choice === 'boxy') { return is3D ? 'cube' : 'box'; }
+            return is3D ? 'sphere' : 'ball';   // round: 2D filled circle / 3D TRUE instanced sphere
+        }
+        function applyShape() {
+            var shp = shapeFor(shapeSel.value);
+            runner.setRenderOption('shape', shp);
+            if (_metricsEl) {
+                _metricsEl.setAttribute('data-render-shape', shp);
+                // data-shape-mesh-3d is now DERIVED from render.shape (the single authority),
+                // not a separate flag — true exactly when the 3D instanced-sphere path is active.
+                _metricsEl.setAttribute('data-shape-mesh-3d', String(shp === 'sphere'));
+            }
+        }
+        shapeSel.addEventListener('change', applyShape);
+
+        // ── 2D/3D TOGGLE — re-select the RENDERER via the ONE existing render-boot
+        //    mechanism (dse-lab/dsewall-lab's `?egpt3D=1` reinit idiom). Checking it
+        //    reloads with ?egpt3D=1 (render-boot sets window._egpt3D → auto-selects three);
+        //    unchecking removes it (→ p5). Dimensionality + renderer script stack are
+        //    fixed at boot, so this is a REINIT-class switch, not a live-knob reload. ─────
+        var toggle3D = document.getElementById('ctrl-3d');
+        toggle3D.checked = is3D;
+        toggle3D.addEventListener('change', function () {
+            var PP = _getPageParams();   // the ONE guard for this page (see its docstring)
+            var url = new URL(window.location.href);
+            if (toggle3D.checked) { url.searchParams.set(PP.KEYS.EGPT3D, '1'); }
+            else { url.searchParams.delete(PP.KEYS.EGPT3D); }
+            // D1 (2026-07-20) — the ?egpt3D=1 switch is a REINIT (fresh boot), so persist the
+            // current applied control state to sessionStorage FIRST; setup() restores it after
+            // the reload so the classic self-interference preset (and any applied emitter set)
+            // reproduces the identical pattern in 3D instead of being lost.
+            persistSnapshotForToggle();
+            window.location.href = url.toString();
+        });
+
+        // ── SOURCE MESH (glTF) — 3D-only representative render.mesh exercise ──────────
+        // A single non-colliding SOURCE-BODY LargeObject painted with an external glTF via
+        // the canonical lo.mesh tier (RenderMesh priority #2 — the SAME path the Gun body
+        // uses; the pluggable GLTFLoader+DRACOLoader gated by _egptMeshLoaders + RenderMesh.resolve
+        // + the load-time RECENTER pivot). Feasibility (assessed): per-particle glTF for a DENSE
+        // emitter (thousands of leaves) is infeasible, and capping the population would be an
+        // emission change (forbidden) — so a representative LO exercises the external-geometry
+        // render-intent path end-to-end without touching emission. Live add/remove via the
+        // toggle. flamingo-draco.glb is reused verbatim from mesh-demo (the DRACO fixture that
+        // exercises the full loader+decoder path). Zero physics (CollisionTypes.NONE; bench SU1).
+        // Resolved via the router's 'assets/models/' key (window._egptResolveFrqtl, published by
+        // stack-boot.js) — never a hardcoded '/frqtl/...' literal (B4b).
+        var MESH_ASSET = window._egptResolveFrqtl('assets/models/flamingo-draco.glb');
+        var _sourceMeshLO = null;
+        function makeSourceMeshLO() {
+            var _LO = (typeof window !== 'undefined' && window.LargeObject) ? window.LargeObject
+                    : (typeof LargeObject !== 'undefined' ? LargeObject : null);
+            var _CT = (typeof window !== 'undefined' && window.CollisionTypes) ? window.CollisionTypes
+                    : (typeof CollisionTypes !== 'undefined' ? CollisionTypes : null);
+            if (!_LO || !_CT) {
+                throw new Error('[single-source-interference] LargeObject/CollisionTypes not loaded — ' +
+                    'cannot build the source-body mesh LO (stack-boot must load the game layer before setup).');
+            }
+            var side = 120, cx = 300, cy = 300;   // centred on the point source (600×600 canvas)
+            // 4-el XY rect (the same shape any source-body LO uses); the RECENTER pivot fits the
+            // model to the rect extent × meshScale, so exact rect depth is not needed.
+            var lo = new _LO(runner.universe, [cx - side / 2, cy - side / 2, side, side],
+                _CT.NONE, [], 'source-body', 'closest', null, 1, [255, 200, 90]);
+            lo.mesh      = MESH_ASSET;   // render.mesh external-geometry (lo.mesh tier)
+            lo.meshScale = 2;            // legible source marker (flamingo bbox is wingspan-dominated)
+            lo.visible   = true;
+            return lo;
+        }
+        function setSourceMesh(on) {
+            // Constructing the LO registers it with the world for physics AND render; the
+            // toggle-off is a real teardown (`removeObject` disposes, which unregisters
+            // engine-side and leaves the world census in the same call) rather than a splice
+            // out of a render-only list that would have left the registration behind.
+            if (on && !_sourceMeshLO) {
+                _sourceMeshLO = makeSourceMeshLO();
+            } else if (!on && _sourceMeshLO) {
+                runner.removeObject(_sourceMeshLO);
+                _sourceMeshLO = null;
+            }
+            if (_metricsEl) {
+                _metricsEl.setAttribute('data-mesh-active', String(!!_sourceMeshLO));
+                _metricsEl.setAttribute('data-mesh-asset', _sourceMeshLO ? MESH_ASSET : '');
+            }
+        }
+
+        // ── CAMERA — the REUSABLE CameraControls sugar object ─────────────────────────
+        // (ws-emitter-wave Bite 3B, CEO 2026-07-20.) Replaces the retired preset-dropdown +
+        // manual-zoom-slider pair with a first-person-game-style control ANY experiment
+        // can drop in: two on-screen joysticks (MOVE bottom-left = dolly + orbit; LOOK
+        // bottom-right = azimuth/elevation) mounted OVER the canvas + arrow/WASD keys, all
+        // driving the SAME runner.cameraControl handle (capability-checked, never renderer-
+        // sniffed). `cam` is retained for the snapshot persistence + FX rate-limit blocks
+        // below (both capability-checked on it).
+        var cam = runner.cameraControl;
+
+        // THE FRAMING IS PER-CAMERA, AND THE CAMERA DECLARES ITS OWN AXES.
+        // `runner.cameraControl` is NOT null in 2D any more: since the p5 provider gained the
+        // DEGENERATE orbit bag (2D pan/zoom — it declares `distance` + `target` and NO
+        // azimuth/elevation/roll), both providers hand back a real handle, and the old
+        // "FAIL-SOFT no-ops in 2D because cameraControl is null" assumption this call was
+        // written under is simply no longer true. The axes are read from the handle's own
+        // `poseFields` — the SAME field-presence idiom CameraPath uses ("the consumer asks
+        // what axes EXIST, never what mode it is in"), never `is3D`, never a renderer sniff.
+        //
+        // OUTSIDE_OVERVIEW is an ANGULAR framing: azimuth/elevation are what make it an
+        // overview, and its `distance` means "how far the eye sits from the target" — on the
+        // 2D camera the same key means "the VISIBLE HEIGHT of the view in physics px", so
+        // pushing this bag at a camera without the angles would not be a partial framing, it
+        // would be a DIFFERENT one (1400 px of visible height on a 600 px canvas = silently
+        // zoomed out, and every capture of this page re-framed). So the framing is offered
+        // ONLY to a camera that declares all of its axes; any other camera keeps its own
+        // default pose, which is what omitting `initialOrbit` means (CameraControls then
+        // preserves the camera's CURRENT getOrbit()). The p5 default pose is the identity
+        // 1:1 fit — the framing every existing capture of this page was taken at.
+        // The SAME derived value also decides whether this page offers the widget at all:
+        // the joysticks this page mounts ARE the angular affordance (MOVE = dolly + orbit,
+        // LOOK = azimuth/elevation — see the "CAMERA (3D only)" control label and the
+        // on-canvas hint, both written for that camera). A camera with no angular axes gets
+        // no orbit widget from this page, exactly as before the 2D camera handle existed —
+        // so the flat p5 capture keeps its bare canvas, its default pacing and its 1:1
+        // framing. That is a capability check (the presence of the AXES is the check), not a
+        // swallowed error: nothing is attempted and then hidden.
+        var OUTSIDE_OVERVIEW = { azimuth: 45, elevation: 45, distance: 1400 };
+        function framingForCamera(camHandle) {
+            var declared = {};
+            var fields = (camHandle && camHandle.poseFields) || [];
+            for (var i = 0; i < fields.length; i++) { declared[fields[i].name] = true; }
+            for (var axis in OUTSIDE_OVERVIEW) {
+                if (!Object.prototype.hasOwnProperty.call(OUTSIDE_OVERVIEW, axis)) { continue; }
+                if (!declared[axis]) { return undefined; }   // not this camera's framing
+            }
+            return OUTSIDE_OVERVIEW;
+        }
+        var _overviewFraming = framingForCamera(cam);
+
+        var camControls = (window.CameraControls && _overviewFraming)
+            ? window.CameraControls.attach(runner, document.getElementById('canvas-wrapper'), {
+                // The previous default framing ("outside" overview) — applied only to a
+                // camera that declares azimuth/elevation/distance (see above).
+                initialOrbit: _overviewFraming,
+                minDistance: 60, maxDistance: 1800,   // same dolly range the old zoom slider spanned
+                hookName: '__frqtlCamera'
+            })
+            : { mounted: false, dispose: function () {}, getState: function () { return null; },
+                setState: function () {}, sync: function () {} };
+        if (camControls.mounted) {
+            var camHint = document.getElementById('cam-hint-wrap');
+            if (camHint) { camHint.style.display = 'inline-flex'; }
+            runner.setRateLimits({ fpsLimit: 0, tpsLimit: 120 });
+        }
+
+        // ── FX RENDER-EFFECT SWITCHES (capability-checked, DERIVED — NOT a hardcoded list) ──
+        // The FX knobs (godrays / godrayDensity / glowIntensity / heat / smoke)
+        // surfaced the SAME way fx-experiment.js surfaces them: mechanically
+        // DERIVED from the ACTIVE provider's renderCapabilities() via the ONE PUBLIC
+        // makeControlsForRenderSurface factory (the SAME factory fx-experiment.js's
+        // _deriveEffectControls consumes — reused, never re-implemented). We keep only the
+        // effect-layer SCALARS: `filter.*` toggles (water) and `renderBaseCanvas` already have
+        // their OWN dedicated page controls above, and shape/colorScheme are ENUMS
+        // (kind!=='scalar', driven by ctrl-shape) — so the two exclusions are DE-DUP with the
+        // page's existing controls, NOT an FX allow-list (nothing surfaces that the provider
+        // doesn't advertise). Each surviving capability becomes ONE live
+        // runner.setRenderOption(key,v) slider — the identical render-option idiom the
+        // fx-* pages use. three advertises the FX knobs; p5 advertises NONE → the derived list is empty →
+        // the strip stays hidden (clean no-op). Zero engine / zero physics (bench SU1): FX are
+        // output-boundary render options; the per-particle render-intent contract (color/shape)
+        // is byte-identical FX on vs off.
+        function _buildFxControls() {
+            var MC = (typeof window !== 'undefined') ? window.MakeControlsForRenderSurface : null;
+            if (!MC || typeof MC.makeControlsForRenderSurface !== 'function') {
+                throw new Error('[single-source-interference] MakeControlsForRenderSurface not available — ' +
+                    'lib/frqtl/objects/objects/makeControlsForRenderSurface.js must load via stack-boot ' +
+                    'before setup. (FAIL-LOUD.)');
+            }
+            var derived = MC.makeControlsForRenderSurface({ runner: runner }).controls;
+            var fx = derived.filter(function (c) {
+                return c.kind === 'scalar' && c.bind && c.bind.prop &&
+                       c.bind.prop.indexOf('filter.') !== 0 &&   // water etc. → its own page toggle
+                       c.bind.prop !== 'renderBaseCanvas';        // → its own "render particles" toggle
+            });
+            var wrap   = document.getElementById('fx-controls-wrap');
+            var fxKeys = fx.map(function (c) { return c.bind.prop; });
+            if (_metricsEl) { _metricsEl.setAttribute('data-fx-keys', fxKeys.join(',')); }
+            if (!fx.length) { if (wrap) { wrap.style.display = 'none'; } return; }   // p5 → clean no-op
+
+            // FAIL-LOUD: the provider CLAIMS these effect capabilities but the render-option
+            // setter is missing — a claimed capability with no setter is a broken provider,
+            // never a graceful-degrade case (no silent swallow).
+            if (typeof runner.setRenderOption !== 'function') {
+                throw new Error('[single-source-interference] provider advertises FX capabilities [' +
+                    fxKeys.join(', ') + '] but runner.setRenderOption is missing — cannot drive them. (FAIL-LOUD.)');
+            }
+
+            if (!wrap) { return; }
+            wrap.appendChild(document.createTextNode('fx:'));
+            fx.forEach(function (c) {
+                var key = c.bind.prop;
+                var lab = document.createElement('label');
+                lab.title = key + ' — LIVE render-effect via runner.setRenderOption (three-only FX ' +
+                    'layer; zero engine/physics, bench SU1). Derived from the provider\'s ' +
+                    'renderCapabilities() — not a hardcoded FX list.';
+                lab.appendChild(document.createTextNode((c.label || key) + ' '));
+                var input = document.createElement('input');
+                input.type = 'range';
+                input.min = c.min; input.max = c.max; input.step = c.step; input.value = c.value;
+                var val = document.createElement('span');
+                val.className = 'val'; val.textContent = c.value;
+                input.addEventListener('input', function () {
+                    var v = Number(input.value);
+                    val.textContent = v;
+                    runner.setRenderOption(key, v);   // the canonical render-option idiom
+                });
+                lab.appendChild(input); lab.appendChild(val);
+                wrap.appendChild(lab);
+            });
+            wrap.style.display = 'inline-flex';
+        }
+        _buildFxControls();
+
+        // ── SOURCE MESH toggle (3D only — mesh needs three.js) ────────────────────────
+        var meshWrap = document.getElementById('mesh-toggle-wrap');
+        var meshChk  = document.getElementById('ctrl-mesh');
+        if (is3D) {
+            meshWrap.style.display = 'inline-flex';
+            meshChk.addEventListener('change', function () { setSourceMesh(meshChk.checked); });
+            // L2e fold-in (2026-07-20): 3D round particles now render as TRUE instanced spheres
+            // via render.shape='sphere' (see shapeFor/applyShape below) — the old opt-in
+            // setRenderOption('shapeMesh3D', true) is RETIRED. RenderShape is the single shape
+            // authority; the sphere path is gated on _is3D && isSphereMesh, symmetric with cube.
+            // render.color stays independent, so a force-red particle is a red sphere.
+        }
+
+        // Mirror the page knobs onto runner.experimentControls (the standardized
+        // capability array). The GYM now renders the page's own .experiment-controls
+        // INSIDE the iframe (chrome=canvas dropped, CompareView 2026-07 ruling), so
+        // this is the DRY capability mirror rather than the sole GYM surface — each
+        // onChange drives the SAME sugar handle / page state the DOM controls do.
+        runner.experimentControls = [
+            {
+                // Range DERIVED from the DOM slider itself (the ONE authority for this knob's
+                // bounds) — a hand-typed {min:4,max:64} here was a mirror that had already
+                // drifted from the widened min. Same handle, same state, one range.
+                id: 'wlscale', label: 'λ scale (global)',
+                min: parseInt(slider.min, 10), max: parseInt(slider.max, 10),
+                step: parseInt(slider.step, 10), value: parseInt(slider.value, 10),
+                fmt: function (v) { return String(v); },
+                onChange: function (v) {
+                    label.textContent = v; slider.value = v;
+                    if (runner.universe && runner.universe.wavelengthScale !== undefined) {
+                        runner.universe.wavelengthScale = v;
+                        window.__frqtlSSI.wlScale = v;
+                    }
+                }
+            },
+            {
+                id: 'dimension', label: 'dimension (staged)', kind: 'select',
+                options: ['0', '1', '2', '3', '4', '5'], value: String(DEFAULT_LEAF_DIM),
+                fmt: function (v) { return String(v); },
+                onChange: function (v) {
+                    // STAGE the dim + re-default staged mass to its capacity (commit via ADD/EDIT)
+                    stagedDim = parseInt(v, 10); stagedMass = capacityAt(stagedDim); refreshManagerUI();
+                }
+            },
+            {
+                id: 'vmass', label: 'virtual mass (staged)', min: 1, max: 16, step: 1, value: capacityAt(DEFAULT_LEAF_DIM),
+                fmt: function (v) { return String(v); },
+                onChange: function (v) {
+                    // STAGE the mass (no live mutation; commit via ADD/EDIT)
+                    stagedMass = Math.max(1, Math.min(capacityAt(stagedDim), parseInt(v, 10))); refreshManagerUI();
+                }
+            },
+            {
+                // EMISSION RATE (D3) — LIVE emit-every-N-ticks on every emitter (drives applyEmitRate).
+                id: 'emitEvery', label: 'emit every (ticks)', min: 1, max: 20, step: 1, value: liveEmitEveryTicks,
+                fmt: function (v) { return String(v); },
+                onChange: function (v) { applyEmitRate(parseInt(v, 10)); }
+            },
+            {
+                // SHAPE — LIVE render.shape (setRenderOption), same handle the DOM dropdown drives.
+                id: 'shape', label: 'shape', kind: 'select',
+                options: ['round', 'boxy'], value: 'round',
+                fmt: function (v) { return String(v); },
+                onChange: function (v) { shapeSel.value = v; applyShape(); }
+            }
+        ];
+
+        // ── CONTROL-STATE PERSISTENCE ACROSS THE 2D↔3D REINIT (D1, 2026-07-20) ────────
+        // The ctrl-3d toggle reloads with ?egpt3D=1 (a REINIT — fresh boot), which otherwise
+        // drops every applied setting (the classic preset, the emitter set, wavelengthScale,
+        // shape, emission rate). We snapshot the CURRENT applied control state to sessionStorage
+        // (keyed to THIS experiment) in the toggle handler, then restore + consume it here on
+        // boot — so the SAME self-interference reproduces in 3D. sessionStorage is the cleanest
+        // full-snapshot idiom for this page's multi-emitter state (the labs persist only single
+        // scalars as URL params — ?depth=/?egpt3D=1 — which doesn't scale to an emitter LIST).
+        // One-shot: a normal reload (no toggle) writes nothing, so nothing is restored. A storage
+        // failure (private mode) degrades to "not restored" (the pre-D1 behavior) — NOT a silent
+        // physics/contract fallback, so a best-effort try/catch is correct here.
+        var SNAP_KEY = 'frqtl.single-source-interference.snapshot';
+        function captureSnapshot() {
+            var af0 = document.getElementById('ctrl-autofire');
+            var snap = {
+                v: 1,
+                wlScale: (runner.universe && runner.universe.wavelengthScale !== undefined)
+                    ? runner.universe.wavelengthScale : undefined,
+                shape:      shapeSel ? shapeSel.value : undefined,
+                emitRate:   liveEmitEveryTicks,
+                autofire:   af0 ? af0.checked : true,
+                stagedDim:  stagedDim,
+                stagedMass: stagedMass,
+                stagedColor: stagedColor,
+                emitters:   emitters.map(function (e) { return { dim: e.dim, mass: e.mass, color: e.color || null, center: e.center || null }; }),
+                selectedIndex: (function () { for (var i = 0; i < emitters.length; i++) { if (emitters[i].id === selectedId) return i; } return 0; })()
+            };
+            // Camera framing across the 2D↔3D reinit: persist the full orbit
+            // {azimuth,elevation,distance} (the CameraControls sugar owns the camera now —
+            // there is no dropdown/slider state to snapshot). Only present in 3D (cam null in 2D).
+            if (cam && typeof cam.getOrbit === 'function') { snap.camOrbit = cam.getOrbit(); }
+            return snap;
+        }
+        function persistSnapshotForToggle() {
+            try {
+                if (typeof sessionStorage !== 'undefined') {
+                    sessionStorage.setItem(SNAP_KEY, JSON.stringify(captureSnapshot()));
+                }
+            } catch (e) { /* storage unavailable → state simply isn't preserved (pre-D1 behavior) */ }
+        }
+        function readAndConsumeSnapshot() {
+            if (typeof sessionStorage === 'undefined') { return null; }
+            var raw;
+            try { raw = sessionStorage.getItem(SNAP_KEY); } catch (e) { return null; }
+            if (!raw) { return null; }
+            try { sessionStorage.removeItem(SNAP_KEY); } catch (e) { /* consume best-effort */ }
+            try { return JSON.parse(raw); } catch (e) { return null; }
+        }
+        function applySnapshot(snap) {
+            if (!snap) { return; }
+            if (typeof snap.wlScale === 'number' && runner.universe && runner.universe.wavelengthScale !== undefined) {
+                runner.universe.wavelengthScale = snap.wlScale;
+                window.__frqtlSSI.wlScale = snap.wlScale;
+                if (slider) { slider.value = snap.wlScale; } if (label) { label.textContent = snap.wlScale; }
+            }
+            if (typeof snap.stagedDim === 'number')  { stagedDim  = snap.stagedDim; }
+            if (typeof snap.stagedMass === 'number') { stagedMass = snap.stagedMass; }
+            stagedColor = snap.stagedColor || null;
+            // Rebuild the committed emitter set on a FRESH universe (mirrors localRestart).
+            if (Array.isArray(snap.emitters) && snap.emitters.length) {
+                emitters.forEach(function (e) { runner.removeObject(e.control); });
+                emitters = []; universeInited = false;
+                snap.emitters.forEach(function (s) {
+                    emitters.push({ id: ++emitterSeq, dim: s.dim, mass: s.mass, color: s.color || null, center: s.center || null,
+                                    control: makeEmitter(s.dim, s.mass, s.color || null, s.center || null) });
+                });
+                var idx = (typeof snap.selectedIndex === 'number' && snap.selectedIndex < emitters.length) ? snap.selectedIndex : 0;
+                selectedId = emitters[idx] ? emitters[idx].id : (emitters[0] ? emitters[0].id : null);
+                // makeEmitter re-inited the universe (wiped wavelengthScale) → re-apply the saved λ-scale.
+                if (typeof snap.wlScale === 'number' && runner.universe && runner.universe.wavelengthScale !== undefined) {
+                    runner.universe.wavelengthScale = snap.wlScale;
+                }
+            }
+            if (typeof snap.emitRate === 'number') { applyEmitRate(snap.emitRate); }   // D3 (also re-stamps every emitter)
+            var af = document.getElementById('ctrl-autofire');
+            if (af && typeof snap.autofire === 'boolean') {
+                af.checked = snap.autofire;
+                emitters.forEach(function (e) { e.control.setActive(snap.autofire); });
+            }
+            if (snap.shape && shapeSel) { shapeSel.value = snap.shape; }   // applyShape() below applies it
+            refreshManagerUI();
+            // Restore the camera framing through the CameraControls sugar (applies the
+            // saved orbit to runner.cameraControl + republishes window.__frqtlCamera).
+            if (camControls.mounted && snap.camOrbit) { camControls.setState(snap.camOrbit); }
+            if (_metricsEl) { _metricsEl.setAttribute('data-restored', 'true'); }
+        }
+        applySnapshot(readAndConsumeSnapshot());
+
+        applyShape();   // apply the default (or restored) shape + stamp data-render-shape
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+        window._frqtlApp = runner;
+    };
+
+    // Boot ONLY once BOTH engine AND renderer are live (fail-loud otherwise).
+    // Dual-path (mirrors sphere-emitter-3d / dsewall-lab): the p5 provider loads
+    // p5.min.js (which auto-invokes window.setup); the three provider (?egpt3D=1)
+    // has no such auto-invoke, so poll for this page's globals then call setup().
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var r = window._egptRenderer || 'p5';
+            if (r === 'p5') {
+                var s = document.createElement('script');
+                s.src = '../../js/lib/p5.min.js';
+                document.body.appendChild(s);
+            } else {
+                (function whenRunnerReady() {
+                    if (typeof window.FrqtlApp !== 'undefined' &&
+                        typeof setupSphereEmitter3D !== 'undefined' &&
+                        typeof ExperimentMetrics !== 'undefined') {
+                        window.setup();
+                    } else {
+                        setTimeout(whenRunnerReady, 20);
+                    }
+                })();
+            }
+        });
+    });
+    </script>
+</body>
+</html>

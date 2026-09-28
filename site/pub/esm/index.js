@@ -55,11 +55,11 @@
  *     FAIL-LOUD discipline as `bootDoubleSlit`. `bootDoubleSlit` is left
  *     UNCHANGED (the proven 2D p5 subset).
  *
- *   bootRecipe(mountEl, recipeSource, opts?) → Promise<{ runner, recipeContext }>
+ *   bootRecipe(mountEl, recipeSource, opts?) → Promise<{ runner, recipeContext, retainedRenderRows }>
  *     The standalone-bundle counterpart of `bootScene`: boots a
  *     `buildExperiment(exp)` RECIPE (STUDIO codegen output = a bundle's
  *     `experiment.js`) against a RecipeContext, applying a saved renderState bag
- *     via the shim `renderStateToBootOptions` contract. A recipe bundle's
+ *     via the shim `renderStateToBootOptions` + `partitionRenderRows` contract. A recipe bundle's
  *     `index.html` calls exactly this. Same FAIL-LOUD discipline.
  */
 
@@ -72,7 +72,7 @@ import { GAME_LAYER_SCRIPTS } from '../ide/engine/game-layer-manifest.js';
 import { RENDERER_LAYER_SCRIPTS } from '../ide/engine/renderer-layer-manifest.js';
 // The ONE renderState contract owner (shim; ruling E2a) — bootRecipe ferries it,
 // never re-implements the normalize/translate logic (a third copy is forbidden).
-import { renderStateToBootOptions } from '../ide/render-state/index.js';
+import { renderStateToBootOptions, partitionRenderRows } from '../ide/render-state/index.js';
 
 // ── Idempotent classic-script injector (mirrors stack-boot.js's `_inject`) ──
 
@@ -191,7 +191,6 @@ export function buildScriptLists(router) {
         { src: router.resolve('objects/constants/LightColor.js') },
         { src: router.resolve('compat/renderer/RenderShape.js') },
         { src: router.resolve('compat/renderer/RenderMesh.js') },
-        { src: router.resolve('compat/renderer/RenderTiers.js') },
         { src: router.resolve('compat/renderer/FieldBuilder.js') },
         { src: router.resolve('compat/renderer/providers/p5-provider.js') },
         { src: router.resolve('compat/renderer/Filters.js') }
@@ -497,37 +496,6 @@ function selectRenderer(opts) {
     return r;
 }
 
-/**
- * Apply the one-shot `opts.render` block after the scene has started. Scalar
- * keys go through `runner.setRenderOption(k, v)` (godrays / glowIntensity /
- * shape / renderBaseCanvas / …); the boolean `water:true` queues the built-in
- * water post-process via `runner.renderer.filter(window.Filters.water)`. The
- * caller can still tweak everything live afterwards (setRenderOption is applied
- * every frame). Unknown render options are the renderer provider's concern (it
- * FAILS LOUD on an unsupported capability) — this dispatcher stays permissive.
- * @param {object} runner
- * @param {object} render  the opts.render bag.
- */
-function applyRenderBlock(runner, render) {
-    Object.keys(render).forEach(function (key) {
-        var value = render[key];
-        if (key === 'water') {
-            if (value) {
-                if (!window.Filters || !window.Filters.water) {
-                    throw new Error('[frqtl-sdk esm] opts.render.water requested but window.Filters.water is unavailable (Filters.js not loaded?).');
-                }
-                var prov = runner.renderer;
-                if (!prov || typeof prov.filter !== 'function') {
-                    throw new Error('[frqtl-sdk esm] opts.render.water requested but the active renderer has no filter() (p5 has no water pass — use renderer:"three").');
-                }
-                prov.filter(window.Filters.water);
-            }
-            return;
-        }
-        runner.setRenderOption(key, value);
-    });
-}
-
 // Setup-factory NAME whitelist: a window-global identifier. Guards the
 // router.resolve('objects/setup/<name>.js') URL join against path traversal /
 // injection when `setup` is a string (an agent-supplied value).
@@ -561,10 +529,11 @@ var _SETUP_NAME_RE = /^[A-Za-z0-9_]+$/;
  *   … at the top level — the sun example does exactly this). When PRESENT it is
  *   authoritative and the top-level keys are NOT forwarded.
  * @param {object} [opts.render] - Optional one-shot render block applied after
- *   start: scalar keys → `runner.setRenderOption(k,v)` (e.g. `shape:'sphere'`,
- *   `godrays:0.8`, `glowIntensity:1.6`, `renderBaseCanvas:false`); `water:true` →
- *   `runner.renderer.filter(window.Filters.water)`. The returned `runner` still
- *   accepts live `setRenderOption(...)` afterwards.
+ *   start as ONE `runner.setRenderOptions(render)` batch (e.g. `shape:'sphere'`,
+ *   `godrays:0.8`, `glowIntensity:1.6`, `renderBaseCanvas:false`,
+ *   `'filter.water':1`). Every key must be a capability the renderer declares —
+ *   `runner.renderCapabilities()` lists them — or the boot rejects. The returned
+ *   `runner` still accepts live `setRenderOption(...)` afterwards.
  * @param {string} [opts.base] - **PRE-PUBLISH LOCAL-CDN-MIRROR HARNESS AND TESTS
  *   ONLY** — forwarded to `engineRouter({mode:'cdn', base})`, re-anchoring EVERY
  *   injected URL at a local mirror instead of the real (unpublished) jsdelivr CDN.
@@ -664,8 +633,8 @@ export async function bootScene(mountEl, setup, opts) {
                 runner.createCanvas();
                 var setupResult = runner.setup(setupFn, setupOpts);
                 runner.start();
-                if (opts.render && typeof opts.render === 'object') {
-                    applyRenderBlock(runner, opts.render);
+                if (opts.render !== undefined) {
+                    runner.setRenderOptions(opts.render);
                 }
                 resolve({ runner: runner, setupResult: setupResult });
             } catch (err) {
@@ -691,20 +660,26 @@ export async function bootScene(mountEl, setup, opts) {
 // empty/index.html's old swallow-to-false.
 
 /**
- * Apply the POST-START half of a renderState bag to a live runner: render option
- * assignments (each `setRenderOption`) + the camera replay decision. Capability-
- * checked (a 2D runner has no `cameraControl`). Best-effort — a replay value
- * produces the same effect as a user re-selecting it by hand.
+ * Apply the POST-START half of a renderState bag to a live runner: the render rows,
+ * partitioned against the ACTIVE renderer (`partitionRenderRows` — declared rows apply as
+ * ONE `setRenderOptions` batch, rows another registered renderer declares are retained and
+ * returned, a row no renderer declares throws) + the camera replay decision (a 2D runner
+ * has no `cameraControl`).
  * @param {object} runner
  * @param {{renderOptions:{key:string,value:*}[], camera:object|null}} bootOpts
+ * @returns {{key:string, value:*}[]} the retained rows (declared only by another renderer).
  */
 function applyRecipeRenderState(runner, bootOpts) {
-    var ro = bootOpts.renderOptions || [];
-    for (var i = 0; i < ro.length; i++) {
-        if (ro[i] && typeof ro[i].key === 'string') {
-            runner.setRenderOption(ro[i].key, ro[i].value);
-        }
+    if (!window.RenderCapabilitiesCommon) {
+        throw new Error('[frqtl-sdk esm] bootRecipe: window.RenderCapabilitiesCommon missing (the renderer ' +
+            'layer did not inject renderCapabilities-common.js).');
     }
+    var parts = partitionRenderRows(
+        bootOpts.renderOptions || [],
+        runner.renderCapabilities().map(function (c) { return c.name; }),
+        window.RenderCapabilitiesCommon.knownRenderCapabilityNames(window._egptRendererProviders)
+    );
+    runner.setRenderOptions(parts.apply);
     var cam = bootOpts.camera;
     var camCtl = runner.cameraControl;   // capability handle (null in 2D)
     if (cam && camCtl) {
@@ -729,6 +704,7 @@ function applyRecipeRenderState(runner, bootOpts) {
             catch (e) { /* best-effort; the active provider may not declare 'visible' for a backdrop */ }
         }
     }
+    return parts.retained;
 }
 
 /**
@@ -755,7 +731,9 @@ function applyRecipeRenderState(runner, bootOpts) {
  * @param {(tickData:object, setupResult:object)=>void} [opts.onTick] - Per-tick callback.
  * @param {string} [opts.base] - PRE-PUBLISH LOCAL-CDN-MIRROR HARNESS ONLY (same
  *   semantics as bootScene's opts.base). The published bundle never passes it.
- * @returns {Promise<{runner:object, recipeContext:object}>}
+ * @returns {Promise<{runner:object, recipeContext:object, retainedRenderRows:{key:string, value:*}[]}>}
+ *   `retainedRenderRows` — saved render rows another registered renderer declares but this
+ *   one does not (not applied; see `partitionRenderRows`).
  * @throws {Error} FAIL-LOUD — paints an overlay in mountEl and rejects on any
  *   load/compile/engine/renderer/recipe failure.
  *
@@ -846,8 +824,8 @@ export async function bootRecipe(mountEl, recipeSource, opts) {
                 // build (runs the recipe: exp.init + exp.addObject) then start.
                 exp.build(buildExperiment);
                 exp.runner.start();
-                applyRecipeRenderState(exp.runner, bootOpts);
-                resolve({ runner: exp.runner, recipeContext: exp });
+                var retainedRenderRows = applyRecipeRenderState(exp.runner, bootOpts);
+                resolve({ runner: exp.runner, recipeContext: exp, retainedRenderRows: retainedRenderRows });
             } catch (err) {
                 paintError(host, 'FRQTL RECIPE SETUP FAILED', String((err && err.stack) || err));
                 reject(err);

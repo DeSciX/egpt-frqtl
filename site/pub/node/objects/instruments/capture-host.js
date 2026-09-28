@@ -38,8 +38,15 @@
  *     stages:     string[],                    // stages this executor executes REMOTELY
  *     identity():  { build, projection },      // SYNC — resolved once at open()
  *     capture(stage): Promise<Still>,          // a FULLY NORMALIZED bag, stamped remotely
+ *     record(opts): Promise<VideoEnvelope>,    // FrqtlVision.record, run where the world is
+ *                                              // (opts.signal aborts it across the boundary)
  *     dispose():   Promise<void>               // symmetric with whatever open() acquired
  *   }
+ *
+ * `record` FORWARDS to the one recorder, `FrqtlVision.record`, running in the host's page
+ * over its own runner — the tick listener, the hold, the stills and the encoder are all
+ * there. The host adds no recording logic; the node side re-validates the returned envelope
+ * against its owner and VERIFIES its scene (`verifyVideo`), exactly as it verifies a still.
  *
  * `identity()` is SYNCHRONOUS on purpose: `sceneRecord()` builds its record from live
  * field reads and only its HASH is async, so an async identity read here would have
@@ -126,10 +133,11 @@
                 ']. (FAIL-LOUD.)');
         }
         for (var i = 0; i < host.stages.length; i++) { RS.assertStage(host.stages[i]); }
-        ['identity', 'capture', 'dispose'].forEach(function (m) {
+        ['identity', 'capture', 'record', 'dispose'].forEach(function (m) {
             if (typeof host[m] !== 'function') {
                 throw new Error('[FrqtlCaptureHost] a capture host must implement ' + m + '() — ' +
-                    'the KIND is {kind, stages, identity(), capture(stage), dispose()}. (FAIL-LOUD.)');
+                    'the KIND is {kind, stages, identity(), capture(stage), record(opts), dispose()}. ' +
+                    '(FAIL-LOUD.)');
             }
         });
         var ident = host.identity();
@@ -186,17 +194,76 @@
             // (the normalizer already flattened it to plain data — that is what makes the
             // whole format serialization-safe). The choice is declared, never re-derived.
             if (data && typeof data.BYTES_PER_ELEMENT === 'number') {
-                var bytes = new Uint8Array(data.buffer || data);
-                var bin = '';
-                // Chunked: String.fromCharCode.apply blows the argument limit on a
-                // megapixel payload, and a per-byte concat of 1.4M chars is slow.
-                for (var i = 0; i < bytes.length; i += 8192) {
-                    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+                // The ONE transportable-bytes encoder, read from the page's global at run time
+                // (the page loads capture-envelope.js in its ENGINE phase) — never a copy here.
+                if (!window.CaptureEnvelope || typeof window.CaptureEnvelope.bytesToBase64 !== 'function') {
+                    throw new Error('[FrqtlCaptureHost/in-page] no window.CaptureEnvelope on this page — ' +
+                        'the transport contract (lib/shim/render/capture-envelope.js) encodes the ' +
+                        'payload and loads in the ENGINE phase. (FAIL-LOUD.)');
                 }
-                return { bag: bag, encoding: 'base64', ctor: data.constructor.name, payload: btoa(bin) };
+                return { bag: bag, encoding: 'base64', ctor: data.constructor.name,
+                         payload: window.CaptureEnvelope.bytesToBase64(data) };
             }
             return { bag: bag, encoding: 'plain', ctor: null, payload: data };
         });
+    };
+
+    /**
+     * IN_PAGE_RECORD_BEGIN / _END / _ABORT — the recorder, in the PAGE, in three calls.
+     * **All run in the PAGE** and close over nothing.
+     *
+     * BEGIN calls the ONE recorder, `FrqtlVision.attach(window._frqtlApp).record(opts)`, which
+     * subscribes to the tick fan-out SYNCHRONOUSLY, and parks its Promise plus an
+     * `AbortController` (whose signal the page-side record is given — a node-side signal cannot
+     * cross `evaluate`) under `id` in the host's ledger, `window._frqtlHostedRecordings` — so a
+     * drive the node side issues after BEGIN resolves cannot run ticks the recorder did not
+     * see. END awaits the parked Promise and removes the entry once it settles. ABORT aborts
+     * the parked controller and returns true, or returns false when no recording is parked
+     * under `id` (it already settled — aborting a finished operation is not an error in the
+     * AbortSignal contract). The envelope crosses the boundary as plain JSON: its bytes are
+     * already base64 by the envelope owner's contract.
+     *
+     * @param {{id: number, opts: object}} args  (END and ABORT take {id})
+     */
+    var IN_PAGE_RECORD_BEGIN = function (args) {
+        var app = window._frqtlApp;
+        if (!app) {
+            throw new Error('[FrqtlCaptureHost/in-page] no window._frqtlApp on this page — the ' +
+                'host booted something that is not a running FRQTL stack. (FAIL-LOUD.)');
+        }
+        if (!window.FrqtlVision) {
+            throw new Error('[FrqtlCaptureHost/in-page] no window.FrqtlVision on this page — the ' +
+                'recorder is published by the game-layer manifest. (FAIL-LOUD.)');
+        }
+        var parked = window._frqtlHostedRecordings || (window._frqtlHostedRecordings = {});
+        var controller = new AbortController();
+        var opts = {};
+        for (var k in args.opts) { opts[k] = args.opts[k]; }
+        opts.signal = controller.signal;
+        var pending = window.FrqtlVision.attach(app).record(opts);
+        pending.then(null, function () {});      // delivered by END, never unhandled meanwhile
+        parked[args.id] = { pending: pending, controller: controller };
+        return args.id;
+    };
+
+    var IN_PAGE_RECORD_END = function (args) {
+        var parked = window._frqtlHostedRecordings || {};
+        var entry = parked[args.id];
+        if (!entry) {
+            throw new Error('[FrqtlCaptureHost/in-page] no recording parked under id ' + args.id +
+                '. (FAIL-LOUD.)');
+        }
+        var forget = function () { delete parked[args.id]; };
+        return entry.pending.then(function (env) { forget(); return env; },
+                                  function (e) { forget(); throw e; });
+    };
+
+    var IN_PAGE_RECORD_ABORT = function (args) {
+        var parked = window._frqtlHostedRecordings || {};
+        var entry = parked[args.id];
+        if (!entry) { return false; }
+        entry.controller.abort();
+        return true;
     };
 
     /**
@@ -321,15 +388,57 @@
         return still;
     }
 
+    /** The envelope owner, ferried (node: the shim by literal require). @private */
+    function _resolveCaptureEnvelope() {
+        if (typeof window !== 'undefined' && window.CaptureEnvelope) { return window.CaptureEnvelope; }
+        if (typeof require === 'function') { return require('../../../shim/render/capture-envelope.js'); }
+        throw new Error('[FrqtlCaptureHost] canonical contract CaptureEnvelope ' +
+            '(lib/shim/render/capture-envelope.js) is unreachable. Fail-loud, not a fallback.');
+    }
+
+    /**
+     * verifyVideo(expectedSceneId, envelope) — the per-recording fidelity check.
+     *
+     * Re-runs the OWNER'S `videoEnvelope` over what the page returned (validation — cadence,
+     * contiguous indices, encoded fields — never a second stamping), then refuses a recording
+     * whose scene is not the one this process computed, for the same reason `verifyStill`
+     * refuses a still.
+     *
+     * @param {string} expectedSceneId — the node-side `sceneRecord().scene`
+     * @param {object} envelope — what the host's `record` resolved
+     * @returns {object} the re-normalized envelope, when it verifies
+     * @throws {Error} FAIL-LOUD on a malformed envelope or a scene mismatch.
+     */
+    function verifyVideo(expectedSceneId, envelope) {
+        if (!envelope || typeof envelope !== 'object' || envelope.kind !== 'video') {
+            throw new Error('[FrqtlCaptureHost] the host returned no video envelope (got ' +
+                String(envelope && envelope.kind) + '). (FAIL-LOUD — never a null recording.)');
+        }
+        var env = _resolveCaptureEnvelope().videoEnvelope({
+            track: envelope.track, encoded: envelope.encoded, truncated: envelope.truncated
+        });
+        if (env.track.scene !== expectedSceneId) {
+            throw new Error('[FrqtlCaptureHost] SCENE IDENTITY MISMATCH: the hosted page recorded ' +
+                'scene ' + JSON.stringify(env.track.scene) + ' but this process computed ' +
+                JSON.stringify(expectedSceneId) + ' for the same scene. The recording is REFUSED ' +
+                'rather than filed against the wrong header. (FAIL-LOUD.)');
+        }
+        return env;
+    }
+
     // ── Export ────────────────────────────────────────────────────────────────
 
     var FrqtlCaptureHost = {
-        CAPTURE_HOST_KIND:   CAPTURE_HOST_KIND,
-        assertCaptureHost:   assertCaptureHost,
-        IN_PAGE_CAPTURE:     IN_PAGE_CAPTURE,
-        decodeStillEnvelope: decodeStillEnvelope,
-        diffSceneRecords:    diffSceneRecords,
-        verifyStill:         verifyStill
+        CAPTURE_HOST_KIND:    CAPTURE_HOST_KIND,
+        assertCaptureHost:    assertCaptureHost,
+        IN_PAGE_CAPTURE:      IN_PAGE_CAPTURE,
+        IN_PAGE_RECORD_BEGIN: IN_PAGE_RECORD_BEGIN,
+        IN_PAGE_RECORD_END:   IN_PAGE_RECORD_END,
+        IN_PAGE_RECORD_ABORT: IN_PAGE_RECORD_ABORT,
+        decodeStillEnvelope:  decodeStillEnvelope,
+        diffSceneRecords:     diffSceneRecords,
+        verifyStill:          verifyStill,
+        verifyVideo:          verifyVideo
     };
 
     if (typeof module !== 'undefined' && module.exports) {

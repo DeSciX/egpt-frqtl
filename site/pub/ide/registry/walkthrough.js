@@ -48,10 +48,10 @@
  * a built scene codegens to concrete, mode-PINNED state and survives Restart.
  *
  * ── The recipe form (Bite 4b — addObject, codegen-round-trippable) ────────────
- * Rungs are OBJECT recipes: each body calls `exp.addObject('SphereEmitter', {...})`.
- * The SphereEmitter is a first-class palette object (its ObjectFactory builder
- * self-inits the universe via setupSphereEmitter3D exactly as the old factory-call
- * form did — the recipe does NOT call exp.init). Because the emitter is now a real
+ * Rungs are OBJECT recipes: each body inits the WORLD first
+ * (`exp.init(setupSphereEmitter3D.worldCfg(SRC))`) and then calls
+ * `exp.addObject('SphereEmitter', SRC)` with the SAME bag — a PART never inits the
+ * world, the sketch does, once, before any part. Because the emitter is now a real
  * authored object (a NONE-collision visual marker + the host emit tick-fn), a loaded
  * rung is DRAGGABLE / INSPECTABLE and CODEGEN-ROUND-TRIPPABLE: a STUDIO grab/drag →
  * Save re-emits the SAME addObject recipe (the DX-3 source-verbatim ferry + the

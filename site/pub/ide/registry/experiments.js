@@ -32,15 +32,14 @@
  *     experiment choosers by `isPublicExperiment()` / `publicExperiments()`.
  *   - An UNKNOWN tier value FAILS LOUD (`isPublicExperiment` throws) — a typo'd
  *     tier must never silently publish a lab.
- *   - Tier gates a chooser a STRANGER can reach. An INTERNAL-ONLY chooser (one
- *     gated by `PUBLIC_HIDDEN_PRESETS`, e.g. the GYM) lists `internalExperiments()`
- *     instead — see that function for why the two rosters are named separately.
+ *   - Tier gates the CURATED public chooser (STUDIO Templates). The GYM lists
+ *     `internalExperiments()` instead — see that function's doc.
  *
  * Visibility only: a non-public tier NEVER affects loadability, deep-linking,
  * ordering, `is3D`, or the label lookup. Those all read the full EXPERIMENTS list
- * / `experimentById()`. The sdk dist DOES track it (`sdk/frqtl-sdk/build.js` ships
- * `publicExperiments()` + the named infra ids), so a dev-tier page is reachable on
- * the `/frqtl` dev mount and absent from the published package.
+ * / `experimentById()`. `sdk/frqtl-sdk/build.js` ships `publicExperiments()` +
+ * the named infra ids: a dev-tier page is absent from the npm/CDN package, but
+ * present in the GYM (both the dev IDE and the shipped static deploy).
  *
  * ── The public set is the NEW-SUGAR content ONLY (CEO 2026-07-27) ────────────
  * EVERY row below is `tier:'dev'`: none of these pages has been rebuilt on the
@@ -68,10 +67,8 @@ export const EXPERIMENT_TIERS = Object.freeze({
  *            isolation lab / demo: fully registered and BOOTABLE by id (direct
  *            experiment-page URL + STUDIO deep link — the dev surface), HIDDEN from
  *            the PUBLIC experiment chooser (STUDIO Templates). It stays LISTED in
- *            an internal-only chooser (the GYM/Compare select, which reads
- *            `internalExperiments()`) — that surface is audience-gated by
- *            `PUBLIC_HIDDEN_PRESETS`, and driving these labs is what it is for.
- *            Omit `tier` for a public experiment.
+ *            the GYM (reads `internalExperiments()`), which is what driving these
+ *            labs is for. Omit `tier` for a public experiment.
  *  wasmOnly: 3D experiment; the JS reference is a frozen 2D fixture, so Compare runs
  *            WASM-only (JS-reference pane disabled). See CompareView filter.
  *  is3D    : the ONE mount-time 3D-render authority (E-W0a, CEO 2026-07-23). TRUE iff
@@ -175,13 +172,9 @@ export function publicExperiments() {
  *   - `publicExperiments()` — for a chooser a STRANGER can reach (STUDIO
  *     Templates). Tier gates it, because tier means "has this page been rebuilt
  *     on the current sugar and is it fit to publish".
- *   - `internalExperiments()` — for a chooser only a maintainer can reach. The
- *     GYM (`preset='compare'`) is the case: it is listed in
- *     `lib/features/ide/presets.js` `PUBLIC_HIDDEN_PRESETS`, so `gateForAudience`
- *     folds it to the 'ide' home for `audience==='public'` and the public static
- *     build cannot open it at all. A dev-tier row is BY DEFINITION bootable on
- *     the dev surface (see the `tier` field doc above), and the GYM exists to
- *     drive exactly those isolation labs.
+ *   - `internalExperiments()` — for the GYM (`preset='compare'`), which drives
+ *     dev-tier isolation labs directly by id and so needs the full roster
+ *     regardless of tier.
  *
  * WHY THIS EXISTS (2026-07-28): with the whole legacy roster moved to `tier:'dev'`,
  * `publicExperiments()` is legitimately EMPTY. A surface that lists it therefore

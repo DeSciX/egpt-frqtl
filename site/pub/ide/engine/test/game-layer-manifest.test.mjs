@@ -109,11 +109,14 @@ function parseStackBootGamePaths() {
         pathResolve(LIB_DIR, 'frqtl/experiments/_shared/stack-boot.js'),
         'utf8'
     ));
-    // Extract the GAME array block.
-    // Look for: var GAME = [ ... ];
-    const gameBlockMatch = src.match(/var\s+GAME\s*=\s*\[([\s\S]*?)\];/);
+    // Extract the GAME array block. R2 (ws-stackboot-dev-map SEAM RULING) made the
+    // list LAZY — a function returning the array, called from inside the boot chain,
+    // not a top-level `var` — so a missing-map throw rejects into the chain's one
+    // .catch instead of aborting at script-parse time.
+    // Look for: function _gameList() { return [ ... ]; }
+    const gameBlockMatch = src.match(/function\s+_gameList\s*\(\s*\)\s*\{\s*return\s*\[([\s\S]*?)\];\s*\}/);
     if (!gameBlockMatch) {
-        throw new Error('[test] Could not find `var GAME = [...]` block in stack-boot.js');
+        throw new Error('[test] Could not find `function _gameList() { return [...]; }` block in stack-boot.js');
     }
     const block = gameBlockMatch[1];
     // Extract _u('...') arguments.

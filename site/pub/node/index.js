@@ -93,6 +93,7 @@ globalThis.FieldBuilder = FieldBuilder;
 var EGPTEngine   = require('./compat/egpt-engine.js');
 var FrqtlCapture = require('./objects/instruments/capture.js');
 var PUBLIC_PARTS = require('./objects/public-parts.js').PUBLIC_PARTS;
+var CaptureEnvelope = require('../shim/render/capture-envelope.js');
 var rendererContract = require('./compat/renderer/renderer-provider-contract.js');
 
 var api = {
@@ -100,6 +101,9 @@ var api = {
     FrqtlCapture: FrqtlCapture,
     RenderStages: RenderStages,
     FieldBuilder: FieldBuilder,
+    // The TRANSPORT contract: `FrqtlVision.record` resolves `CaptureEnvelope.videoEnvelope`, so a
+    // consumer validates a recording against the owner, never a copy of its shape.
+    CaptureEnvelope: CaptureEnvelope,
     validateRendererProvider: rendererContract.validateRendererProvider,
     RENDERER_PROVIDER_REQUIRED: rendererContract.RENDERER_PROVIDER_REQUIRED,
     RENDERER_PROVIDER_OPTIONAL: rendererContract.RENDERER_PROVIDER_OPTIONAL,

@@ -15,17 +15,17 @@ import { bootParityCore } from './parity-boot.js';
 
 const api = await bootParityCore({
     base: new URL('..', import.meta.url).href,
-    names: ["CameraPath","CollisionActions","CollisionTypes","DetectorWall","EGPTEngine","FieldBuilder","FlightRecorder","FrqtlCapture","FrqtlVision","GraphingDetectorWall","LargeObject","PUBLIC_PARTS","RENDERER_PROVIDER_OPTIONAL","RENDERER_PROVIDER_REQUIRED","Rectangle","RenderStages","SlitScreen","SphereEmitter","Trace","Tunnel","Wall","setupDoubleSlit","validateRendererProvider"],
+    names: ["CameraPath","CaptureEnvelope","CollisionActions","CollisionTypes","DetectorWall","EGPTEngine","FieldBuilder","FrqtlCapture","FrqtlVision","GraphingDetectorWall","LargeObject","PUBLIC_PARTS","RENDERER_PROVIDER_OPTIONAL","RENDERER_PROVIDER_REQUIRED","Rectangle","RenderStages","SlitScreen","SphereEmitter","Trace","Tunnel","Wall","setupDoubleSlit","validateRendererProvider"],
     extraScripts: ["objects/public-parts.js","objects/setup/setupDoubleSlit.js"]
 });
 
 export const CameraPath = api.CameraPath;
+export const CaptureEnvelope = api.CaptureEnvelope;
 export const CollisionActions = api.CollisionActions;
 export const CollisionTypes = api.CollisionTypes;
 export const DetectorWall = api.DetectorWall;
 export const EGPTEngine = api.EGPTEngine;
 export const FieldBuilder = api.FieldBuilder;
-export const FlightRecorder = api.FlightRecorder;
 export const FrqtlCapture = api.FrqtlCapture;
 export const FrqtlVision = api.FrqtlVision;
 export const GraphingDetectorWall = api.GraphingDetectorWall;

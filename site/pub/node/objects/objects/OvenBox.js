@@ -40,13 +40,19 @@
  *
  * ### `countSource: 'oven-rect'` (config b — the "better oven")
  *
- * OvenBox internally registers an **oven-interior counter-LO**:
+ * OvenBox internally builds an **oven-interior counter-LO** as a `Wall`
+ * (the Tunnel exit-gate / Tube open-end-sink shape — a physics-only region
+ * that is genuinely in the world, not a headless-only raw registration):
  *   - rect = the cavity interior  (innerLeft, innerTop, innerW, innerH)
- *   - collision_type = NONE, actions = []
- *   - on:'collision' op-program: `set self.count = self.count + 1`
+ *   - `collisionBehavior: 'nothing'`, `visible: false` — collides with
+ *     nothing and is never drawn (a box over the cavity would read as an
+ *     obstruction that is not there)
+ *   - on:'collision' op-program attached after construction, through the
+ *     same `applyProgramTrigger` authority Tunnel's `_applyExitGateProgram`
+ *     uses: `set self.count = self.count + 1`
  *
  * The op-program counts cavity occupancy natively in-tick, bit-identical
- * across JS↔WASM.  `this.ovenHandle` stores the LO handle.
+ * across JS↔WASM.  `this.ovenHandle` stores the counter Wall's LO handle.
  *
  * `thermostatStep(tickData)` is the between-tick controller:
  *   a. Reset `count` = 0 via `updateObjectProperty` (so next tick starts fresh).
@@ -77,7 +83,7 @@
 
     // ── Imports ─────────────────────────────────────────────────────────
 
-    var Box, QuantumEmitter, LargeObject, CollisionTypes, CollisionActions;
+    var Box, QuantumEmitter, LargeObject, CollisionTypes, CollisionActions, Wall;
     var _AstSchemaNode = null; // resolved lazily at construction time (browser: game layer loads before page scripts)
     // G2b: trigger helpers from actionCompiler (single authority for program-level trigger).
     var _buildTriggerExprFn   = null;
@@ -93,6 +99,7 @@
         LargeObject      = require('./LargeObject').LargeObject;
         CollisionTypes   = require('../constants/CollisionTypes').CollisionTypes;
         CollisionActions = require('../constants/CollisionActions').CollisionActions;
+        Wall             = require('./Wall').Wall;
         // lib/shim/expr/ast-schema.js — legal downward arrow (lib/frqtl → lib/shim)
         var path = require('path');
         _AstSchemaNode = require(path.resolve(__dirname, '../../../shim/expr/ast-schema.js'));
@@ -108,6 +115,7 @@
         LargeObject      = window.LargeObject;
         CollisionTypes   = window.CollisionTypes;
         CollisionActions = window.CollisionActions;
+        Wall             = window.Wall;
         // AstSchema and trigger helpers are resolved at construction time.
         // They are set by the game layer / actionCompiler script before new OvenBox() is called.
     }
@@ -385,7 +393,23 @@
         this.ovenHandle = null; // set below for 'oven-rect'
 
         if (countSource === 'oven-rect') {
-            // Register the interior counter-LO.
+            // Construct the interior counter-LO through the Wall facade — the SAME
+            // shape Tunnel's exit gate uses (collisionBehavior:'nothing', visible:false,
+            // a custom op-program attached AFTER construction through the actionCompiler
+            // authority). The raw `universe.registerLargeObject(spec)` path this used to
+            // take registers with the ENGINE only, not the world's render census — an
+            // invisible-by-construction instrument region is exactly the "physics-
+            // registered, render-invisible" case FrqtlApp._assertRenderCensus refuses
+            // (FAIL-LOUD, e8b579e). A Wall with visible:false is the sanctioned way to
+            // build a physics-only region that IS in the census on purpose — the
+            // Tunnel/Tube precedent, not a design choice made here.
+            var ovenCounterWall = new Wall(universe, {
+                rect: [innerLeft, innerTop, innerW, innerH],
+                collisionBehavior: 'nothing',
+                visible: false,
+                name: 'oven_counter'
+            });
+
             // op-program: set self.count = self.count + 1  (on:'collision')
             // G2b: Add intersects trigger so only frames overlapping the oven rect are counted.
             // Without a trigger, the engine runs this program for EVERY frame in the
@@ -410,18 +434,21 @@
                 ops: [
                     { set: _HS2 + '.count',
                       to: _Bin2('+', _Ref2(_HS2, 'count'), _Lit2(1)) }
-                ],
-                trigger: _ovenTrigger
+                ]
             };
+            // Attach the trigger through the SAME authority Tunnel's own
+            // _applyExitGateProgram uses (actionCompiler's applyProgramTrigger — a plain
+            // `program.trigger = trigger` setter), then push through the SAME live path
+            // as the Wall's own construction-time program push (lo.program + the
+            // 'LargeObject'/'program' updateObjectProperty write). Op-program DATA is
+            // byte-identical to before; only the JS wrapper (and therefore the census) changes.
+            _triggerHelpers2.applyProgramTrigger(ovenCounterProgram, _ovenTrigger);
+            ovenCounterWall.lo.program = ovenCounterProgram;
+            if (universe && typeof universe.updateObjectProperty === 'function') {
+                universe.updateObjectProperty(ovenCounterWall.lo.handle, 'LargeObject', 'program', ovenCounterProgram);
+            }
 
-            this.ovenHandle = universe.registerLargeObject({
-                rect: [innerLeft, innerTop, innerW, innerH],
-                collision_type: 'NONE',
-                actions: [],
-                name: 'oven_counter',
-                observed_dimensions: [],
-                program: ovenCounterProgram
-            });
+            this.ovenHandle = ovenCounterWall.lo.handle;
 
             // Between-tick thermostat (as-intended §2.1, Dispatch C2):
             //   a. Reset count to 0 so next tick starts fresh.

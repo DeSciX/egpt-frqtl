@@ -4,7 +4,7 @@
  * producer-conformance.test.mjs — WS gym-controls-as-sugar Bite 3 item 7
  * (architect's Bite-1 charter item, due at Bite 3).
  *
- * Binds the FOUR REAL, ALREADY-SHIPPED control shapes named in
+ * Binds the THREE REAL, ALREADY-SHIPPED control shapes named in
  * lib/shim/controls/index.js's own docstring to `normalizeControlDescriptor` —
  * proving the contract codifies what production code ACTUALLY returns, not a
  * hand-copied fixture (control-descriptor-contract.test.mjs's `validFixture`
@@ -12,25 +12,24 @@
  * by executing the real producer wherever feasible):
  *
  *   1. SphereEmitter.controls         (scalar × 5) — REAL construction via a
- *      minimal fake universe (`experimentTickFunctions` + `universe_rect`) and
+ *      minimal fake universe (`experimentTickFunctions` + `universe_rect` +
+ *      `fundamentalDimension`) and
  *      the REAL setupSphereEmitter3D factory — no WASM/pkg-node required.
- *   2. RenderTiers.buildTierMatrixSpec (matrix)     — REAL call against a
- *      small fixture `tiers` table.
- *   3. three-provider.js getCameraControl() (camera) — REAL execution: the
+ *   2. three-provider.js getCameraControl() (camera) — REAL execution: the
  *      REAL vendored three.min.js + the REAL three-provider.js + the REAL
  *      render-boot.js source, driven through a vm sandbox (the SAME
  *      established technique as realm-frqtl-three-monaco-collision.test.mjs),
  *      `window._egpt3D=true` so the 3D orbit camera branch is live.
- *   4. fx-experiment.js `_buildLoopControl()` (loop) — NOT independently
+ *   3. fx-experiment.js `_buildLoopControl()` (loop) — NOT independently
  *      reachable: it is a private, non-exported function inside fx-
  *      experiment.js's IIFE, invoked only from deep within the full p5/
  *      FrqtlApp setup-time driver (`_wireExperimentControls`-class
  *      code, itself requiring a live `runner`). Reaching it for real would
  *      need a full engine+setup-factory+p5 boot — disproportionate for one
- *      shape when the other three are cheaply real. This ONE case is
+ *      shape when the other two are cheaply real. This ONE case is
  *      COPY-VERBATIM, cited by exact source location, flagged transparently
  *      here rather than silently presented as "real" alongside the other
- *      three (the schema-mirror-drift risk this whole file exists to avoid).
+ *      two (the schema-mirror-drift risk this whole file exists to avoid).
  *
  * Run: node --test lib/shim/controls/test/producer-conformance.test.mjs
  */
@@ -55,10 +54,11 @@ const { normalizeControlDescriptor } = require(path.join(repoRoot, 'lib/shim/con
 // `runner.experimentControls`-compatible descriptor array (a straight ref to
 // setupSphereEmitter3D's `control.controls` — SphereEmitter.js's `controls`
 // getter). Constructed for real against a minimal fake universe: the factory
-// reads only `experimentTickFunctions` (to register its emit tick-fn) and
-// `universe_rect` (to default the emission centre) — no WASM/pkg-node.
+// reads only `experimentTickFunctions` (to register its emit tick-fn),
+// `universe_rect` (to default the emission centre) and `fundamentalDimension` (the
+// layer an undeclared emitter mints at) — no WASM/pkg-node.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('producer conformance (1/4) — SphereEmitter.controls (REAL construction) -> scalar', function () {
+describe('producer conformance (1/3) — SphereEmitter.controls (REAL construction) -> scalar', function () {
     const { setupSphereEmitter3D } =
         require(path.join(repoRoot, 'lib/frqtl/objects/setup/setupSphereEmitter3D.js'));
     // SphereEmitter.addTo resolves the factory off the global scope (the game-layer
@@ -71,6 +71,7 @@ describe('producer conformance (1/4) — SphereEmitter.controls (REAL constructi
     function makeFakeUniverse() {
         return {
             experimentTickFunctions: [],
+            fundamentalDimension: 0,
             universe_rect: { left: 0, top: 0, w: 600, h: 400 }
         };
     }
@@ -115,44 +116,11 @@ describe('producer conformance (1/4) — SphereEmitter.controls (REAL constructi
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. RenderTiers.buildTierMatrixSpec (matrix) — REAL call.
-// ─────────────────────────────────────────────────────────────────────────────
-describe('producer conformance (2/4) — RenderTiers.buildTierMatrixSpec (REAL call) -> matrix', function () {
-    const { RenderTiers } = require(path.join(repoRoot, 'lib/frqtl/compat/renderer/RenderTiers.js'));
-
-    test('the real buildTierMatrixSpec() output passes normalizeControlDescriptor({kind:\'matrix\', ...})', function () {
-        const tiers = [
-            { layerMin: 0, label: 'L0', mode: 'crisp', paint: 'sharp' },
-            { layerMin: 4, label: 'L4', mode: 'greyscale', paint: 'soft' }
-        ];
-        const spec = RenderTiers.buildTierMatrixSpec(tiers);
-
-        assert.ok(Array.isArray(spec.columns) && spec.columns.length === 2, 'one column per real tier row');
-        assert.ok(Array.isArray(spec.effectOptions) && spec.effectOptions.length > 0, 'real EFFECT_OPTIONS list');
-
-        // id is a registry-addressing concern the schema requires on every
-        // kind — RenderTiers (a page-scoped singleton table, not a
-        // multiplicity of instances) has no natural id of its own; binding
-        // it here supplies one, exactly like the scalar case above.
-        const bag = normalizeControlDescriptor({ kind: 'matrix', id: 'tierMatrix', ...spec });
-        assert.equal(bag.kind, 'matrix');
-        assert.equal(bag.columns, spec.columns, 'real columns array carried verbatim (not cloned/re-derived)');
-        assert.equal(bag.effectOptions, spec.effectOptions);
-        assert.equal(bag.setAllHidden, spec.setAllHidden);
-
-        // The real mutator closures actually work post-normalize (not just
-        // shape-checked) — setHidden on column 0 flips the REAL row.hidden.
-        bag.columns[0].setHidden(true);
-        assert.equal(tiers[0].hidden, true, 'the real row object was mutated through the normalized bag');
-    });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. three-provider.js getCameraControl() (camera) — REAL execution via vm
+// 2. three-provider.js getCameraControl() (camera) — REAL execution via vm
 // sandbox: real three.min.js + real three-provider.js + real render-boot.js,
 // exactly the established technique in realm-frqtl-three-monaco-collision.test.mjs.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('producer conformance (3/4) — three-provider.js getCameraControl() (REAL execution) -> camera', function () {
+describe('producer conformance (2/3) — three-provider.js getCameraControl() (REAL execution) -> camera', function () {
     const THREE_SRC = readFileSync(path.join(repoRoot, 'lib/frqtl/assets/vendor/three.min.js'), 'utf8');
     const THREE_PROVIDER_SRC = readFileSync(path.join(repoRoot, 'lib/frqtl/compat/renderer/providers/three-provider.js'), 'utf8');
     const RENDER_BOOT_SRC = readFileSync(path.join(repoRoot, 'lib/frqtl/experiments/_shared/render-boot.js'), 'utf8');
@@ -229,13 +197,13 @@ describe('producer conformance (3/4) — three-provider.js getCameraControl() (R
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4. fx-experiment.js _buildLoopControl() (loop) — COPY-VERBATIM EXCEPTION.
+// 3. fx-experiment.js _buildLoopControl() (loop) — COPY-VERBATIM EXCEPTION.
 // Cited source: lib/frqtl/experiments/_shared/fx-experiment.js, the `state`
 // object literal + its two setEnabled/setTicks methods (as of this writing,
 // function _buildLoopControl(cfg) body). NOT independently invokable — see
 // the file docstring above for why REAL execution is disproportionate here.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('producer conformance (4/4) — fx-experiment.js _buildLoopControl() (COPY-VERBATIM, cited — see file docstring) -> loop', function () {
+describe('producer conformance (3/3) — fx-experiment.js _buildLoopControl() (COPY-VERBATIM, cited — see file docstring) -> loop', function () {
     test('a byte-for-byte copy of the real _buildLoopControl() state shape passes normalizeControlDescriptor({kind:\'loop\', ...})', function () {
         // Verbatim from lib/frqtl/experiments/_shared/fx-experiment.js
         // _buildLoopControl(cfg)'s `state` object (the bar-absent early-return

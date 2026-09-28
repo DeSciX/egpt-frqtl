@@ -90,6 +90,22 @@ export class NotebookKernel {
         }
         this._runtime  = opts.runtime || DefaultRuntime;
         this._bus      = opts.bus     || DefaultBus;
+        // The injected runtime's contract, asserted HERE — at the boundary, once.
+        // `resetMathScope` is what bounds the arena (see resetScope() below); a
+        // runtime without it would otherwise die with a bare TypeError from inside
+        // resetScope(), mid-run, AFTER the binding store was already cleared. This
+        // is an assertion, NOT a guard around the call: skipping the reset would
+        // run the notebook on an unbounded arena and never say so.
+        var missing = ['runCell', 'resetMathScope'].filter(function (m) {
+            return typeof this._runtime[m] !== 'function';
+        }, this);
+        if (missing.length) {
+            throw new Error(
+                '[NotebookKernel] the injected runtime does not satisfy the kernel\'s contract — ' +
+                'missing: ' + missing.join(', ') + '. Pass lib/shim/runtime/index.js\'s `Runtime` ' +
+                '(Runtime.runCell, Runtime.resetMathScope), or a stub that implements both.'
+            );
+        }
         this._disposed = false;
 
         // notebook cells in document order; keep an id→cell index.
@@ -129,6 +145,50 @@ export class NotebookKernel {
                 this._consumersOfName.get(name).add(cc.id);
             }
         }
+    }
+
+    /* ── scope ──────────────────────────────────────────────────────────────
+     * THE SCOPE RULE (FRAQTL issue #67): a math value's scope IS this kernel's
+     * binding scope. On the shipped WASM dist an EGPT value is an arena handle,
+     * so if the arena is drained while a binding still names one, that binding is
+     * a dead handle and the next cell dies with `arena:stale-handle`. The two
+     * facts therefore move TOGETHER, here, in ONE method — they cannot drift.
+     * A cell is not a run: `Runtime.runCell()` deliberately does not reset. */
+
+    /**
+     * Begin a fresh value scope: drop every binding AND end the math backend's
+     * value scope (arena drain + epoch bump for `wasm-math`, a no-op for
+     * `js-reference`).
+     *
+     * FAIL-LOUD is preserved, not softened: after this call a handle captured
+     * before it — in a closure, a chart, a host-held output — is genuinely stale
+     * and still throws `arena:stale-handle`. That is the point of bumping the
+     * epoch rather than silently reusing slots.
+     *
+     * Called at the START of `runAll()` (every binding is about to be re-produced
+     * by the run itself) and by `dispose()` (notebook unload). A single-cell run
+     * does NOT call it — its output has to outlive the cell.
+     *
+     * WHAT BOUNDS THE ARENA, and the residual this costs. N consecutive Run Alls
+     * cost ONE run's residency, not N — each begins a fresh scope (measured:
+     * identical `arenaStats().len` across runs 1/2/3 for every shipped notebook;
+     * worst case `egpt-test-suite`, 194,370 slots), and unload drains it to 0.
+     * BUT repeated MANUAL single-cell runs ACCUMULATE until the next `runAll()` or
+     * `dispose()`: the arena has no reclaim finer than the scope, so every
+     * INTERMEDIATE of the re-run cell stays resident too, not just its output
+     * (measured on a 1000-add cell: 1,002 slots per re-run — 999 dead accumulators
+     * and the one live result; 20 re-runs → 21,042, then back to 1,002 at the next
+     * Run All). This is NOT a REPL's heap property — a Jupyter kernel retains
+     * bindings and collects unreferenced intermediates. Fixing it needs a two-level
+     * scope in the arena (a per-cell frame whose intermediates die at cell end, with
+     * the cell's declared outputs PROMOTED into the notebook scope) — a retain
+     * contract that belongs in `arena.rs` + the facade, never faked on the JS side.
+     *
+     * @returns {void}
+     */
+    resetScope() {
+        this.bindings.clear();
+        this._runtime.resetMathScope();
     }
 
     /* ── module set (B2) ─────────────────────────────────────────────────────
@@ -446,6 +506,12 @@ export class NotebookKernel {
         } catch (orderErr) {
             return Promise.reject(orderErr);
         }
+        // A fresh value scope for the run (#67). Safe by construction: runAll
+        // re-produces every binding a runnable cell declares, in an order that
+        // puts each producer before its consumers — so nothing in the cleared
+        // store is read before it is rewritten. A leftover from an earlier,
+        // partial run is exactly what must NOT silently satisfy an input.
+        self.resetScope();
         var total = order.length;
         var displayFor = (typeof opts.displayFor === 'function') ? opts.displayFor : null;
         var onProgress = (typeof opts.onProgress === 'function') ? opts.onProgress : null;
@@ -587,11 +653,15 @@ export class NotebookKernel {
      * the instance dead (in-flight `runCell` resolutions become no-ops) and clears
      * all internal maps. Canvas/runner teardown is the pane's responsibility.
      *
+     * It also ends the math value scope (`resetScope()`): the bindings that kept
+     * those arena values alive are going away with the notebook, so this is what
+     * bounds the arena across notebook loads.
+     *
      * @returns {void}
      */
     dispose() {
         this._disposed = true;
-        this.bindings.clear();
+        this.resetScope();
         this.cellState.clear();
         this._cellById.clear();
         this._consumersOfName.clear();

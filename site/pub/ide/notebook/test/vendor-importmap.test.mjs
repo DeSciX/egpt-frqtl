@@ -8,8 +8,9 @@
  *   - FAIL-LOUD on a manifest without `.libs`, and on a lib without `.entry`
  *     (the slit-objects-hardcoded-list bug class — a lib is NEVER silently dropped);
  *   - FAIL-LOUD on a missing vendorBase (the surface must pass router.vendorBase);
- *   - importMapScriptBody returns the JSON.stringify of the same map (the ONE body
- *     both host injection paths use).
+ *   - buildRealmImportMap merges vendor + @frqtl/setups through ONE router, and
+ *     spliceRealmImportMap (the ONE splice every host calls) places it before the first
+ *     module script, idempotently.
  *   - the router exposes a `vendorBase` accessor present on BOTH profiles (parity).
  *
  * Run: node --test lib/shim/notebook/test/vendor-importmap.test.mjs
@@ -22,7 +23,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot  = path.resolve(__dirname, '../../../..');
 
-const { buildImportMap, importMapScriptBody } = await import(
+const { buildImportMap, buildRealmImportMap, spliceRealmImportMap } = await import(
     path.join(repoRoot, 'lib/shim/notebook/vendor-importmap.js')
 );
 const { engineRouter, DEV_CORE_PROFILE, DIST_PROFILE } = await import(
@@ -76,12 +77,31 @@ describe('buildImportMap — the ONE pure import-map generator', () => {
     });
 });
 
-describe('importMapScriptBody — the ONE script body for both hosts', () => {
-    test('is the JSON.stringify of buildImportMap', () => {
-        const manifest = { libs: { 'd3-array': { entry: 'd3-array/src/index.js' } } };
-        const body = importMapScriptBody(manifest, '/vendor');
-        assert.equal(body, JSON.stringify(buildImportMap(manifest, '/vendor')));
-        assert.deepEqual(JSON.parse(body).imports['d3-array'], '/vendor/d3-array/src/index.js');
+describe('buildRealmImportMap / spliceRealmImportMap — the ONE document import map for every host', () => {
+    const manifest = { libs: { 'd3-array': { entry: 'd3-array/src/index.js' } } };
+
+    test('merges the vendor libs and the @frqtl/setups specifiers, all through the SAME router', () => {
+        const staticDoc = engineRouter({ mode: 'static', documentRelative: true });
+        const map = buildRealmImportMap(manifest, staticDoc);
+        assert.equal(map.imports['d3-array'], './pub/vendor/d3-array/src/index.js');
+        assert.equal(map.imports['@frqtl/setups/double-slit'], './pub/js/game/setup-esm/setupDoubleSlit.js');
+        const dev = buildRealmImportMap(manifest, engineRouter({ mode: 'dev-core' }));
+        assert.equal(dev.imports['d3-array'], '/vendor/d3-array/src/index.js');
+        assert.equal(dev.imports['@frqtl/setups/double-slit'], '/frqtl/objects/setup-esm/setupDoubleSlit.js');
+    });
+
+    test('FAIL-LOUD without a router', () => {
+        assert.throws(() => buildRealmImportMap(manifest, '/vendor'), /requires an engineRouter\(\) instance/);
+    });
+
+    test('splices before the first module script, once', () => {
+        const r = engineRouter({ mode: 'dev-core' });
+        const src = '<html><head></head><body><script type="module" src="./x.js"></script></body></html>';
+        const once = spliceRealmImportMap(src, manifest, r);
+        assert.ok(once.indexOf('data-frqtl-vendor-importmap') < once.indexOf('type="module"'));
+        assert.equal(spliceRealmImportMap(once, manifest, r), once, 'idempotent');
+        const body = once.match(/<script type="importmap" data-frqtl-vendor-importmap>([^<]*)<\/script>/)[1];
+        assert.deepEqual(JSON.parse(body), buildRealmImportMap(manifest, r));
     });
 });
 

@@ -7,8 +7,7 @@
 // can `import * as d3 from 'd3'` and the realm's native module loader resolves the
 // bare specifier to a PLACED /vendor artifact.
 //
-// PURE: no DOM, no Runtime, no engine import. Node-testable. The `<script>` text is
-// just `JSON.stringify(buildImportMap(manifest, vendorBase))`.
+// PURE: no DOM, no Runtime, no engine import. Node-testable.
 //
 // PATH AUTHORITY (the canonical-stack DRY rule): `vendorBase` is supplied by the
 // caller from `router.vendorBase` (the single path authority — DEV_CORE_PROFILE /
@@ -17,6 +16,8 @@
 //
 // FAIL-LOUD (the slit-objects-hardcoded-list bug class): a malformed manifest (no
 // `.libs`, or a lib without `.entry`) THROWS — never silently drops a lib.
+
+import { buildFrqtlSetupsImportMap } from './frqtl-setups-importmap.js';
 
 /**
  * @typedef {object} VendorManifest
@@ -63,15 +64,48 @@ export function buildImportMap(manifest, vendorBase) {
 }
 
 /**
- * Render the import-map as the exact text that goes inside
- * `<script type="importmap">…</script>`. Thin convenience over buildImportMap +
- * JSON.stringify so BOTH host injection paths (the .vsix server-side splice and the
- * in-app once-guard) produce byte-identical script bodies from the ONE generator.
+ * The REALM import map — the ONE merged `{imports}` every host injects into a document:
+ * the vendor libs (`buildImportMap(manifest, router.vendorBase)`) plus the canonical
+ * setup-factory bare specifiers (`buildFrqtlSetupsImportMap(router)`). A document may
+ * carry only ONE import map, so both fragments always travel together, resolved through
+ * the SAME router (never a vendor base from one profile and setup URLs from another).
  *
  * @param {VendorManifest} manifest
- * @param {string} vendorBase
- * @returns {string} JSON text for the importmap script body.
+ * @param {{resolve:Function, vendorBase:string}} router  an engineRouter() instance.
+ * @returns {{ imports: Object<string, string> }}
+ * @throws {Error} FAIL-LOUD on a malformed manifest or a missing router.
  */
-export function importMapScriptBody(manifest, vendorBase) {
-    return JSON.stringify(buildImportMap(manifest, vendorBase));
+export function buildRealmImportMap(manifest, router) {
+    if (!router || typeof router.resolve !== 'function') {
+        throw new Error('[vendor-importmap] buildRealmImportMap(manifest, router) requires an engineRouter() instance (FAIL-LOUD).');
+    }
+    var vendorMap = buildImportMap(manifest, router.vendorBase);
+    var setupsMap = buildFrqtlSetupsImportMap(router);
+    return { imports: Object.assign({}, vendorMap.imports, setupsMap.imports) };
+}
+
+/**
+ * Splice the realm import map into an HTML document as
+ * `<script type="importmap" data-frqtl-vendor-importmap>`, immediately BEFORE the first
+ * `<script type="module"` (a map added after module loading starts is ignored), else
+ * before `</head>`, else prepended. Idempotent: a document already carrying the
+ * `data-frqtl-vendor-importmap` tag is returned unchanged.
+ *
+ * The ONE splice for every host: the dev/.vsix serve-time splice
+ * (lib/server/realm-html.js) and the static build-time bake (apps/ide/vite.config.js).
+ *
+ * @param {string} html
+ * @param {VendorManifest} manifest
+ * @param {{resolve:Function, vendorBase:string}} router  the host's engineRouter() instance.
+ * @returns {string}
+ */
+export function spliceRealmImportMap(html, manifest, router) {
+    if (/data-frqtl-vendor-importmap/.test(html)) { return html; }   // idempotent
+    var body = JSON.stringify(buildRealmImportMap(manifest, router));
+    var tag = '<script type="importmap" data-frqtl-vendor-importmap>' + body + '</script>\n    ';
+    var moduleIdx = html.search(/<script\s+type=["']module["']/i);
+    if (moduleIdx !== -1) { return html.slice(0, moduleIdx) + tag + html.slice(moduleIdx); }
+    var headIdx = html.search(/<\/head>/i);
+    if (headIdx !== -1) { return html.slice(0, headIdx) + '  ' + tag + html.slice(headIdx); }
+    return tag + html;
 }

@@ -15,19 +15,35 @@ No wave equation — the mirror is a single-occupancy collision behavior.
 </cell>
 
 <cell type="markdown">
-The recipe — a `buildExperiment(exp)` module. It adds a `SphereEmitter` (which
-self-inits the universe) and a bounce/reflect `Wall`, exactly as a saved STUDIO
-project or a Walk-through rung would. The `window.buildExperiment` dual-mode tail is
-the canonical recipe form (what STUDIO codegen emits):
+The recipe — a `buildExperiment(exp)` module. It inits the WORLD first, then adds a
+`SphereEmitter` and a bounce/reflect `Wall`, exactly as a saved STUDIO project or a
+Walk-through rung would (`exp.init(...)` then `exp.addObject(...)` — parts never init
+the world). The `window.buildExperiment` dual-mode tail is the canonical recipe form
+(what STUDIO codegen emits):
 </cell>
 
 <cell type="module" name="./setups/recipe-emitter-wall.js">
 /* buildExperiment(exp) — a mini emitter + mirror-wall RECIPE.
  *
- * The RecipeContext (`exp`) form: exp.addObject(kind, config) registers palette
- * objects on the runner; the SphereEmitter builder self-inits the universe (so this
- * recipe does NOT call exp.init — matching the Walk-through rungs). This is the
- * `shape="recipe"` counterpart of the setup-factory galleries.
+ * The RecipeContext (`exp`) form, in the canonical two-step order every Walk-through
+ * rung and every saved STUDIO project uses — WORLD FIRST, THEN PARTS:
+ *
+ *     exp.init(setupSphereEmitter3D.worldCfg(SRC));   // 1. the world
+ *     exp.addObject('SphereEmitter', SRC);            // 2. the part
+ *
+ * `universe.init()` is a universe-GLOBAL reset (it clears every frame and fixes the
+ * base dimension, wavelengthScale and active axes), so it belongs to the SKETCH and
+ * runs ONCE, before any part is constructed. A PART never inits the world: both
+ * ObjectFactory's SphereEmitter builder and setupSphereEmitter3D say so in as many
+ * words, and the first engine registration a part makes throws
+ * `EGPTUniverse.init() must be called before any simulation methods` on a world that
+ * has not been init'd.
+ *
+ * ONE bag (`SRC`) feeds BOTH steps, so the world and the emitter can never disagree:
+ * `setupSphereEmitter3D.worldCfg(bag)` is the ONE authority for the λ_eff chain
+ * (fundamentalWaveLength → wavelengthScale → λ_eff = (capacity/mass) ×
+ * wavelengthScale) and for the 2D/3D axis selection — cite it, never a copied
+ * constant.
  *
  * SU1: zero new physics — the SphereEmitter + Wall are already-goldened behaviors
  * (canonical-bench S* + LO1 Bounce/Reflect); the recipe only composes them.
@@ -38,12 +54,20 @@ function buildExperiment(exp) {
 
     // A spherical source of oppositely-charged dim-2 leaves (the interference braiding
     // comes from the random ± charge). In 2D the ball-rejected sampler collapses to an
-    // even disk of launch directions.
-    exp.addObject('SphereEmitter', {
+    // even disk of launch directions. This SAME bag is the world step's input.
+    var SRC = {
         preset: 'spherical', is2D: true, center: [Math.round(W * 0.15), cy],
         chargeMode: 'random', fundamentalDimension: 2, wavelength: 32,
         burstSize: 24, emitEveryTicks: 1
-    });
+    };
+
+    // 1. THE WORLD the emitter implies. `setupSphereEmitter3D` is a game-layer global
+    // (the synthesized builder awaits ensureEngine() before importing this module, so
+    // it is live by the time the recipe body runs).
+    exp.init(setupSphereEmitter3D.worldCfg(SRC));
+
+    // 2. THE PARTS.
+    exp.addObject('SphereEmitter', SRC);
 
     // A reflective wall — Bounce/Reflect inverts each arrival on its axis of incidence
     // (a real mirror, canonical-bench LO1). Drag/rotate it in STUDIO to steer.

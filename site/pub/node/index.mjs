@@ -14,12 +14,12 @@
 import api from './index.js';
 
 export const CameraPath = api.CameraPath;
+export const CaptureEnvelope = api.CaptureEnvelope;
 export const CollisionActions = api.CollisionActions;
 export const CollisionTypes = api.CollisionTypes;
 export const DetectorWall = api.DetectorWall;
 export const EGPTEngine = api.EGPTEngine;
 export const FieldBuilder = api.FieldBuilder;
-export const FlightRecorder = api.FlightRecorder;
 export const FrqtlCapture = api.FrqtlCapture;
 export const FrqtlVision = api.FrqtlVision;
 export const GraphingDetectorWall = api.GraphingDetectorWall;

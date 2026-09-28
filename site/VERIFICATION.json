@@ -1,0 +1,7 @@
+{
+  "build": "1a7d0cbf",
+  "root": "GREEN",
+  "prefix": "GREEN",
+  "verified_at": "2026-09-28T05:14:04Z",
+  "instrument": "scripts/verify-static-deploy.sh"
+}

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — G3: two LO bodies collide head-on</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a; flex-wrap: wrap;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; color: #aaa; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="range"] { width: 140px; cursor: pointer; accent-color: #ffb450; }
+        .experiment-controls span.val { color: #ffb450; min-width: 32px; display: inline-block; text-align: right; }
+        #reset { background:#27424f; color:#7ec8e3; border:1px solid #7ec8e3; border-radius:3px; font-size:12px; padding:3px 12px; cursor:pointer; }
+        .legend { color:#888; font-size:11px; }
+        .legend b.a { color:#ff8c46; } .legend b.b { color:#46a0ff; }
+    </style>
+</head>
+<body>
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+    <!-- Render interpretation for THIS experiment (BYO; default unchanged elsewhere): three in
+         ORTHOGRAPHIC 1:1 mode (NOT _egpt3D → no perspective; 1 Dim-0 = 1 screen pixel, no zoom)
+         with the BOX shader, so we see the boxes-of-balls collide at true voxel size. -->
+    <script>window._egptDefaultRenderer = 'three';</script>
+
+    <!-- UNIT-TEST G3: two voxel BODIES (leaf frames at the
+         same non-fundamental Dimension = same voxel size = virtual children) launched head-on.
+         When their voxel extents overlap, voxel_collision_pass exchanges the overlap-volume
+         momentum (conserved). Equal mass + full overlap = a perfect velocity SWAP (elastic
+         bounce). Drive the mass-ratio slider: a heavier B plows through, A recoils faster.
+         Knobs are LIVE via collideControl (Blackbody pattern) — no page reload. -->
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupG3Collide.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <button type="button" id="reset" title="Restart the collision">&#8634; Reset</button>
+            <label title="mass_B / mass_A — 1.0 = equal (symmetric bounce); &gt;1 = B plows, A recoils">
+                mass B/A:
+                <input type="range" id="ctrl-mr" min="0.25" max="4" step="0.25" value="1">
+                <span class="val" id="ctrl-mr-val">1.00</span>
+            </label>
+            <label title="fullness of BOTH boxes — 1.0 = full (abut, no interpenetration); &lt;1 = partial (interpenetrate by the empty fraction)">
+                density:
+                <input type="range" id="ctrl-de" min="0.1" max="1" step="0.1" value="1">
+                <span class="val" id="ctrl-de-val">1.0</span>
+            </label>
+            <label title="transverse offset of B (voxel units) — 0 = head-on; ~1 = glancing blow">
+                offset:
+                <input type="range" id="ctrl-of" min="0" max="2" step="0.25" value="0">
+                <span class="val" id="ctrl-of-val">0.00</span>
+            </label>
+            <span class="legend"><b class="a">&#9632;</b> A (&#8594;) &nbsp; <b class="b">&#9632;</b> B (&#8592;) &nbsp; boxes-of-balls, edges reflect</span>
+        </div>
+        <div id="metrics-panel"></div>
+    </div>
+
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * G3: two LO voxel bodies collide head-on.
+     * Knobs are LIVE via collideControl (Blackbody pattern):
+     *   slider input → ctl.setMassRatio / setDensity / setOffset → setFrameProperty
+     * No hash parsing, no window.location.reload(), no window.location anywhere.
+     */
+
+    var runner = null, metrics = null, tick = 0;
+
+    function bodyVx(fd, qid) {
+        var f = fd.find(function (g) { return g.id === qid; });
+        return f ? (f.vx !== undefined ? f.vx : 0) : 0;
+    }
+    function bodyX(fd, qid) {
+        var f = fd.find(function (g) { return g.id === qid; });
+        if (!f) return 0;
+        return f.rect ? f.rect._x : f.x;
+    }
+
+    window.setup = function () {
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 600, canvasH: 600, seed: 42,
+            onTick: function (tickData) {
+                tick++;
+                var res = runner.setupResult || {};
+                var fd = (tickData && tickData.frameData) ? tickData.frameData : [];
+                var axp = bodyX(fd, res.aQid), bxp = bodyX(fd, res.bQid);
+                if (metrics) {
+                    metrics.update({
+                        'Tick': tick,
+                        'A x': axp,
+                        'B x': bxp,
+                        'gap': Math.abs(bxp - axp),
+                        'A vx': bodyVx(fd, res.aQid),
+                        'B vx': bodyVx(fd, res.bQid)
+                    });
+                }
+            }
+        });
+        runner.createCanvas();
+        runner.setup(setupG3Collide, { level: 6, massRatio: 1.0, density: 1.0, offset: 0.0 });
+
+        // Shape + colorScheme as render-option DEFAULTS (the preset path; replaces the retired
+        // window._egptRenderShape global). RenderShape.js + LightColor resolve them per-tick.
+        runner.setRenderOption('shape', 'box');
+        runner.setRenderOption('colorScheme', 'roygbiv');
+
+        // Grab the live control handle returned by the setup factory (Blackbody pattern).
+        // All knob changes write through setFrameProperty — no page reload.
+        var ctl = runner.setupResult.collideControl;
+
+        // ── Control descriptors — declared ONCE, used by BOTH surfaces (DRY) ──────────
+        // (1) the standalone page's static .experiment-controls sliders, and
+        // (2) runner.experimentControls, which the IDE GYM hosts (chrome=canvas hides the
+        //     page's own controls, so the GYM needs the runner capability — same idiom as
+        //     runner.cameraControl / runner.fxPresets). Each onChange drives the sugar ctl.
+        var CONTROLS = [
+            { id: 'mr', label: 'mass B/A', min: 0.25, max: 4, step: 0.25, value: 1.0, fmt: function (v) { return v.toFixed(2); }, onChange: function (v) { ctl.setMassRatio(v); } },
+            { id: 'de', label: 'density',  min: 0.1,  max: 1, step: 0.1,  value: 1.0, fmt: function (v) { return v.toFixed(1); }, onChange: function (v) { ctl.setDensity(v); } },
+            { id: 'of', label: 'offset',   min: 0,    max: 2, step: 0.25, value: 0.0, fmt: function (v) { return v.toFixed(2); }, onChange: function (v) { ctl.setOffset(v); } }
+        ];
+
+        // (1) Wire the standalone page's static sliders (Blackbody idiom: input → live setter).
+        CONTROLS.forEach(function (c) {
+            var slider = document.getElementById('ctrl-' + c.id);
+            var out    = document.getElementById('ctrl-' + c.id + '-val');
+            if (!slider) return;
+            slider.addEventListener('input', function () {
+                var v = parseFloat(slider.value);
+                if (out) out.textContent = c.fmt(v);
+                c.onChange(v);
+            });
+        });
+
+        // (2) Expose the SAME controls to the IDE GYM (CompareView capability-checks this).
+        runner.experimentControls = CONTROLS;
+
+        // Reset button: re-seat bodies via property accessors (no reload).
+        document.getElementById('reset').addEventListener('click', function () {
+            tick = 0;
+            ctl.reset();
+        });
+
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Tick', expected: null, format: function (v) { return String(v); } },
+            { name: 'A x',  expected: null, format: function (v) { return v.toFixed(0) + ' px'; } },
+            { name: 'B x',  expected: null, format: function (v) { return v.toFixed(0) + ' px'; } },
+            { name: 'gap',  expected: null, format: function (v) { return v.toFixed(0) + ' px'; } },
+            { name: 'A vx', expected: null, format: function (v) { return v.toFixed(2); } },
+            { name: 'B vx', expected: null, format: function (v) { return v.toFixed(2); } }
+        ]);
+
+        runner.start();
+        if (typeof frameRate === 'function') { frameRate(60); }
+        window._frqtlApp = runner;
+    };
+
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var r = window._egptRenderer || 'p5';
+            if (r === 'p5') {
+                var s = document.createElement('script');
+                s.src = '../../js/lib/p5.min.js';
+                document.body.appendChild(s);
+            } else {
+                (function whenRunnerReady() {
+                    // S5b fix-loop (WS Studio Controls Realignment) — same
+                    // unguarded-page-script race class fixed on particle-walk-3d/
+                    // collision-matrix-3d (frqtl-tester re-verify, Oracle D): poll for
+                    // the page's OWN data-page-scripts globals too (setupG3Collide,
+                    // ExperimentMetrics), not just the GAME-layer FrqtlApp —
+                    // data-page-scripts load LATER in stack-boot's chain, so
+                    // FrqtlApp becoming defined does not guarantee they have.
+                    if (typeof window.FrqtlApp !== 'undefined' &&
+                        typeof setupG3Collide !== 'undefined' &&
+                        typeof ExperimentMetrics !== 'undefined') {
+                        window.setup();
+                    } else {
+                        setTimeout(whenRunnerReady, 20);
+                    }
+                })();
+            }
+        });
+    });
+    </script>
+</body>
+</html>

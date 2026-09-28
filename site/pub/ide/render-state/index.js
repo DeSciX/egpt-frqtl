@@ -28,13 +28,17 @@
  *                                        the boot-opts split a recipe host applies:
  *                                        LOAD-TIME (renderer/egpt3D/seed) vs
  *                                        POST-START (renderOptions/camera/backdrop).
+ *   partitionRenderRows(rows, declared, known)
+ *                                      — resolve saved render rows against the TARGET
+ *                                        renderer before anything is written: apply /
+ *                                        retain / throw.
  *
  * ── Layer 2: physics behavior ────────────────────────────────────────────────
  *
  * Zero physics — pure data shaping over an already-captured / about-to-be-replayed
  * state bag. Replaying a value produces the IDENTICAL effect as a user re-dragging
  * the same control to that value; the render/physics accessors downstream
- * (`runner.setRenderOption` / `cameraControl.setPreset` / …) do the actual work.
+ * (`runner.setRenderOptions` / `cameraControl.setPreset` / …) do the actual work.
  */
 
 'use strict';
@@ -153,7 +157,8 @@ function normalizeSavedRenderState(raw) {
  * Translate a (raw or normalized) renderState bag into the boot-opts split a
  * standalone recipe host (`bootRecipe`) applies. Splits the bag into:
  *   - LOAD-TIME  : renderer / egpt3D / seed (chosen BEFORE the engine boots)
- *   - POST-START : renderOptions (`setRenderOption` each) + camera replay decision
+ *   - POST-START : renderOptions (partitioned by `partitionRenderRows`, then ONE
+ *                  `setRenderOptions` batch) + camera replay decision
  *                  + backdropVisible (applied AFTER `runner.start()`)
  *
  * PURE + DOM-free. Normalizes defensively so a caller can hand it a raw stored
@@ -181,11 +186,56 @@ function renderStateToBootOptions(raw) {
     };
 }
 
+// ── partitionRenderRows ──────────────────────────────────────────────────────
+
+/**
+ * Resolve a saved bag's `render[]` rows against the renderer that will RECEIVE them,
+ * before anything is written. A saved row was authored against the renderer its bag
+ * names; after a renderer switch (STUDIO's 3D/2D toggle is a reload onto another
+ * provider) each row falls in exactly one class:
+ *   - declared by the target        → `apply` (a `{key: value}` bag for ONE
+ *                                     `runner.setRenderOptions` call; a later row wins)
+ *   - declared by another renderer  → `retained` (NOT applied; the host keeps it in the
+ *                                     saved bag and shows it, so switching back restores it)
+ *   - declared by no renderer       → THROWS (a typo, or a deleted option)
+ *
+ * PURE + DOM-free. `declaredNames` is the target's `renderCapabilities()` names;
+ * `knownNames` is `RenderCapabilitiesCommon.knownRenderCapabilityNames(registry)`.
+ *
+ * @param {{key:string, value:*}[]} rows
+ * @param {string[]} declaredNames
+ * @param {string[]} knownNames
+ * @returns {{apply: Object<string, *>, retained: {key:string, value:*}[]}}
+ * @throws {Error} on a row whose key no registered renderer declares, or bad arguments.
+ */
+function partitionRenderRows(rows, declaredNames, knownNames) {
+    if (!Array.isArray(rows) || !Array.isArray(declaredNames) || !Array.isArray(knownNames)) {
+        throw new Error('[render-state] partitionRenderRows(rows, declaredNames, knownNames) takes three ' +
+            'arrays. (FAIL-LOUD.)');
+    }
+    var apply = {};
+    var retained = [];
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (declaredNames.indexOf(row.key) !== -1) {
+            apply[row.key] = row.value;
+        } else if (knownNames.indexOf(row.key) !== -1) {
+            retained.push({ key: row.key, value: row.value });
+        } else {
+            throw new Error('[render-state] saved render option "' + row.key + '" is declared by no ' +
+                'registered renderer (known: [' + knownNames.join(', ') + ']). (FAIL-LOUD: a typo or a ' +
+                'deleted option would otherwise silently change the picture.)');
+        }
+    }
+    return { apply: apply, retained: retained };
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export {
     normalizeSavedRenderState,
     pickCameraReplay,
     applySavedUrlOverrides,
-    renderStateToBootOptions
+    renderStateToBootOptions,
+    partitionRenderRows
 };

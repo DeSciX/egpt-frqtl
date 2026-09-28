@@ -66,7 +66,8 @@
     // Both engine-boot.js's OWN `failLoud` (below) and render-boot.js's `failLoud`
     // build their OWN axis-labeled message text ("ENGINE BOOT FAILED" vs
     // "RENDERER BOOT FAILED" — TRUTH-IN-LABELING) and delegate ALL DOM placement
-    // to this ONE function — neither re-implements paintScoped/paintFullViewport
+    // to this ONE function — as does stack-boot.js's phase-labeled "STACK BOOT FAILED"
+    // for a script the host did not serve — none re-implements paintScoped/paintFullViewport
     // (fix-loop #6's tester finding: a second, non-host-aware overlay
     // implementation — engine-boot.js's own — was exactly the CASE4 regression).
     //

@@ -102,6 +102,24 @@
     }
 
     /**
+     * Resolve the declared-type WRITE GATE (`ObjectSchema.normalizeValue`, owned by
+     * `lib/frqtl/objects/schema/`). The render-option write gate ferries it: a capability
+     * descriptor is a field descriptor, so its value validates exactly as a part's field does.
+     * Dual-mode, FAIL-LOUD.
+     * @private
+     */
+    function _resolveNormalizeValue() {
+        if (typeof module !== 'undefined' && module.exports) {
+            return require('./schema/index.js').ObjectSchema.normalizeValue;
+        }
+        if (typeof window !== 'undefined' && window.ObjectSchema) { return window.ObjectSchema.normalizeValue; }
+        if (typeof ObjectSchema !== 'undefined') { return ObjectSchema.normalizeValue; }
+        throw new Error('[FrqtlApp] canonical contract ObjectSchema (lib/frqtl/objects/schema) is ' +
+            'unreachable (load order) — its normalizeValue is the declared-type write gate every ' +
+            'render option passes. Fail-loud, not a fallback.');
+    }
+
+    /**
      * Resolve the capture INSTRUMENT — the relocated render-pipeline tap mechanism
      * (`lib/frqtl/objects/instruments/capture.js`, THE_MINIMAL_SIM §4). Dual-mode, the same
      * shape `ObjectFactory.js` and both renderer providers already use: `require` under
@@ -137,6 +155,20 @@
             '(lib/frqtl/compat/renderer/display-slot.js) is unreachable (load order) — it is ' +
             'the ONE display-provider authority this host reads. It heads the RENDERER phase ' +
             '(renderer-layer-manifest.js). Fail-loud, not a fallback.');
+    }
+
+    /**
+     * The wall-clock loop (`start()`, `toggle()` resume) runs on `requestAnimationFrame`.
+     * A host without one (node) gets a NAMED door here instead of a raw ReferenceError, and
+     * gets it before the runner's loop state is touched.
+     * @private
+     */
+    function _requireAnimationFrame(method) {
+        if (typeof requestAnimationFrame === 'function') { return; }
+        throw new Error('[FrqtlApp.' + method + '] no animation frame in this host — the wall-clock ' +
+            'loop needs requestAnimationFrame. Drive the clock with `runner.step()` (one tick + ' +
+            'render per call, any host), or boot in a browser through `@descix/frqtl-sdk/boot`. ' +
+            '(FAIL-LOUD.)');
     }
 
     /**
@@ -208,8 +240,9 @@
         // (EGPTUniverse.CONFIG is the exported key/default/unit/effect table). This host
         // names only the two settings it actually owns; every other key takes its published
         // default (fps 60, iframeIntervalSeconds 1, no IQC, no bonding, groundUp,
-        // minMBFillRate 0.1, wavelengthScale 1, lowestDimension 0 — the setup factory /
-        // sketch's `universe.init()` overrides the last two per experiment anyway).
+        // minMBFillRate 0.1, wavelengthScale 1 — the setup factory / sketch's
+        // `universe.init()` sets the base dimension and overrides wavelengthScale per
+        // experiment anyway).
         var _Universe = _resolveEngineClass('EGPTUniverse', opts.engine);
         this.universe = _Universe.create({
             rect: this.canvas_rect,
@@ -258,9 +291,12 @@
         this._lastFps       = 0;      // last computed frames/sec
 
         // Render options — threaded into every renderTick(tickData, largeObjects, options) call.
-        // Default: renderBaseCanvas true = draw particle layer (current behavior preserved).
-        // Use setRenderOption(key, val) to modify.
+        // Default: renderBaseCanvas true = draw particle layer.
+        // Written ONLY through setRenderOption/setRenderOptions (the declared-capability gate).
         this._renderOptions = { renderBaseCanvas: true };
+        // Writes made before a provider attached: validated against THAT provider's
+        // renderCapabilities() the moment it attaches (see _getRenderer). Null when empty.
+        this._stagedRenderOptions = null;
 
         // Renderer (resolved lazily in start() — render-boot.js may not have run yet)
         this._renderer = null;
@@ -373,34 +409,125 @@
         return !!this._designMode;   // 'design'
     };
 
+    // The key the runner merges into the render bag while an object is camera-driven.
+    var DRIVE_FEEDBACK_KEY = 'driveFeedback';
+
     /**
-     * Set a per-frame render option. Options are threaded into every renderTick() call.
-     *
-     * @param {string} key   — option key (e.g. 'renderBaseCanvas')
-     * @param {*}      value — option value
-     *
-     * Known options:
-     *   renderBaseCanvas (boolean, default true) — when false, the particle/base layer is
-     *     NOT composited into uScene before a post-process pass. The shader works from
-     *     uField only. Both p5 and three providers honor this identically (§4 contract).
+     * The render-option keys this RUNNER merges into the bag per render — never a provider
+     * capability, never user-writable. The read-set conformance test FERRIES this list as its
+     * one exemption.
      */
-    FrqtlApp.prototype.setRenderOption = function (key, value) {
-        this._renderOptions[key] = value;
+    FrqtlApp.RUNNER_INJECTED_RENDER_KEYS = Object.freeze([DRIVE_FEEDBACK_KEY]);
+
+    var FILTER_KEY_PREFIX = 'filter.';
+
+    /** The provider's label for an error message: the display slot's boot name when it is that provider. */
+    function _providerLabel(prov) {
+        var slot = _resolveDisplaySlot();
+        var name = (slot.get() === prov) ? slot.name() : null;
+        return name ? ('renderer "' + name + '"') : 'the active renderer';
+    }
+
+    /**
+     * Validate render-option writes against `prov`'s declared capabilities.
+     * THROW-OR-RETURN: returns the normalized `[key, value]` rows; nothing is applied here.
+     * @private
+     */
+    function _validateRenderWrites(prov, rows) {
+        if (typeof prov.renderCapabilities !== 'function') {
+            throw new TypeError('[FrqtlApp.setRenderOption] ' + _providerLabel(prov) + ' declares no ' +
+                'renderCapabilities(), so it accepts no render option (tried "' + rows.map(function (r) {
+                    return r[0]; }).join('", "') + '"). A provider declares its knobs by implementing ' +
+                'renderCapabilities().');
+        }
+        var caps = prov.renderCapabilities();
+        var byName = {};
+        for (var i = 0; i < caps.length; i++) { byName[caps[i].name] = caps[i]; }
+        var normalizeValue = _resolveNormalizeValue();
+        var out = [];
+        for (var r = 0; r < rows.length; r++) {
+            var key = rows[r][0];
+            if (FrqtlApp.RUNNER_INJECTED_RENDER_KEYS.indexOf(key) !== -1) {
+                throw new TypeError('[FrqtlApp.setRenderOption] "' + key + '" is merged into the render ' +
+                    'bag by the runner itself (FrqtlApp.RUNNER_INJECTED_RENDER_KEYS); it is not a writable ' +
+                    'render option.');
+            }
+            var cap = Object.prototype.hasOwnProperty.call(byName, key) ? byName[key] : null;
+            if (!cap) {
+                throw new TypeError('[FrqtlApp.setRenderOption] "' + key + '" is not a render option ' +
+                    _providerLabel(prov) + ' declares. Declared by renderCapabilities(): [' +
+                    caps.map(function (c) { return c.name; }).join(', ') + ']. (FAIL-LOUD: an ' +
+                    'undeclared key is read by nothing, so the picture would silently differ from the recipe.)');
+            }
+            out.push([key, normalizeValue(cap, rows[r][1], 'render option')]);
+        }
+        return out;
+    }
+
+    /**
+     * Apply already-validated rows: a `filter.<name>` toggle routes to setFilterActive (the
+     * provider's filter()/removeFilter() slots); every other key lands in the ONE options bag.
+     * @private
+     */
+    FrqtlApp.prototype._applyRenderWrites = function (rows) {
+        for (var i = 0; i < rows.length; i++) {
+            var key = rows[i][0];
+            if (key.indexOf(FILTER_KEY_PREFIX) === 0) {
+                this.setFilterActive(key.slice(FILTER_KEY_PREFIX.length), !!rows[i][1]);
+            } else {
+                this._renderOptions[key] = rows[i][1];
+            }
+        }
     };
 
     /**
-     * runner.renderCapabilities() — aggregates the active provider's OPTIONAL
-     * `renderCapabilities()` (WS Studio Controls Realignment §7 r2, item 1/4).
-     * Mirrors the `cameraControl` capability-check precedent: no provider, or a
-     * provider that doesn't implement `renderCapabilities()` (an older/BYO
-     * provider that predates this contract addition), returns an EMPTY array —
-     * never an error. `makeControlsForRenderSurface` (S5a) is the canonical
-     * consumer; it emits zero render controls when this returns `[]`.
+     * runner.setRenderOptions(bag) — write render options as ONE atomic batch.
      *
-     * A future runner-owned universal knob with no per-provider translation
-     * would be aggregated HERE (concatenated with the provider's own list) —
-     * none exists yet (`renderBaseCanvas` is declared identically by BOTH
-     * providers per the BYO README §3, so there is nothing runner-only to add).
+     * THROW-OR-APPLY. Every key must be a capability the display provider declares through
+     * `renderCapabilities()`, and every value must satisfy that descriptor through the SAME
+     * declared-type gate a part's field passes (`ObjectSchema.normalizeValue`: an enum member,
+     * a number inside its range, a 0/1 coerced to boolean). Every key validates before any
+     * applies, so a bad bag applies nothing. `'filter.<name>': 0|1` toggles that post-process
+     * filter.
+     *
+     * Before a provider attaches, the writes are STAGED and validated at attach (the first
+     * `_getRenderer()` that finds the display slot filled): a staged key that provider does
+     * not declare throws THEN, naming the provider.
+     *
+     * @param {Object<string, *>} bag — e.g. `{ shape: 'sphere', godrays: 0.8, glowIntensity: 1.6 }`.
+     * @throws {TypeError} on a non-object bag, an undeclared key, or an invalid value.
+     */
+    FrqtlApp.prototype.setRenderOptions = function (bag) {
+        if (!bag || typeof bag !== 'object' || Array.isArray(bag)) {
+            throw new TypeError('[FrqtlApp.setRenderOptions] expects a plain object of ' +
+                '{ capabilityName: value }; got ' + (Array.isArray(bag) ? 'an array' : String(bag)) + '.');
+        }
+        var rows = Object.keys(bag).map(function (k) { return [k, bag[k]]; });
+        var prov = this._getRenderer();
+        if (!prov) {
+            this._stagedRenderOptions = (this._stagedRenderOptions || []).concat(rows);
+            return;
+        }
+        this._applyRenderWrites(_validateRenderWrites(prov, rows));
+    };
+
+    /**
+     * runner.setRenderOption(key, value) — one render option; see setRenderOptions.
+     * @param {string} key   — a capability name the display provider declares.
+     * @param {*}      value — a value its descriptor accepts.
+     * @throws {TypeError} on an undeclared key or an invalid value.
+     */
+    FrqtlApp.prototype.setRenderOption = function (key, value) {
+        var bag = {};
+        bag[key] = value;
+        this.setRenderOptions(bag);
+    };
+
+    /**
+     * runner.renderCapabilities() — the active provider's `renderCapabilities()` list, the
+     * render-option vocabulary. No provider yet, or a provider implementing no
+     * `renderCapabilities()`, declares no options: `[]` (the controls factory then emits no
+     * render controls, and every render-option write to that provider throws).
      *
      * @returns {Array<object>} field-descriptor-shaped capability descriptors
      *   (`lib/shim/field-descriptor`'s `{name,type,constraint,unit,default,
@@ -413,41 +540,34 @@
     };
 
     /**
-     * runner.getRenderOption(key) — the validated READ counterpart to the
-     * permissive `setRenderOption` (WS Studio Controls Realignment §7 r2 item 1,
-     * "getRenderOption absent" architect finding). `setRenderOption` itself
-     * stays a PERMISSIVE low-level passthrough (unchanged — a blanket write
-     * validation there would break existing ad-hoc `setRenderOption` callers);
-     * this is the new read path added FOR declared capabilities.
-     *
-     * Validates `key` against the active renderer's `renderCapabilities()` WHEN
-     * one is resolvable — throws if the renderer is live and declares
-     * capabilities but `key` is not one of them (a typo'd/undeclared render key
-     * would otherwise silently read `undefined` forever, the exact fail-silent
-     * class this closes). Falls back to an UNVALIDATED passthrough read (same
-     * permissiveness as `setRenderOption`) when no renderer has resolved YET
-     * (lazy provider timing — mirrors `cameraControl`'s own pre-start null) or
-     * the active provider simply doesn't implement `renderCapabilities()` (an
-     * older/BYO provider) — never a false failure for a genuinely valid key
-     * read before boot completes.
+     * runner.getRenderOption(key) — the live value of a declared render option;
+     * `filter.<name>` reads isFilterActive (a boolean, matching its descriptor).
      *
      * @param {string} key
-     * @returns {*} `this._renderOptions[key]`
-     * @throws {TypeError} if the renderer is live, declares capabilities, and
-     *   `key` is not among them.
+     * @returns {*} the live value (undefined when never written; the descriptor's `default`
+     *   states what the provider draws then).
+     * @throws {TypeError} when no provider has attached, or `key` is not declared by it.
      */
     FrqtlApp.prototype.getRenderOption = function (key) {
         var prov = this._getRenderer();
-        if (prov && typeof prov.renderCapabilities === 'function') {
-            var caps = prov.renderCapabilities();
-            var found = false;
-            for (var i = 0; i < caps.length; i++) { if (caps[i].name === key) { found = true; break; } }
-            if (!found) {
-                throw new TypeError('[FrqtlApp.getRenderOption] "' + key + '" is not declared by ' +
-                    'the active renderer\'s renderCapabilities() (declared: [' +
-                    caps.map(function (c) { return c.name; }).join(', ') + ']). setRenderOption stays ' +
-                    'permissive for back-compat; getRenderOption is the VALIDATED read path.');
-            }
+        if (!prov) {
+            throw new TypeError('[FrqtlApp.getRenderOption] no display provider has attached yet, so ' +
+                'no render option is declared. Read after the renderer boots.');
+        }
+        if (typeof prov.renderCapabilities !== 'function') {
+            throw new TypeError('[FrqtlApp.getRenderOption] ' + _providerLabel(prov) + ' declares no ' +
+                'renderCapabilities(), so "' + key + '" is not a render option it has.');
+        }
+        var caps = prov.renderCapabilities();
+        var found = false;
+        for (var i = 0; i < caps.length; i++) { if (caps[i].name === key) { found = true; break; } }
+        if (!found) {
+            throw new TypeError('[FrqtlApp.getRenderOption] "' + key + '" is not declared by ' +
+                _providerLabel(prov) + ' (declared: [' +
+                caps.map(function (c) { return c.name; }).join(', ') + ']).');
+        }
+        if (key.indexOf(FILTER_KEY_PREFIX) === 0) {
+            return this.isFilterActive(key.slice(FILTER_KEY_PREFIX.length));
         }
         return this._renderOptions[key];
     };
@@ -1356,7 +1476,9 @@
     FrqtlApp.prototype._renderOptsWithFeedback = function () {
         var fb = this._computeDriveFeedback();
         if (!fb) { return this._renderOptions; }
-        return Object.assign({}, this._renderOptions, { driveFeedback: fb });
+        var bag = Object.assign({}, this._renderOptions);
+        bag[DRIVE_FEEDBACK_KEY] = fb;
+        return bag;
     };
 
     /**
@@ -1632,7 +1754,19 @@
     FrqtlApp.prototype._getRenderer = function () {
         if (!this._renderer) {
             var prov = _resolveDisplaySlot().get();
-            if (prov) { this._renderer = prov; }
+            if (prov) {
+                // ATTACH. Render options written before this point validate against THIS
+                // provider now. A refusal throws and leaves the provider unattached, so every
+                // later draw raises it again instead of rendering without the knob.
+                if (this._stagedRenderOptions) {
+                    var validated = _validateRenderWrites(prov, this._stagedRenderOptions);
+                    this._renderer = prov;
+                    this._stagedRenderOptions = null;
+                    this._applyRenderWrites(validated);
+                } else {
+                    this._renderer = prov;
+                }
+            }
         }
         return this._renderer || null;
     };
@@ -1818,6 +1952,7 @@
         // Without this guard, a second start() call spawns a second concurrent loop,
         // doubling the tick rate (observable as TPS × 2 on the readout).
         if (this._isLooping || this._rafId !== null) { return; }
+        _requireAnimationFrame('start');
 
         // Suppress p5's own draw loop so it doesn't double-render while our RAF loop runs.
         // p5 calls window.draw every frame if it's defined.
@@ -1903,6 +2038,7 @@
         if (this._isLooping) {
             this.stop();
         } else {
+            _requireAnimationFrame('toggle');
             // Guard: if somehow a stale _rafId is present, cancel it first.
             if (this._rafId !== null) {
                 cancelAnimationFrame(this._rafId);
@@ -1920,13 +2056,19 @@
     FrqtlApp.prototype.step = function () {
         // THE SECOND TICK DRIVER. `doTick()` is called in exactly two places — the RAF batch
         // loop and here — and a suspension that only the loop honoured would be a half-closed
-        // guarantee: the notebook realm and the Studio Design path drive ticks through step(),
-        // and any of them could advance the world out from under an in-flight
-        // capture-at-a-known-tick. Suspended ⇒ this is a NO-OP returning the retained
-        // TickData, so a caller polling step() simply makes no progress until the hold
-        // releases (it does not throw: a step during a sub-second internal hold is not a
-        // caller error, and a throw would break the manual step button).
-        if (this._tickSuspend > 0) { return this._lastTickData; }
+        // guarantee: the notebook realm, hosted eyes and the Studio Design path drive ticks
+        // through step(), and any of them could advance the world out from under an in-flight
+        // capture-at-a-known-tick. Suspended ⇒ THROW. A step that silently did nothing would
+        // let a driver count ticks it never ran (a warm-up of N steps landing short, a drive
+        // "to tick n" stamped with n-1's world) — the caller waits for `ticksSuspended` to
+        // clear, then steps.
+        if (this._tickSuspend > 0) {
+            throw new Error('[FrqtlApp.step] the tick clock is HELD (runner.ticksSuspended is ' +
+                'true, depth ' + this._tickSuspend + '): a capture or waypoint handler is ' +
+                'observing the current tick, and stepping now would advance the world out from ' +
+                'under it. Wait until runner.ticksSuspended is false, then step. (FAIL-LOUD — a ' +
+                'step that silently did nothing would be a tick the driver believes it ran.)');
+        }
         var tickData = this.universe.doTick();
         this._lastTickData = tickData; // repaint()'s source — see that method's docstring
         if (tickData) {

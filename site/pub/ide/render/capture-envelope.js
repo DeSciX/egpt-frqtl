@@ -26,20 +26,29 @@
  * ── The two forms ────────────────────────────────────────────────────────────
  *
  *   stillEnvelope({ still, encoded })        one capture
- *
- * NOTE the still envelope carries NO pose of its own: `normalizeStill` already holds `pose`,
- * and adding a second one here would be a duplicated owner field - the very mirror this
- * module exists to avoid. The VIDEO track does carry pose per frame, because the owner has
- * no notion of a sequence and nothing there could hold it.
  *   videoEnvelope({ track, encoded, truncated })   a sequence + its sidecar manifest
+ *
+ * The still envelope carries NO pose of its own: `normalizeStill` already holds `pose`, and a
+ * second one here would be a duplicated owner field. The VIDEO track carries pose per frame,
+ * because the owner has no notion of a sequence and nothing there could hold it.
+ *
+ * ── The encoded half: ONE key table per form, bytes always base64 ─────────────
+ *
+ * `ENCODED_KEYS[kind]` is the whole encoded shape of each form and the normalizer BUILDS its
+ * output by iterating it, so a declared field cannot be silently dropped on the way through.
+ * `bytes` is a base64 STRING in every host — the envelope is the transport form, and a string
+ * crosses a JSON boundary (a browser-automation `evaluate`, an HTTP body) unchanged. A video
+ * additionally REQUIRES `codec` (the codec string the encoder actually PRODUCED, never the
+ * request) and `muxer` (the pinned muxer that wrote the container). `ENCODERS` is the table of
+ * producers this contract recognises, each with the form and mime it produces.
  *
  * ── Why `truncated` has NO default ───────────────────────────────────────────
  *
- * `FlightRecorder` stops at its cap and raises `overflowed` precisely because "a truncated
- * sequence that LOOKS complete is worse than a refusal". Defaulting `truncated` to false here
- * would re-create that lie one layer up: a caller who forgot to ferry the flag would ship a
- * short flight carrying an explicit claim of completeness. So it is REQUIRED, and a missing
- * one throws.
+ * `FrqtlVision.record` stops at its `maxFrames` bound and reports it as `truncated: true`,
+ * because "a truncated sequence that LOOKS complete is worse than a refusal". Defaulting
+ * `truncated` to false here would re-create that lie one layer up: a caller who forgot to
+ * ferry the flag would ship a short recording carrying an explicit claim of completeness. So it
+ * is REQUIRED, and a missing one throws.
  *
  * ── Why frame cadence is checked against the declared cadence ────────────────
  *
@@ -51,11 +60,14 @@
  * with its data is worse than an unlabelled one, because it will be believed.
  */
 
-var RenderStages = _resolveRenderStages();
+// Module scope: this file loads as a classic script in experiment pages (the ENGINE-phase shim
+// contracts), where an unwrapped top-level helper would land in the shared global scope.
+(function () {
+'use strict';
 
 /**
- * The stage vocabulary and the normalizer are FERRIED from their owner. Same two-host
- * resolution FrqtlVision uses: a browser global, else the shim by require under Node.
+ * The stage vocabulary and the normalizer are FERRIED from their owner, resolved at CALL time.
+ * Same two-host resolution FrqtlVision uses: a browser global, else the shim by require.
  */
 function _resolveRenderStages() {
     if (typeof window !== 'undefined' && window.RenderStages) { return window.RenderStages; }
@@ -70,10 +82,23 @@ function _resolveRenderStages() {
 /** Envelope schema version. Independent of the still's own `v`, which its owner sets. */
 var ENVELOPE_VERSION = 1;
 
-/** The encoders this contract recognises, and the mime each produces. */
+/**
+ * The encoded shape of each envelope form. `encoder` is optional (null when absent) and
+ * validated against `ENCODERS` when present; every other key is a REQUIRED non-empty string.
+ */
+var ENCODED_KEYS = {
+    still: ['mime', 'bytes', 'encoder'],
+    video: ['mime', 'bytes', 'encoder', 'codec', 'muxer']
+};
+
+/** The mime family each form accepts. */
+var MIME_PREFIX = { still: 'image/', video: 'video/' };
+
+/** The producers this contract recognises: the form each produces and its mime. */
 var ENCODERS = {
-    'FrqtlVision.toPNG':      'image/png',
-    'FrqtlVision.toDataURL':  'image/png'
+    'FrqtlVision.toPNG':     { kind: 'still', mime: 'image/png' },
+    'FrqtlVision.toDataURL': { kind: 'still', mime: 'image/png' },
+    'FrqtlVision.record':    { kind: 'video', mime: 'video/mp4' }
 };
 
 function _fail(msg) { throw new Error('[capture-envelope] ' + msg + ' (FAIL-LOUD.)'); }
@@ -82,7 +107,7 @@ function _requireBool(value, name) {
     if (typeof value !== 'boolean') {
         _fail(name + ' must be an explicit boolean, got ' + String(value) +
               ' — it is never defaulted, because a fabricated completeness claim is the ' +
-              'exact failure the recorder\'s own cap reporting exists to prevent');
+              'exact failure the recorder\'s own bound reporting exists to prevent');
     }
     return value;
 }
@@ -99,19 +124,70 @@ function _requireNonEmptyString(value, name, why) {
     return value;
 }
 
-/** Validate the encoded half, whatever it wraps. */
-function _normalizeEncoded(encoded, expectMimePrefix) {
+/** Validate the encoded half of a `kind` envelope, building the output off `ENCODED_KEYS`. */
+function _normalizeEncoded(encoded, kind) {
     if (!encoded || typeof encoded !== 'object') { _fail('`encoded` must be an object carrying the transportable bytes'); }
-    var mime = _requireNonEmptyString(encoded.mime, 'encoded.mime');
-    if (expectMimePrefix && mime.indexOf(expectMimePrefix) !== 0) {
-        _fail('encoded.mime ' + JSON.stringify(mime) + ' is not a ' + expectMimePrefix + '* type');
+    var out = {};
+    var keys = ENCODED_KEYS[kind];
+    for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k === 'encoder') {
+            out.encoder = (encoded.encoder === undefined) ? null : encoded.encoder;
+        } else if (k === 'bytes') {
+            if (typeof encoded.bytes !== 'string' || !encoded.bytes) {
+                _fail('encoded.bytes must be a non-empty base64 string — the envelope carries ' +
+                      'TRANSPORTABLE bytes; an rgba8 payload does not cross a boundary and the ' +
+                      'still already holds it');
+            }
+            out.bytes = encoded.bytes;
+        } else {
+            out[k] = _requireNonEmptyString(encoded[k], 'encoded.' + k);
+        }
     }
-    var bytes = encoded.bytes;
-    if (typeof bytes !== 'string' || !bytes) {
-        _fail('encoded.bytes must be a non-empty base64 string — the envelope carries TRANSPORTABLE ' +
-              'bytes; an rgba8 payload does not cross a boundary and the still already holds it');
+    if (out.mime.indexOf(MIME_PREFIX[kind]) !== 0) {
+        _fail('encoded.mime ' + JSON.stringify(out.mime) + ' is not a ' + MIME_PREFIX[kind] + '* type');
     }
-    return { mime: mime, bytes: bytes, encoder: encoded.encoder === undefined ? null : encoded.encoder };
+    if (out.encoder !== null) {
+        if (!Object.prototype.hasOwnProperty.call(ENCODERS, out.encoder)) {
+            _fail('unknown encoder ' + JSON.stringify(out.encoder) + ' — known: ' +
+                  Object.keys(ENCODERS).join(', '));
+        }
+        var known = ENCODERS[out.encoder];
+        if (known.kind !== kind) {
+            _fail('encoder ' + JSON.stringify(out.encoder) + ' produces a ' + known.kind +
+                  ', not a ' + kind);
+        }
+        if (known.mime !== out.mime) {
+            _fail('encoder ' + JSON.stringify(out.encoder) + ' produces ' +
+                  JSON.stringify(known.mime) + ', but encoded.mime says ' + JSON.stringify(out.mime));
+        }
+    }
+    return out;
+}
+
+/**
+ * bytesToBase64(bytes) — THE transportable-bytes encoding, in every host.
+ *
+ * A typed array → a base64 string, chunked (a per-byte concat of megabytes is slow, and
+ * `String.fromCharCode.apply` has an argument limit). The one encoder of `encoded.bytes`, and
+ * of the capture host's in-page payload: both read it from here, never from a copy.
+ *
+ * @param {ArrayBufferView} bytes
+ * @returns {string}
+ */
+function bytesToBase64(bytes) {
+    if (!bytes || typeof bytes.BYTES_PER_ELEMENT !== 'number') {
+        _fail('bytesToBase64 expects a typed array, got ' + String(bytes));
+    }
+    if (typeof btoa !== 'function') {
+        _fail('bytesToBase64 needs a global btoa (every browser, and node >= 16)');
+    }
+    var u8 = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    var bin = '';
+    for (var i = 0; i < u8.length; i += 0x8000) {
+        bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
 }
 
 /**
@@ -125,20 +201,8 @@ function _normalizeEncoded(encoded, expectMimePrefix) {
 function stillEnvelope(partial) {
     if (!partial || typeof partial !== 'object') { _fail('expected an object, got ' + String(partial)); }
 
-    var still = RenderStages.normalizeStill(partial.still);
-    var encoded = _normalizeEncoded(partial.encoded, 'image/');
-
-    if (encoded.encoder !== null) {
-        if (!Object.prototype.hasOwnProperty.call(ENCODERS, encoded.encoder)) {
-            _fail('unknown encoder ' + JSON.stringify(encoded.encoder) + ' — known: ' +
-                  Object.keys(ENCODERS).join(', '));
-        }
-        if (ENCODERS[encoded.encoder] !== encoded.mime) {
-            _fail('encoder ' + JSON.stringify(encoded.encoder) + ' produces ' +
-                  JSON.stringify(ENCODERS[encoded.encoder]) + ', but encoded.mime says ' +
-                  JSON.stringify(encoded.mime));
-        }
-    }
+    var still = _resolveRenderStages().normalizeStill(partial.still);
+    var encoded = _normalizeEncoded(partial.encoded, 'still');
 
     return {
         kind:     'still',
@@ -152,7 +216,8 @@ function stillEnvelope(partial) {
  * Compose a sequence envelope. `track` is the SIDECAR MANIFEST — without it the bytes are an
  * unlabelled movie and no frame can be aligned to the state that produced it.
  *
- * @param {{track:object, encoded:object, truncated:boolean}} partial
+ * @param {{track:object, encoded:{mime:string,bytes:string,codec:string,muxer:string,encoder?:string},
+ *          truncated:boolean}} partial
  * @returns {object} the envelope
  */
 function videoEnvelope(partial) {
@@ -163,7 +228,7 @@ function videoEnvelope(partial) {
 
     _requireNonEmptyString(t.scene, 'track.scene',
         'a sequence without a scene id is unmoored exactly as a still without one is');
-    var stage = RenderStages.assertStage(t.stage);
+    var stage = _resolveRenderStages().assertStage(t.stage);
 
     var width  = _requirePosInt(t.width,  'track.width');
     var height = _requirePosInt(t.height, 'track.height');
@@ -196,7 +261,7 @@ function videoEnvelope(partial) {
         }
     }
 
-    var encoded = _normalizeEncoded(partial.encoded, 'video/');
+    var encoded = _normalizeEncoded(partial.encoded, 'video');
 
     return {
         kind:      'video',
@@ -221,10 +286,14 @@ function videoEnvelope(partial) {
 
 var CaptureEnvelope = {
     ENVELOPE_VERSION: ENVELOPE_VERSION,
+    ENCODED_KEYS:     ENCODED_KEYS,
     ENCODERS:         ENCODERS,
+    bytesToBase64:    bytesToBase64,
     stillEnvelope:    stillEnvelope,
     videoEnvelope:    videoEnvelope
 };
 
 if (typeof module !== 'undefined' && module.exports) { module.exports = CaptureEnvelope; }
 if (typeof window !== 'undefined') { window.CaptureEnvelope = CaptureEnvelope; }
+
+})();

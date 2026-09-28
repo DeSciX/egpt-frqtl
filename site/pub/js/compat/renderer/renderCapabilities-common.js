@@ -12,24 +12,25 @@
  *
  * ── Layer 1: API contract ────────────────────────────────────────────────────
  *
- * Two pure, module-level free functions — no live WebGL/THREE/canvas instance
+ * Pure, module-level free functions — no live WebGL/THREE/canvas instance
  * needed (capability DESCRIPTORS are static metadata; live VALUES are read
- * separately via `FrqtlApp.getRenderOption`/`isFilterActive`, exactly
- * as `p5-provider.js`'s/`three-provider.js`'s own pre-existing docstrings
- * already state) — this is what keeps both callers unit-testable in plain
- * Node with no browser.
+ * separately via `FrqtlApp.getRenderOption`) — this is what keeps every caller
+ * unit-testable in plain Node with no browser.
  *
  * `universalRenderCapabilities(normalizeFieldDescriptor, RenderShapeRef, FrameDataSchemaRef)`
  *   → the 3 knobs BOTH built-in providers honor identically (README §3):
  *     `shape` (enum, RenderShape.VALID_SHAPES), `colorScheme` (enum,
- *     RENDER_INTENT_VALUES['render.colorScheme']), `renderBaseCanvas` (number,
- *     bool01). Does NOT include filter toggles — see `filterRenderCapabilities`
- *     below (three-provider needs to splice its OWN 5 effect-layer knobs
- *     BETWEEN the universal 3 and the filter toggles, so the two lists are
- *     kept separate rather than one combined function).
+ *     RENDER_INTENT_VALUES['render.colorScheme']), `renderBaseCanvas` (boolean,
+ *     render-only). Does NOT include filter toggles — see `filterRenderCapabilities`
+ *     below (three-provider splices its OWN effect-layer knobs BETWEEN the
+ *     universal 3 and the filter toggles, so the lists are kept separate).
+ *
+ * `meshRenderCapabilities(normalizeFieldDescriptor)`
+ *   → the scene external-mesh pair (`mesh`, `meshScale`) a provider with a mesh
+ *     render path declares (three).
  *
  * `filterRenderCapabilities(normalizeFieldDescriptor, FiltersRef)`
- *   → one `filter.<name>` toggle descriptor (number, bool01, default 0) per
+ *   → one `filter.<name>` toggle descriptor (boolean, render-only, default false) per
  *     `Filters.js` catalog entry — `filter()`/`removeFilter()` are REQUIRED
  *     contract methods on every provider (README §1), so every provider
  *     declares every filter identically; this is why the loop is shared
@@ -39,6 +40,11 @@
  * `universalRenderCapabilities(...).concat(providerOnlyCaps).concat(filterRenderCapabilities(...))`
  * — see `p5-provider.js`'s `_renderCapabilitiesP5` / `three-provider.js`'s
  * `_renderCapabilitiesThree` for the two worked call sites.
+ *
+ * `knownRenderCapabilityNames(providers)`
+ *   → the union of names over the renderer registry (`window._egptRendererProviders`,
+ *     each entry registering its static `renderCapabilities` beside `makeProvider`) —
+ *     the "known" set saved render rows are partitioned against.
  *
  * ── Module format: CLASSIC dual CommonJS/window (matches every peer under
  *    lib/frqtl/compat/renderer/ — RenderShape.js, LightColor.js, Filters.js) ──
@@ -101,10 +107,33 @@ function universalRenderCapabilities(normalizeFieldDescriptor, RenderShapeRef, F
             description: 'Per-experiment default fullness-to-color ramp (LightColor.js — the one color authority).'
         }),
         normalizeFieldDescriptor({
-            name: 'renderBaseCanvas', type: 'number', unit: 'bool01', default: 1,
-            constraint: { min: 0, max: 1, integer: true },
+            name: 'renderBaseCanvas', type: 'boolean', default: true, engineVisible: false,
             description: 'Whether the particle/base layer composites into the scene before any ' +
-                'post-process pass (README §3). Both p5 and three honor this identically.'
+                'post-process pass (README §3). Both p5 and three honor this identically; the write ' +
+                'gate coerces a 0/1 control value to the boolean the providers read.'
+        })
+    ];
+}
+
+/**
+ * The scene external-mesh pair, declared by a provider with a mesh render path (three):
+ * `mesh` is read one hop away, in `RenderMesh.resolve(frame, renderOpts)` (priority #3,
+ * below a frame's `render.mesh` and a large object's `mesh`); `meshScale` scales the clones.
+ * @param {function} normalizeFieldDescriptor
+ * @returns {object[]} 2 normalized field descriptors.
+ */
+function meshRenderCapabilities(normalizeFieldDescriptor) {
+    return [
+        normalizeFieldDescriptor({
+            name: 'mesh', type: 'string', default: null,
+            description: 'Scene-default external glTF asset id (URL) every frame is drawn as, in 3D. ' +
+                'OPEN-ID like its per-frame twin render.mesh; unset draws the shape path.'
+        }),
+        normalizeFieldDescriptor({
+            name: 'meshScale', type: 'number', unit: 'multiplier', default: 1,
+            constraint: { min: 0.01, max: 100, integer: false },
+            description: 'Scene-wide scale multiplier for external-mesh clones (a frame\'s ' +
+                'render.meshScale overrides it per frame).'
         })
     ];
 }
@@ -120,13 +149,44 @@ function filterRenderCapabilities(normalizeFieldDescriptor, FiltersRef) {
     var filterNames = Object.keys(FiltersRef);
     for (var i = 0; i < filterNames.length; i++) {
         caps.push(normalizeFieldDescriptor({
-            name: 'filter.' + filterNames[i], type: 'number', unit: 'bool01', default: 0,
-            constraint: { min: 0, max: 1, integer: true },
+            name: 'filter.' + filterNames[i], type: 'boolean', default: false, engineVisible: false,
             description: 'Toggle the "' + filterNames[i] + '" post-process filter ' +
-                '(Filters.js — routed through filter()/removeFilter(), never setRenderOption).'
+                '(Filters.js — the runner routes the write to filter()/removeFilter(); a 0/1 ' +
+                'control value is coerced to the boolean).'
         }));
     }
     return caps;
+}
+
+/**
+ * The union of capability NAMES every registered renderer declares — the "known" set a
+ * saved render row is partitioned against (declared by the target / by another renderer /
+ * by none). Read off each registry entry's STATIC `renderCapabilities` (the providers
+ * register it beside `makeProvider`), so no provider is constructed and no name is listed
+ * by hand.
+ * @param {Object<string, {renderCapabilities:function}>} providers — `window._egptRendererProviders`.
+ * @returns {string[]} sorted, de-duplicated names.
+ * @throws {Error} when the registry is missing or an entry exposes no static renderCapabilities.
+ */
+function knownRenderCapabilityNames(providers) {
+    if (!providers || typeof providers !== 'object') {
+        throw new Error('[RenderCapabilitiesCommon.knownRenderCapabilityNames] requires the renderer ' +
+            'registry (window._egptRendererProviders); got ' + (providers === null ? 'null' : typeof providers) +
+            '. (FAIL-LOUD.)');
+    }
+    var seen = {};
+    var ids = Object.keys(providers);
+    for (var i = 0; i < ids.length; i++) {
+        var entry = providers[ids[i]];
+        if (!entry || typeof entry.renderCapabilities !== 'function') {
+            throw new Error('[RenderCapabilitiesCommon.knownRenderCapabilityNames] registered renderer "' +
+                ids[i] + '" exposes no static renderCapabilities() — every registry entry publishes its ' +
+                'capability descriptors beside makeProvider. (FAIL-LOUD.)');
+        }
+        var caps = entry.renderCapabilities();
+        for (var j = 0; j < caps.length; j++) { seen[caps[j].name] = true; }
+    }
+    return Object.keys(seen).sort();
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
@@ -134,6 +194,8 @@ function filterRenderCapabilities(normalizeFieldDescriptor, FiltersRef) {
 var RenderCapabilitiesCommon = {
     universalRenderCapabilities: universalRenderCapabilities,
     filterRenderCapabilities: filterRenderCapabilities,
+    knownRenderCapabilityNames: knownRenderCapabilityNames,
+    meshRenderCapabilities: meshRenderCapabilities,
     _identityMap: _identityMap
 };
 

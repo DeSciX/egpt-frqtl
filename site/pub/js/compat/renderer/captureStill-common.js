@@ -37,14 +37,18 @@
  *   JS task immediately before calling this (see the readback guarantee below).
  *
  * `meta` (both capture fns) carries the fields only the PROVIDER is the authority for:
- *   `{ cssWidth, cssHeight, physicsW, physicsH, filtersApplied, renderBaseCanvas }`.
+ *   `{ cssWidth, cssHeight, physicsW, physicsH, filtersApplied, renderBaseCanvas,
+ *      composited }`.
  *   `filtersApplied` MUST come from the provider's own ORDERED `_filters` list — never
  *   from the runner's unordered `_activeFilters` map, which is also blind to a direct BYO
  *   `prov.filter()` call and would therefore lie for exactly the BYO case.
+ *   `composited` is the TickData the provider last drew (its own retained `_lastTickData`);
+ *   its `universeData.tick` becomes the bag's `renderedTick` — the provider's REPORT of which
+ *   tick these pixels are, which the tap mechanism compares against its stamp.
  *
  * The returned bag is the §1a.4 provider shape:
  *   `{ pixels, width, height, cssWidth, cssHeight, physicsW, physicsH,
- *      filtersApplied, renderBaseCanvas }`
+ *      filtersApplied, renderBaseCanvas, renderedTick }`
  * The RUNNER then normalizes it into the generic tap bag (`lib/shim/render/render-stages`
  * `normalizeStill`, where `pixels` becomes the stage-agnostic `data` payload and the
  * dispatcher adds `stage`/`tick`/`pose`/`composedOf`/`renderOptions`). Providers never
@@ -160,7 +164,19 @@ function _meta(meta, width, height) {
               'be guessed from the buffer size (that is only right at 1:1). Got ' +
               String(meta.physicsW) + 'x' + String(meta.physicsH));
     }
+    // renderedTick is the TICK half of provenance, reported by the one party that knows which
+    // TickData these pixels were drawn from. The tap stamps `tick` off the LOOP, and the loop
+    // may have ticked past the last draw (a batched rAF frame renders only its last tick), so
+    // without this report nothing could tell a still labelled t from pixels of t+k.
+    var composited = meta.composited;
+    var renderedTick = composited && composited.universeData && composited.universeData.tick;
+    if (!(typeof renderedTick === 'number' && isFinite(renderedTick))) {
+        _fail('meta.composited must be the TickData this provider last drew (its retained ' +
+              '_lastTickData, carrying universeData.tick) — nothing has been composited, so ' +
+              'there is no tick these pixels could be labelled with');
+    }
     return {
+        renderedTick: renderedTick,
         width:  width,
         height: height,
         // cssWidth/Height DO default to the buffer dims: that is the IDENTITY case (a canvas

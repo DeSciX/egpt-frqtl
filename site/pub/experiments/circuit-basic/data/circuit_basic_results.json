@@ -1,0 +1,4225 @@
+{
+  "experiment": "circuit_basic",
+  "params": {
+    "engine": "wasm",
+    "seeds": [
+      1000,
+      1001,
+      1002,
+      1003,
+      1004,
+      1005,
+      1006,
+      1007,
+      1008,
+      1009,
+      1010,
+      1011,
+      1012,
+      1013,
+      1014,
+      1015,
+      1016,
+      1017,
+      1018,
+      1019
+    ],
+    "ticks": 3000,
+    "canvasSize": {
+      "w": 600,
+      "h": 400
+    },
+    "setupOptions": {},
+    "collectorOptions": {
+      "sampleInterval": 100
+    }
+  },
+  "seeds": [
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 7,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 15,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 24,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 796,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 896,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 993,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1089,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1189,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1283,
+          "probe_before_resistor": 26,
+          "probe_after_resistor": 16
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1380,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 21
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1479,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1571,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1661,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1745,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1816,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1859,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1885,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1884,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1889,
+          "probe_before_resistor": 61,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1896,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1906,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1882,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1860,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1863,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 61
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1871,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 52
+        }
+      ],
+      "seed": 1000
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 18,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 30,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 796,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 894,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 992,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1091,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1188,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1284,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 7
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1379,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 11
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1476,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 31
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1570,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1660,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1747,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1817,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1874,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1871,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 31
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1900,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1887,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 31
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1897,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 58
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1901,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 48
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 65
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1881,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 57
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1847,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 43
+        }
+      ],
+      "seed": 1001
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 10,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 16,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 799,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 898,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 997,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1094,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1192,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1290,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 10
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1387,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 15
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1482,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 21
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1579,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1667,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1757,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1829,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1864,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1879,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1886,
+          "probe_before_resistor": 65,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 59,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1895,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1878,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1892,
+          "probe_before_resistor": 63,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1911,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1912,
+          "probe_before_resistor": 59,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1866,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 46
+        }
+      ],
+      "seed": 1002
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 29,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 29,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 797,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 896,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 995,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1092,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1191,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 7
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1288,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 11
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1379,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 19
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1475,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 24
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1565,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1659,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1745,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1814,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1839,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1862,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1856,
+          "probe_before_resistor": 63,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1863,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1882,
+          "probe_before_resistor": 64,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1887,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1886,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1861,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 67
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1858,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1874,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 65
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1880,
+          "probe_before_resistor": 77,
+          "probe_after_resistor": 61
+        }
+      ],
+      "seed": 1003
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 6,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 22,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 897,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 995,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1090,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1189,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1285,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 7
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1383,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 9
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1478,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1570,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1660,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1752,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1829,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1861,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1864,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 26
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1889,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1884,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1893,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1889,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1896,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 56
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1905,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1869,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 79
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1850,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 50
+        }
+      ],
+      "seed": 1004
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 8,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 14,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 897,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 997,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1094,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1191,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1289,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1386,
+          "probe_before_resistor": 28,
+          "probe_after_resistor": 15
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1481,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1573,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1667,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1756,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1826,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1855,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1876,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 31
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1877,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1908,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1910,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1909,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1927,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1924,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1909,
+          "probe_before_resistor": 63,
+          "probe_after_resistor": 57
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1898,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1860,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 38
+        }
+      ],
+      "seed": 1005
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 2,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 17,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 799,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 898,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 996,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1093,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1190,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1289,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 8
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1385,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 19
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1482,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 29
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1576,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1668,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1752,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1818,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1866,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 31
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1894,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1902,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1918,
+          "probe_before_resistor": 63,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1923,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1926,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1933,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1917,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 58
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1908,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1884,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1863,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 51
+        }
+      ],
+      "seed": 1006
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 2,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 2,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 8,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 25,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 896,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 995,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1092,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1189,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 7
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1287,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 6
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1385,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 17
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1483,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 17
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1579,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1673,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1759,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1836,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1914,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 67,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1877,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1885,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1882,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 58
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1892,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1894,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1873,
+          "probe_before_resistor": 75,
+          "probe_after_resistor": 70
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1836,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 62
+        }
+      ],
+      "seed": 1007
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 199,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 299,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 399,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 499,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 599,
+          "probe_before_resistor": 15,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 699,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 797,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 897,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 997,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1095,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1193,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1289,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 11
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1381,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 15
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1478,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 27
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1573,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 27
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1667,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1752,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1817,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1850,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 48
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1876,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1894,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1889,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1886,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1892,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 60
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 58
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1862,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 32
+        }
+      ],
+      "seed": 1008
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 8,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 15,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 797,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 896,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 993,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1091,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1188,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1285,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 8
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1379,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 24
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1476,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1569,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1659,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 21
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1736,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1809,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 49
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1864,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1881,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 74,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 53
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1907,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 64,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 61,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1879,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1870,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1839,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 69
+        }
+      ],
+      "seed": 1009
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 22,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 797,
+          "probe_before_resistor": 28,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 895,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 995,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1094,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1190,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1284,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 12
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1375,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1471,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 25
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1568,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 21
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1660,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1735,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1809,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1847,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1857,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1881,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1903,
+          "probe_before_resistor": 75,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1885,
+          "probe_before_resistor": 67,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1892,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1914,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1920,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1893,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1868,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 43
+        }
+      ],
+      "seed": 1010
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 9,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 21,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 20,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 896,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 993,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1093,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1189,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1284,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 14
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1381,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1476,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 21
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1569,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 25
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1658,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1743,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1812,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1860,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1873,
+          "probe_before_resistor": 65,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1897,
+          "probe_before_resistor": 61,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1913,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1904,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1898,
+          "probe_before_resistor": 63,
+          "probe_after_resistor": 64
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1871,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 58
+        }
+      ],
+      "seed": 1011
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 6,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 14,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 797,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 896,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 996,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1095,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1194,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1291,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 14
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1389,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1483,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1578,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 27
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1667,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1747,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1810,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1859,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1898,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1914,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1911,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1922,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1919,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1895,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 53
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 48
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1893,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1887,
+          "probe_before_resistor": 54,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1858,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 48
+        }
+      ],
+      "seed": 1012
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 11,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 14,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 898,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 995,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1093,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1191,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1284,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 11
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1381,
+          "probe_before_resistor": 59,
+          "probe_after_resistor": 19
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1478,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1574,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1667,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1749,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1827,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1871,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1877,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1880,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 29
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1894,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1896,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1863,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1886,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1899,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 51
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 62
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1874,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 35
+        }
+      ],
+      "seed": 1013
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 299,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 399,
+          "probe_before_resistor": 4,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 499,
+          "probe_before_resistor": 7,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 599,
+          "probe_before_resistor": 19,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 699,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 795,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 893,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 992,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1088,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1184,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1280,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 10
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1378,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1471,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1565,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 53
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1652,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 19
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1739,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1809,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1848,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1878,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 47
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1881,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1869,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 52
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1873,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1869,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1886,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 56
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1884,
+          "probe_before_resistor": 73,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1884,
+          "probe_before_resistor": 69,
+          "probe_after_resistor": 68
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1898,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 54
+        }
+      ],
+      "seed": 1014
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 2,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 499,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 599,
+          "probe_before_resistor": 21,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 699,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 796,
+          "probe_before_resistor": 28,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 894,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 993,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1093,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1191,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1288,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 13
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1381,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 25
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1476,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1570,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 26
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1657,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1738,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1802,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1844,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1862,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 54
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1879,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 62,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1886,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 37
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1874,
+          "probe_before_resistor": 68,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1861,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 55
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1882,
+          "probe_before_resistor": 51,
+          "probe_after_resistor": 52
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1880,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 50
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1880,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1853,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 60
+        }
+      ],
+      "seed": 1015
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 2,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 5,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 13,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 30,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 897,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 996,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1096,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1194,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1292,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 10
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1383,
+          "probe_before_resistor": 33,
+          "probe_after_resistor": 20
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1478,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1573,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1667,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 29
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1756,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1827,
+          "probe_before_resistor": 35,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1890,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1891,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1904,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 54
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1910,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1938,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1931,
+          "probe_before_resistor": 49,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1900,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1889,
+          "probe_before_resistor": 67,
+          "probe_after_resistor": 48
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1889,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 66
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1875,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 56
+        }
+      ],
+      "seed": 1016
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 8,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 23,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 799,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 898,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 996,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1095,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1194,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1289,
+          "probe_before_resistor": 42,
+          "probe_after_resistor": 10
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1384,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 16
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1477,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 28
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1571,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 26
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1659,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1746,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 45
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1819,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1863,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1893,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1896,
+          "probe_before_resistor": 57,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1915,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 44
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1921,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1903,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 29
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1856,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1851,
+          "probe_before_resistor": 70,
+          "probe_after_resistor": 55
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1860,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 48
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1872,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 67
+        }
+      ],
+      "seed": 1017
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 1,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 3,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 14,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 19,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 798,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 897,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 995,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 2
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1093,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 3
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1191,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 4
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1290,
+          "probe_before_resistor": 32,
+          "probe_after_resistor": 8
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1383,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 22
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1480,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 23
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1571,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1662,
+          "probe_before_resistor": 39,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1738,
+          "probe_before_resistor": 34,
+          "probe_after_resistor": 36
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1810,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1851,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1860,
+          "probe_before_resistor": 61,
+          "probe_after_resistor": 42
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1869,
+          "probe_before_resistor": 45,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1888,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1898,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1901,
+          "probe_before_resistor": 40,
+          "probe_after_resistor": 38
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1915,
+          "probe_before_resistor": 52,
+          "probe_after_resistor": 40
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1925,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 49
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1916,
+          "probe_before_resistor": 53,
+          "probe_after_resistor": 52
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1906,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 49
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1879,
+          "probe_before_resistor": 60,
+          "probe_after_resistor": 50
+        }
+      ],
+      "seed": 1018
+    },
+    {
+      "params": {},
+      "timeSeries": [
+        {
+          "tick": 100,
+          "activeQuanta": 100,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 200,
+          "activeQuanta": 200,
+          "probe_before_resistor": 0,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 300,
+          "activeQuanta": 300,
+          "probe_before_resistor": 2,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 400,
+          "activeQuanta": 400,
+          "probe_before_resistor": 6,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 500,
+          "activeQuanta": 500,
+          "probe_before_resistor": 7,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 600,
+          "activeQuanta": 600,
+          "probe_before_resistor": 9,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 700,
+          "activeQuanta": 700,
+          "probe_before_resistor": 26,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 800,
+          "activeQuanta": 797,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 900,
+          "activeQuanta": 894,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 0
+        },
+        {
+          "tick": 1000,
+          "activeQuanta": 994,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1100,
+          "activeQuanta": 1090,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 1
+        },
+        {
+          "tick": 1200,
+          "activeQuanta": 1188,
+          "probe_before_resistor": 38,
+          "probe_after_resistor": 5
+        },
+        {
+          "tick": 1300,
+          "activeQuanta": 1288,
+          "probe_before_resistor": 41,
+          "probe_after_resistor": 11
+        },
+        {
+          "tick": 1400,
+          "activeQuanta": 1384,
+          "probe_before_resistor": 31,
+          "probe_after_resistor": 17
+        },
+        {
+          "tick": 1500,
+          "activeQuanta": 1477,
+          "probe_before_resistor": 27,
+          "probe_after_resistor": 20
+        },
+        {
+          "tick": 1600,
+          "activeQuanta": 1570,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 32
+        },
+        {
+          "tick": 1700,
+          "activeQuanta": 1665,
+          "probe_before_resistor": 50,
+          "probe_after_resistor": 43
+        },
+        {
+          "tick": 1800,
+          "activeQuanta": 1754,
+          "probe_before_resistor": 37,
+          "probe_after_resistor": 46
+        },
+        {
+          "tick": 1900,
+          "activeQuanta": 1832,
+          "probe_before_resistor": 47,
+          "probe_after_resistor": 31
+        },
+        {
+          "tick": 2000,
+          "activeQuanta": 1880,
+          "probe_before_resistor": 48,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2100,
+          "activeQuanta": 1882,
+          "probe_before_resistor": 58,
+          "probe_after_resistor": 35
+        },
+        {
+          "tick": 2200,
+          "activeQuanta": 1883,
+          "probe_before_resistor": 55,
+          "probe_after_resistor": 30
+        },
+        {
+          "tick": 2300,
+          "activeQuanta": 1894,
+          "probe_before_resistor": 61,
+          "probe_after_resistor": 39
+        },
+        {
+          "tick": 2400,
+          "activeQuanta": 1895,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 33
+        },
+        {
+          "tick": 2500,
+          "activeQuanta": 1917,
+          "probe_before_resistor": 44,
+          "probe_after_resistor": 34
+        },
+        {
+          "tick": 2600,
+          "activeQuanta": 1921,
+          "probe_before_resistor": 56,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2700,
+          "activeQuanta": 1917,
+          "probe_before_resistor": 43,
+          "probe_after_resistor": 49
+        },
+        {
+          "tick": 2800,
+          "activeQuanta": 1914,
+          "probe_before_resistor": 36,
+          "probe_after_resistor": 41
+        },
+        {
+          "tick": 2900,
+          "activeQuanta": 1919,
+          "probe_before_resistor": 46,
+          "probe_after_resistor": 52
+        },
+        {
+          "tick": 3000,
+          "activeQuanta": 1915,
+          "probe_before_resistor": 62,
+          "probe_after_resistor": 70
+        }
+      ],
+      "seed": 1019
+    }
+  ],
+  "aggregatedTimeSeries": [
+    {
+      "tick": 100,
+      "activeQuanta_mean": 100,
+      "activeQuanta_std": 0,
+      "activeQuanta_min": 100,
+      "activeQuanta_max": 100,
+      "probe_before_resistor_mean": 0,
+      "probe_before_resistor_std": 0,
+      "probe_before_resistor_min": 0,
+      "probe_before_resistor_max": 0,
+      "probe_after_resistor_mean": 0,
+      "probe_after_resistor_std": 0,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 0
+    },
+    {
+      "tick": 200,
+      "activeQuanta_mean": 199.95,
+      "activeQuanta_std": 0.21794494717703372,
+      "activeQuanta_min": 199,
+      "activeQuanta_max": 200,
+      "probe_before_resistor_mean": 0.15,
+      "probe_before_resistor_std": 0.47696960070847283,
+      "probe_before_resistor_min": 0,
+      "probe_before_resistor_max": 2,
+      "probe_after_resistor_mean": 0,
+      "probe_after_resistor_std": 0,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 0
+    },
+    {
+      "tick": 300,
+      "activeQuanta_mean": 299.9,
+      "activeQuanta_std": 0.3,
+      "activeQuanta_min": 299,
+      "activeQuanta_max": 300,
+      "probe_before_resistor_mean": 1.25,
+      "probe_before_resistor_std": 0.698212002188447,
+      "probe_before_resistor_min": 0,
+      "probe_before_resistor_max": 3,
+      "probe_after_resistor_mean": 0,
+      "probe_after_resistor_std": 0,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 0
+    },
+    {
+      "tick": 400,
+      "activeQuanta_mean": 399.9,
+      "activeQuanta_std": 0.3,
+      "activeQuanta_min": 399,
+      "activeQuanta_max": 400,
+      "probe_before_resistor_mean": 3,
+      "probe_before_resistor_std": 1.6431676725154984,
+      "probe_before_resistor_min": 0,
+      "probe_before_resistor_max": 6,
+      "probe_after_resistor_mean": 0,
+      "probe_after_resistor_std": 0,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 0
+    },
+    {
+      "tick": 500,
+      "activeQuanta_mean": 499.85,
+      "activeQuanta_std": 0.35707142142714254,
+      "activeQuanta_min": 499,
+      "activeQuanta_max": 500,
+      "probe_before_resistor_mean": 7.05,
+      "probe_before_resistor_std": 2.5194245374688244,
+      "probe_before_resistor_min": 4,
+      "probe_before_resistor_max": 14,
+      "probe_after_resistor_mean": 0.1,
+      "probe_after_resistor_std": 0.30000000000000004,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 1
+    },
+    {
+      "tick": 600,
+      "activeQuanta_mean": 599.85,
+      "activeQuanta_std": 0.35707142142714254,
+      "activeQuanta_min": 599,
+      "activeQuanta_max": 600,
+      "probe_before_resistor_mean": 18.15,
+      "probe_before_resistor_std": 4.819491674440366,
+      "probe_before_resistor_min": 9,
+      "probe_before_resistor_max": 29,
+      "probe_after_resistor_mean": 0.25,
+      "probe_after_resistor_std": 0.4330127018922193,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 1
+    },
+    {
+      "tick": 700,
+      "activeQuanta_mean": 699.85,
+      "activeQuanta_std": 0.35707142142714254,
+      "activeQuanta_min": 699,
+      "activeQuanta_max": 700,
+      "probe_before_resistor_mean": 30.15,
+      "probe_before_resistor_std": 4.767336782733102,
+      "probe_before_resistor_min": 20,
+      "probe_before_resistor_max": 40,
+      "probe_after_resistor_mean": 0.45,
+      "probe_after_resistor_std": 0.6689544080129827,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 2
+    },
+    {
+      "tick": 800,
+      "activeQuanta_mean": 797.4,
+      "activeQuanta_std": 1.0677078252031311,
+      "activeQuanta_min": 795,
+      "activeQuanta_max": 799,
+      "probe_before_resistor_mean": 34.95,
+      "probe_before_resistor_std": 4.153010955921017,
+      "probe_before_resistor_min": 28,
+      "probe_before_resistor_max": 45,
+      "probe_after_resistor_mean": 0.6,
+      "probe_after_resistor_std": 0.5830951894845301,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 2
+    },
+    {
+      "tick": 900,
+      "activeQuanta_mean": 896.15,
+      "activeQuanta_std": 1.4585952145814822,
+      "activeQuanta_min": 893,
+      "activeQuanta_max": 898,
+      "probe_before_resistor_mean": 38.45,
+      "probe_before_resistor_std": 5.6167161224331075,
+      "probe_before_resistor_min": 27,
+      "probe_before_resistor_max": 52,
+      "probe_after_resistor_mean": 0.6,
+      "probe_after_resistor_std": 0.66332495807108,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 2
+    },
+    {
+      "tick": 1000,
+      "activeQuanta_mean": 994.75,
+      "activeQuanta_std": 1.5771810295587503,
+      "activeQuanta_min": 992,
+      "activeQuanta_max": 997,
+      "probe_before_resistor_mean": 39.5,
+      "probe_before_resistor_std": 4.3531597719357835,
+      "probe_before_resistor_min": 32,
+      "probe_before_resistor_max": 46,
+      "probe_after_resistor_mean": 1.2,
+      "probe_after_resistor_std": 0.8717797887081347,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 3
+    },
+    {
+      "tick": 1100,
+      "activeQuanta_mean": 1092.55,
+      "activeQuanta_std": 2.108909670896314,
+      "activeQuanta_min": 1088,
+      "activeQuanta_max": 1096,
+      "probe_before_resistor_mean": 42.75,
+      "probe_before_resistor_std": 6.7370245657857,
+      "probe_before_resistor_min": 31,
+      "probe_before_resistor_max": 56,
+      "probe_after_resistor_mean": 2.1,
+      "probe_after_resistor_std": 1.2609520212918492,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 5
+    },
+    {
+      "tick": 1200,
+      "activeQuanta_mean": 1190.3,
+      "activeQuanta_std": 2.4103941586387903,
+      "activeQuanta_min": 1184,
+      "activeQuanta_max": 1194,
+      "probe_before_resistor_mean": 44.2,
+      "probe_before_resistor_std": 7.0611613775638915,
+      "probe_before_resistor_min": 32,
+      "probe_before_resistor_max": 56,
+      "probe_after_resistor_mean": 4,
+      "probe_after_resistor_std": 1.6431676725154984,
+      "probe_after_resistor_min": 0,
+      "probe_after_resistor_max": 7
+    },
+    {
+      "tick": 1300,
+      "activeQuanta_mean": 1286.95,
+      "activeQuanta_std": 3.0573681492420897,
+      "activeQuanta_min": 1280,
+      "activeQuanta_max": 1292,
+      "probe_before_resistor_mean": 43.35,
+      "probe_before_resistor_std": 7.938986081358248,
+      "probe_before_resistor_min": 26,
+      "probe_before_resistor_max": 57,
+      "probe_after_resistor_mean": 10.05,
+      "probe_after_resistor_std": 2.8892040426387333,
+      "probe_after_resistor_min": 4,
+      "probe_after_resistor_max": 16
+    },
+    {
+      "tick": 1400,
+      "activeQuanta_mean": 1382.15,
+      "activeQuanta_std": 3.3056769352131194,
+      "activeQuanta_min": 1375,
+      "activeQuanta_max": 1389,
+      "probe_before_resistor_mean": 42.25,
+      "probe_before_resistor_std": 8.549122762014825,
+      "probe_before_resistor_min": 28,
+      "probe_before_resistor_max": 59,
+      "probe_after_resistor_mean": 19.05,
+      "probe_after_resistor_std": 4.652687395473717,
+      "probe_after_resistor_min": 9,
+      "probe_after_resistor_max": 28
+    },
+    {
+      "tick": 1500,
+      "activeQuanta_mean": 1477.85,
+      "activeQuanta_std": 3.3207679834640667,
+      "activeQuanta_min": 1471,
+      "activeQuanta_max": 1483,
+      "probe_before_resistor_mean": 40,
+      "probe_before_resistor_std": 5.291502622129181,
+      "probe_before_resistor_min": 27,
+      "probe_before_resistor_max": 47,
+      "probe_after_resistor_mean": 26,
+      "probe_after_resistor_std": 4.2895221179054435,
+      "probe_after_resistor_min": 17,
+      "probe_after_resistor_max": 33
+    },
+    {
+      "tick": 1600,
+      "activeQuanta_mean": 1571.7,
+      "activeQuanta_std": 3.9127995093027708,
+      "activeQuanta_min": 1565,
+      "activeQuanta_max": 1579,
+      "probe_before_resistor_mean": 45.45,
+      "probe_before_resistor_std": 6.037176492367935,
+      "probe_before_resistor_min": 36,
+      "probe_before_resistor_max": 58,
+      "probe_after_resistor_mean": 33.95,
+      "probe_after_resistor_std": 7.896043312951114,
+      "probe_after_resistor_min": 21,
+      "probe_after_resistor_max": 53
+    },
+    {
+      "tick": 1700,
+      "activeQuanta_mean": 1662.75,
+      "activeQuanta_std": 4.928234978164089,
+      "activeQuanta_min": 1652,
+      "activeQuanta_max": 1673,
+      "probe_before_resistor_mean": 44.35,
+      "probe_before_resistor_std": 5.0722283071644165,
+      "probe_before_resistor_min": 36,
+      "probe_before_resistor_max": 57,
+      "probe_after_resistor_mean": 34.85,
+      "probe_after_resistor_std": 6.958986995245788,
+      "probe_after_resistor_min": 19,
+      "probe_after_resistor_max": 47
+    },
+    {
+      "tick": 1800,
+      "activeQuanta_mean": 1747.3,
+      "activeQuanta_std": 7.239475119095305,
+      "activeQuanta_min": 1735,
+      "activeQuanta_max": 1759,
+      "probe_before_resistor_mean": 43.25,
+      "probe_before_resistor_std": 6.098155458825234,
+      "probe_before_resistor_min": 34,
+      "probe_before_resistor_max": 60,
+      "probe_after_resistor_mean": 39.3,
+      "probe_after_resistor_std": 4.637887450122092,
+      "probe_after_resistor_min": 28,
+      "probe_after_resistor_max": 46
+    },
+    {
+      "tick": 1900,
+      "activeQuanta_mean": 1818.4,
+      "activeQuanta_std": 9.140021881811881,
+      "activeQuanta_min": 1802,
+      "activeQuanta_max": 1836,
+      "probe_before_resistor_mean": 45.15,
+      "probe_before_resistor_std": 6.687862139727463,
+      "probe_before_resistor_min": 31,
+      "probe_before_resistor_max": 56,
+      "probe_after_resistor_mean": 37.75,
+      "probe_after_resistor_std": 5.638040439727264,
+      "probe_after_resistor_min": 28,
+      "probe_after_resistor_max": 50
+    },
+    {
+      "tick": 2000,
+      "activeQuanta_mean": 1861.65,
+      "activeQuanta_std": 13.495462200310147,
+      "activeQuanta_min": 1839,
+      "activeQuanta_max": 1890,
+      "probe_before_resistor_mean": 44.85,
+      "probe_before_resistor_std": 4.186585721085859,
+      "probe_before_resistor_min": 36,
+      "probe_before_resistor_max": 53,
+      "probe_after_resistor_mean": 38.75,
+      "probe_after_resistor_std": 5.0386009963084,
+      "probe_after_resistor_min": 30,
+      "probe_after_resistor_max": 48
+    },
+    {
+      "tick": 2100,
+      "activeQuanta_mean": 1878.15,
+      "activeQuanta_std": 13.741451888355902,
+      "activeQuanta_min": 1857,
+      "activeQuanta_max": 1914,
+      "probe_before_resistor_mean": 47.55,
+      "probe_before_resistor_std": 9.09106704408234,
+      "probe_before_resistor_min": 31,
+      "probe_before_resistor_max": 65,
+      "probe_after_resistor_mean": 36.75,
+      "probe_after_resistor_std": 6.59450528849587,
+      "probe_after_resistor_min": 26,
+      "probe_after_resistor_max": 54
+    },
+    {
+      "tick": 2200,
+      "activeQuanta_mean": 1887,
+      "activeQuanta_std": 12.581732790041283,
+      "activeQuanta_min": 1856,
+      "activeQuanta_max": 1914,
+      "probe_before_resistor_mean": 49.45,
+      "probe_before_resistor_std": 8.151533598041539,
+      "probe_before_resistor_min": 34,
+      "probe_before_resistor_max": 65,
+      "probe_after_resistor_mean": 38.95,
+      "probe_after_resistor_std": 6.6968276071584825,
+      "probe_after_resistor_min": 29,
+      "probe_after_resistor_max": 54
+    },
+    {
+      "tick": 2300,
+      "activeQuanta_mean": 1894.1,
+      "activeQuanta_std": 12.44548110761492,
+      "activeQuanta_min": 1863,
+      "activeQuanta_max": 1918,
+      "probe_before_resistor_mean": 54.3,
+      "probe_before_resistor_std": 9.17660067781093,
+      "probe_before_resistor_min": 39,
+      "probe_before_resistor_max": 74,
+      "probe_after_resistor_mean": 38.2,
+      "probe_after_resistor_std": 6.493073232299171,
+      "probe_after_resistor_min": 23,
+      "probe_after_resistor_max": 50
+    },
+    {
+      "tick": 2400,
+      "activeQuanta_mean": 1897.25,
+      "activeQuanta_std": 16.555588180430195,
+      "activeQuanta_min": 1869,
+      "activeQuanta_max": 1938,
+      "probe_before_resistor_mean": 51.5,
+      "probe_before_resistor_std": 9.297849213662266,
+      "probe_before_resistor_min": 35,
+      "probe_before_resistor_max": 75,
+      "probe_after_resistor_mean": 39.6,
+      "probe_after_resistor_std": 6.41404708432983,
+      "probe_after_resistor_min": 31,
+      "probe_after_resistor_max": 53
+    },
+    {
+      "tick": 2500,
+      "activeQuanta_mean": 1897.7,
+      "activeQuanta_std": 18.555592148999178,
+      "activeQuanta_min": 1863,
+      "activeQuanta_max": 1931,
+      "probe_before_resistor_mean": 51.3,
+      "probe_before_resistor_std": 8.40892383126402,
+      "probe_before_resistor_min": 37,
+      "probe_before_resistor_max": 68,
+      "probe_after_resistor_mean": 40.1,
+      "probe_after_resistor_std": 5.61159513863928,
+      "probe_after_resistor_min": 30,
+      "probe_after_resistor_max": 58
+    },
+    {
+      "tick": 2600,
+      "activeQuanta_mean": 1895.65,
+      "activeQuanta_std": 17.39619211206866,
+      "activeQuanta_min": 1861,
+      "activeQuanta_max": 1933,
+      "probe_before_resistor_mean": 52.45,
+      "probe_before_resistor_std": 6.061971626459497,
+      "probe_before_resistor_min": 40,
+      "probe_before_resistor_max": 64,
+      "probe_after_resistor_mean": 43,
+      "probe_after_resistor_std": 7.54983443527075,
+      "probe_after_resistor_min": 29,
+      "probe_after_resistor_max": 58
+    },
+    {
+      "tick": 2700,
+      "activeQuanta_mean": 1894.4,
+      "activeQuanta_std": 18.0842472887317,
+      "activeQuanta_min": 1856,
+      "activeQuanta_max": 1925,
+      "probe_before_resistor_mean": 51.3,
+      "probe_before_resistor_std": 8.32526275861609,
+      "probe_before_resistor_min": 33,
+      "probe_before_resistor_max": 67,
+      "probe_after_resistor_mean": 49.4,
+      "probe_after_resistor_std": 7.611832893594027,
+      "probe_after_resistor_min": 35,
+      "probe_after_resistor_max": 67
+    },
+    {
+      "tick": 2800,
+      "activeQuanta_mean": 1891.35,
+      "activeQuanta_std": 18.98756171813537,
+      "activeQuanta_min": 1851,
+      "activeQuanta_max": 1920,
+      "probe_before_resistor_mean": 52.6,
+      "probe_before_resistor_std": 9.697422337920527,
+      "probe_before_resistor_min": 36,
+      "probe_before_resistor_max": 73,
+      "probe_after_resistor_mean": 49.1,
+      "probe_after_resistor_std": 8.560957890329796,
+      "probe_after_resistor_min": 39,
+      "probe_after_resistor_max": 66
+    },
+    {
+      "tick": 2900,
+      "activeQuanta_mean": 1884.85,
+      "activeQuanta_std": 15.004249398087197,
+      "activeQuanta_min": 1860,
+      "activeQuanta_max": 1919,
+      "probe_before_resistor_mean": 51,
+      "probe_before_resistor_std": 9.06642156531451,
+      "probe_before_resistor_min": 37,
+      "probe_before_resistor_max": 75,
+      "probe_after_resistor_mean": 52.55,
+      "probe_after_resistor_std": 10.846543228144162,
+      "probe_after_resistor_min": 37,
+      "probe_after_resistor_max": 79
+    },
+    {
+      "tick": 3000,
+      "activeQuanta_mean": 1866.85,
+      "activeQuanta_std": 18.097720850980103,
+      "activeQuanta_min": 1836,
+      "activeQuanta_max": 1915,
+      "probe_before_resistor_mean": 53.2,
+      "probe_before_resistor_std": 8.80113629027525,
+      "probe_before_resistor_min": 35,
+      "probe_before_resistor_max": 77,
+      "probe_after_resistor_mean": 52.25,
+      "probe_after_resistor_std": 10.596579636845089,
+      "probe_after_resistor_min": 32,
+      "probe_after_resistor_max": 70
+    }
+  ],
+  "summary": {
+    "activeQuanta_mean": 1866.85,
+    "activeQuanta_std": 18.097720850980103,
+    "activeQuanta_min": 1836,
+    "activeQuanta_max": 1915,
+    "probe_before_resistor_mean": 53.2,
+    "probe_before_resistor_std": 8.80113629027525,
+    "probe_before_resistor_min": 35,
+    "probe_before_resistor_max": 77,
+    "probe_after_resistor_mean": 52.25,
+    "probe_after_resistor_std": 10.596579636845089,
+    "probe_after_resistor_min": 32,
+    "probe_after_resistor_max": 70
+  }
+}

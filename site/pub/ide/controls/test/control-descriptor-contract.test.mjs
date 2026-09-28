@@ -8,7 +8,7 @@
  * .test.mjs and lib/shim/notebook/test/cell-attrs-contract.test.mjs — the established
  * "owner directory, node --test sweep" convention for a pure-JS, engine-opaque
  * contract). Every assertion is DRIVEN OFF THE EXPORTED LISTS (KINDS,
- * REQUIRED_KEYS_BY_KIND, MATRIX_COLUMN_KEYS, MATRIX_EFFECT_OPTION_KEYS, CHANNELS) —
+ * REQUIRED_KEYS_BY_KIND, CHANNELS) —
  * never a hand-copied kind/key list — so adding a kind or a required key to the
  * schema automatically extends what this test covers.
  *
@@ -45,8 +45,6 @@ const {
     DEFAULT_CHANNEL,
     DEFAULT_CHANNEL_KINDS,
     REQUIRED_KEYS_BY_KIND,
-    MATRIX_COLUMN_KEYS,
-    MATRIX_EFFECT_OPTION_KEYS,
     BIND_KEYS,
     ACTIONS,
     PLACE_KEYS,
@@ -58,7 +56,7 @@ const {
 
 /** A minimal, VALID fixture per kind — the exact shipped shapes this schema codifies
  *  (SphereEmitter.controls for scalar, three-provider getCameraControl for camera,
- *  RenderTiers.buildTierMatrixSpec for matrix, fx-experiment _buildLoopControl for
+ *  fx-experiment _buildLoopControl for
  *  loop). Kept in ONE place so every test below shares the same ground truth. */
 function validFixture(kind, id) {
     switch (kind) {
@@ -76,23 +74,6 @@ function validFixture(kind, id) {
                 setOrbit: function (spec) { /* no-op */ },
                 getOrbit: function () { return { azimuth: 90, elevation: 0, distance: 100 }; },
                 setPreset: function (name) { /* no-op */ }
-            };
-        case 'matrix':
-            return {
-                kind: 'matrix', id: id || 'tierMatrix',
-                effectOptions: [
-                    { value: 'none', label: 'None', mode: 'chroma', paint: 'sphere' },
-                    { value: 'flash', label: 'flash', mode: 'additive-white', paint: 'crisp' }
-                ],
-                columns: [{
-                    label: 'L0',
-                    isHidden: function () { return false; },
-                    setHidden: function (v) { /* no-op */ },
-                    effectValue: function () { return 'none'; },
-                    setEffect: function (v) { /* no-op */ },
-                    count: function (groups) { return 0; }
-                }],
-                setAllHidden: function (v) { /* no-op */ }
             };
         case 'loop':
             return {
@@ -280,29 +261,6 @@ describe('control-descriptor — (5) normalize never mutates the input', functio
             }
         });
     }
-});
-
-/* ── (6) Matrix inner-shape validation (columns / effectOptions) ─────────────── */
-
-describe('control-descriptor — (6) matrix inner-shape (columns/effectOptions sub-keys)', function () {
-    for (const key of MATRIX_COLUMN_KEYS) {
-        test(`a matrix column missing "${key}" throws`, function () {
-            const f = validFixture('matrix');
-            delete f.columns[0][key];
-            assert.throws(() => normalizeControlDescriptor(f), /columns\[0\]/);
-        });
-    }
-    for (const key of MATRIX_EFFECT_OPTION_KEYS) {
-        test(`a matrix effectOptions entry missing "${key}" throws`, function () {
-            const f = validFixture('matrix');
-            delete f.effectOptions[0][key];
-            assert.throws(() => normalizeControlDescriptor(f), /effectOptions\[0\]/);
-        });
-    }
-    test('an empty columns array is valid (a zero-row matrix is legal)', function () {
-        const f = validFixture('matrix'); f.columns = [];
-        assert.doesNotThrow(() => normalizeControlDescriptor(f));
-    });
 });
 
 /* ── (7) Scalar bind — WS gym-controls-as-sugar binds+ControlSync FINAL design

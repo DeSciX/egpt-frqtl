@@ -109,6 +109,10 @@ export function bootParityCore(spec) {
         var router = engineRouter({ mode: 'cdn', engine: 'wasm', base: base });
         var lists = buildScriptListsFull(router);
         var extras = spec.extraScripts.map(function (p) { return { src: router.resolve(p) }; });
+        // The in-page PATH DOOR, published under the same name stack-boot publishes it: a
+        // classic script resolving a package asset at run time (FrqtlVision.record's lazily
+        // loaded encoder) asks the router, whichever boot loaded it.
+        window._egptResolveFrqtl = function (relPath) { return router.resolve(relPath); };
 
         await injectSequence(lists.ENGINE);
         await injectSequence(lists.RENDERER);

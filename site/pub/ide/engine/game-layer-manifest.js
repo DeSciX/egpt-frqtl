@@ -214,13 +214,6 @@ export var OBJECT_SCRIPTS = [
     // goldens or corpus rows should have window.CameraPath available. Resolves
     // runner.cameraControl LAZILY at attach() time, so position here is readability.
     'objects/objects/CameraPath.js',
-    // FlightRecorder (CEO-approved 2026-08-18): the JOIN of the two objects above —
-    // CameraPath flies but captures nothing, FrqtlVision captures but cannot fly, and every
-    // consumer wanting "record the flight" was writing the same glue. Zero physics, pure
-    // composition. In the shared roster for the same reason as CameraPath: any page taking
-    // pose-addressed goldens or corpus rows wants window.FlightRecorder available. Resolves
-    // both collaborators LAZILY at attach(), so position here is readability.
-    'objects/objects/FlightRecorder.js',
     // setupSphereEmitter3D (ws-experiments-walkthrough Bite 4b): PROMOTED from a
     // per-experiment setup script into the shared roster because its CLASS changed —
     // it now backs a first-class palette OBJECT (SphereEmitter, below / the

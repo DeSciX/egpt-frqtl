@@ -29,7 +29,7 @@
  *   _routerMathWasmUrl:    router.mathWasmUrl,
  *   _routerMathWasmModuleUrl: router.mathWasmModuleUrl,
  *   _routerMathBackend:    router.mathBackend,
- *   _routerResolve:        router.resolve
+ *   _router:               router
  * });
  */
 
@@ -53,10 +53,13 @@ var _mathWasmUrl = '';
 var _mathWasmModuleUrl = '';
 var _engine      = 'js';
 var _mathBackend = 'js-reference';  // M4: router-resolved backend id (default)
-// E2a: the engineRouter `resolve` threaded in by Runtime.init (FraqtlIde passes
-// router.resolve). frqtl.ensureEngine uses it to boot the engine stack via the
-// ONE path authority — the runtime never imports a router or lib/frqtl/objects.
-var _routerResolve = null;
+// E2a: the engineRouter INSTANCE threaded in by Runtime.init (FraqtlIde passes
+// `router`). frqtl.ensureEngine passes it straight to ensureEngineStack(router),
+// which uses BOTH `.resolve` (locate stack-boot.js) and `.ensureBrowserPathMap()`
+// (set the page's window._egptEnginePathMap precondition — R1, ws-stackboot-dev-map
+// SEAM RULING) — the runtime itself never imports a router or lib/frqtl/objects,
+// it only carries the instance FraqtlIde already built.
+var _router = null;
 
 // Single-executor guard (P1 — WS-CODE-SINGLE-RUN).
 // Runtime.init() may be called multiple times (StrictMode double-mount,
@@ -115,32 +118,30 @@ var _renderObj = {
  *     (WS-NOTEBOOK-IMPORT B1; architect build-gate ruling B). The module takes
  *     this object as a passed `frqtl` param and destructures the sugar from it.
  *
- * The 15 SUGAR GETTERS read the window globals the game layer installs. They are
- * THROWING getters: reading one before ensureEngine() has booted the stack FAILS
- * LOUD rather than returning undefined (a silent undefined would surface as an
- * opaque "PointSource is not a constructor" deep inside the setup module).
+ * EVERY member that reads a game-layer global goes through `_sugar(name)` — the ONE
+ * reader — so reading one before ensureEngine() has booted the stack FAILS LOUD,
+ * naming the global and the gate, rather than yielding undefined or null. A soft
+ * return is exactly what turns a boot-ordering defect into an opaque
+ * property-access TypeError one frame later ("Cannot read properties of null
+ * (reading 'build')" — FRAQTL #73); the throw names what was unavailable instead.
+ * That covers the constructor members (`FrqtlApp`, `RecipeContext`) and `Universe`
+ * as well as the 15 sugar getters: there is no soft residual.
  *
  * The boot gate is `ensureEngine()` — the MANDATORY FAIL-LOUD entry point (it
  * rejects if Runtime.init did not thread a router resolve). Every gallery builder
  * cell `await`s it before touching ANY caps.frqtl member, so on the gallery paths
  * nothing is read pre-boot.
- *
- * Scope note (auditor ESCALATE-1, architect ruling (b)): the strong throwing
- * guarantee above applies to the SUGAR GETTERS specifically. `FrqtlApp`
- * and `Universe` are PRE-EXISTING members whose pre-boot behavior is softer —
- * FrqtlApp logs an error + returns null; Universe returns null — rather
- * than throwing. That residual is intentionally LEFT as-is (out of this
- * workstream's scope; tightening a shared surface other callers may rely on needs
- * its own gate + caller audit). It is harmless on the gallery paths because of the
- * mandatory ensureEngine() gate; do NOT read it as "all caps.frqtl members throw".
  */
+// The ONE reader for a game-layer global behind caps.frqtl — the sugar getters AND
+// the constructor members (FrqtlApp, RecipeContext, Universe). Names the missing
+// global and the gate; never returns undefined/null for a caller to trip over later.
 function _sugar(name) {
     var v = (typeof window !== 'undefined') ? window[name] : undefined;
     if (v === undefined || v === null) {
         throw new Error(
-            '[frqtl] sugar object "' + name + '" is not available — the engine/game layer ' +
+            '[frqtl] game-layer global "' + name + '" is not available — the engine/game layer ' +
             'is not booted yet. A builder cell must `await frqtl.ensureEngine()` before it ' +
-            'reads caps.frqtl sugar (or before it calls a setup module that does). (FAIL-LOUD.)'
+            'reads caps.frqtl (or before it calls a setup module that does). (FAIL-LOUD.)'
         );
     }
     return v;
@@ -148,40 +149,31 @@ function _sugar(name) {
 
 var _frqtlObj = {
     FrqtlApp: function (opts) {
-        if (typeof window.FrqtlApp === 'undefined') {
-            _consoleObj.error('[frqtl] FrqtlApp is not loaded. Engine may not be booted yet.');
-            return null;
-        }
-        return new window.FrqtlApp(opts);
+        return new (_sugar('FrqtlApp'))(opts);
     },
     // The frozen recipe-facade (lib/frqtl/objects/RecipeContext.js) a saved
     // project's `buildExperiment(exp)` recipe is evaluated against — exposed here so
     // a notebook RECIPE-shape canvas cell (setup-builder.js `shape:'recipe'`) can
     // build the SAME `exp.init()/addObject()` recipe the STUDIO blank page + the
     // walkthrough rungs run, instead of the `(frqtl,universe,options)` setup-factory
-    // form. Booted by ensureEngine() (RecipeContext.js is in the game-layer roster);
-    // FAIL-SOFT-null pre-boot exactly like FrqtlApp above.
+    // form. Booted by ensureEngine() (RecipeContext.js is the LAST entry of the
+    // game-layer roster); FAIL-LOUD through _sugar exactly like FrqtlApp above.
     RecipeContext: function (opts) {
-        if (typeof window.RecipeContext === 'undefined') {
-            _consoleObj.error('[frqtl] RecipeContext is not loaded. Engine may not be booted yet.');
-            return null;
-        }
-        return new window.RecipeContext(opts);
+        return new (_sugar('RecipeContext'))(opts);
     },
     // Boot the engine + game layer (so FrqtlApp + the sugar getters are
     // live) WITHOUT importing GraphicsPane (upward-arrow veto) or lib/frqtl/objects
     // (cross-arrow veto). Same canonical stack-boot authority GraphicsPane uses,
-    // via the router-resolve threaded by Runtime.init. The builder cell awaits this
-    // before constructing the runner / calling its setup module. FAIL-LOUD if init
-    // never threaded a router resolve. Idempotent + cached (ensureEngineStack).
+    // via the router threaded by Runtime.init. The builder cell awaits this before
+    // constructing the runner / calling its setup module. FAIL-LOUD if init never
+    // threaded a router. Idempotent + cached (ensureEngineStack).
     ensureEngine: function () {
-        if (typeof _routerResolve !== 'function') {
+        if (!_router) {
             return Promise.reject(new Error(
-                '[frqtl] ensureEngine unavailable: Runtime.init did not thread a router resolve ' +
-                '(_routerResolve). (FAIL-LOUD.)'
+                '[frqtl] ensureEngine unavailable: Runtime.init did not thread a router (_router). (FAIL-LOUD.)'
             ));
         }
-        return ensureEngineStack(_routerResolve);
+        return ensureEngineStack(_router);
     },
     // E2c: validate + map a driving-knob assignment against the SINGLE knob
     // authority (lib/shim/notebook/knob.js), returning the setup-factory option
@@ -212,7 +204,7 @@ var _frqtlObj = {
     get Charge()           { return _sugar('Charge'); },
     get CollisionTypes()   { return _sugar('CollisionTypes'); },
     get CollisionActions() { return _sugar('CollisionActions'); },
-    get Universe() { return window.EGPTUniverse || null; }
+    get Universe() { return _sugar('EGPTUniverse'); }
 };
 
 /* ── init ───────────────────────────────────────────────────────────── */
@@ -240,9 +232,11 @@ var _frqtlObj = {
  * @param {string} [opts._routerMathBackend]
  *   Router-resolved backend id ('js-reference' | 'wasm-math'). Normalized
  *   'wasm' → 'wasm-math' internally.
- * @param {Function} [opts._routerResolve]
- *   The `engineRouter.resolve` function, threaded so `frqtl.ensureEngine` boots
- *   the stack via the single path authority without importing the router directly.
+ * @param {import('../engine/router.js').EngineRouter} [opts._router]
+ *   The engineRouter() INSTANCE itself, threaded so `frqtl.ensureEngine` boots the
+ *   stack via the single path authority (`.resolve`) and sets the page's
+ *   window._egptEnginePathMap precondition (`.ensureBrowserPathMap()` — R1,
+ *   ws-stackboot-dev-map SEAM RULING) without importing the router directly.
  * @returns {Promise<void>} Resolves when the physics engine is ready. Rejects
  *   (FAIL-LOUD) if the engine boot fails.
  *
@@ -254,7 +248,7 @@ var _frqtlObj = {
  *   _routerMathWasmUrl:       router.mathWasmUrl,
  *   _routerMathWasmModuleUrl: router.mathWasmModuleUrl,
  *   _routerMathBackend:       router.mathBackend,
- *   _routerResolve:           router.resolve
+ *   _router:                  router
  * });
  */
 function init(opts) {
@@ -272,10 +266,10 @@ function init(opts) {
     var _requestedBackend = opts.mathBackend || opts._routerMathBackend || 'js-reference';
     if (_requestedBackend === 'wasm') { _requestedBackend = 'wasm-math'; }
     _mathBackend = _requestedBackend;
-    // E2a: thread the engineRouter resolve so frqtl.ensureEngine boots the engine
-    // stack via the one path authority (FraqtlIde passes router.resolve). A bare
-    // function reference is safe — engineRouter.resolve is a free closure (no this).
-    if (typeof opts._routerResolve === 'function') { _routerResolve = opts._routerResolve; }
+    // E2a: thread the engineRouter INSTANCE so frqtl.ensureEngine boots the engine
+    // stack via the one path authority AND sets the page's window._egptEnginePathMap
+    // precondition (R1) — FraqtlIde passes the whole `router` object it already built.
+    if (opts._router && typeof opts._router.resolve === 'function') { _router = opts._router; }
 
     // M4 fix: a view's ensureMath() may have ALREADY created the SDK before init
     // ran (child effects fire before parent effects — the ?preset=codec deep-link
@@ -409,11 +403,41 @@ function _runMath(code, fileId, sourceUrl) {
         _consoleObj.error(msg);
         Bus.emit('run:result', { source: 'math', ok: false, error: msg });
     }).finally(function () {
-        // Reset the active math provider's per-run scope (arena epoch increment
-        // for wasm-math; no-op for js-reference). Runtime owns this call and
-        // calls DOWN through the registry — providers must not subscribe to Bus.
-        MathBackendRegistry.resetScope();
+        // THIS lane's run unit is the whole buffer: nothing the user can name
+        // outlives it, so the buffer IS the math scope and it ends here.
+        resetMathScope();
     });
+}
+
+/**
+ * End the active math backend's value scope and begin a fresh one.
+ *
+ * For `wasm-math` this drains the WASM arena and increments its epoch, so EVERY
+ * handle minted before the call is dead — a later use throws
+ * `arena:stale-handle`. For `js-reference` it is a no-op.
+ *
+ * THE SCOPE RULE (FRAQTL issue #67): a math scope is one RUN, and the caller
+ * that knows what a run is owns the boundary. Two run units exist, each stated
+ * once: the `run()` lane's unit is one code buffer (it calls this in its own
+ * `finally`); a notebook's unit is one notebook run, so `NotebookKernel` calls
+ * this where its binding store's lifetime begins and ends. A CELL is NOT a run —
+ * a cell's declared outputs are committed into the kernel's binding store and
+ * must outlive the cell, which is why `runCell()` deliberately does not call it.
+ *
+ * Runtime is the SOLE owner of the `MathBackendRegistry.resetScope()` call above
+ * the shim (providers must never subscribe to Bus to reset themselves —
+ * inverted-arrow VETO); this method is the contract consumers call instead.
+ *
+ * @returns {void}
+ *
+ * @example
+ * // A host that owns its own run unit brackets it:
+ * Runtime.resetMathScope();          // fresh scope — prior values are now dead
+ * await Runtime.runCell({ ... });    // values minted here survive
+ * await Runtime.runCell({ ... });    // ...and are usable here
+ */
+function resetMathScope() {
+    MathBackendRegistry.resetScope();
 }
 
 /* ── ES-module math execution (mirrors sdk editor test-runner-worker.js) ──
@@ -526,7 +550,11 @@ function _runMathModule(code, sdk, sourceUrl) {
  * It REUSES the same machinery as the fire-and-forget lane (no duplication):
  *   - _ensureMathSdk()                          (resolved SDK + backend select)
  *   - the stashed-console tee (the 7cc5520 lesson — observers never re-emit)
- *   - MathBackendRegistry.resetScope() in a .finally() (arena epoch per run)
+ *
+ * It does NOT end the math scope: a cell is not a run (FRAQTL issue #67). Its
+ * declared outputs are committed into the caller's binding store and must stay
+ * usable in later cells, so the scope boundary belongs to whoever owns that
+ * store — see `resetMathScope()`.
  *
  * Unlike the fire-and-forget lane, a cell body is wrapped as
  *   `async (caps, inputs) => { <body> }`
@@ -756,7 +784,6 @@ function runCell(spec) {
     // { ok:false, error } below.
     return _ensureMathSdk().then(function (sdk) {
         var restoreTee = _installConsoleTee();
-        var resetScopeDone = false;
         return Promise.resolve().then(function () {
             var caps = _cellCaps(lane, sdk, displayFn);
             // CELL-AS-MODULE (B2): a body with a top-level `import` cannot run via
@@ -784,13 +811,11 @@ function runCell(spec) {
             return { outputs: {}, ok: false, error: msg };
         }).finally(function () {
             restoreTee();
-            if (!resetScopeDone) {
-                resetScopeDone = true;
-                // Reset the active math provider's per-run scope (arena epoch for
-                // wasm-math; no-op for js-reference). Runtime owns this; providers
-                // never subscribe to Bus. Mirrors the run() lane's .finally().
-                MathBackendRegistry.resetScope();
-            }
+            // NO math-scope reset here. A cell is not a run: the values this cell
+            // just returned are about to be committed into the caller's binding
+            // store, and draining the arena would make every one of them a stale
+            // handle before the next cell could read it (FRAQTL issue #67). The
+            // scope boundary is the binding store's — see resetMathScope().
         });
     }).catch(function (e) {
         // _ensureMathSdk rejection (math SDK unavailable). FAIL-LOUD as a
@@ -950,6 +975,9 @@ function _applyBackendSelection() {
  * @property {typeof init}       init       — Initialize the runtime (once per mount).
  * @property {typeof run}        run        — Fire-and-forget lane execution (code-editor path).
  * @property {typeof runCell}    runCell    — Value-returning cell execution (notebook kernel path).
+ * @property {typeof resetMathScope} resetMathScope — End the math value scope and begin a fresh
+ *   one. Called by whoever owns a run unit (the `run()` lane owns its own; `NotebookKernel` owns
+ *   the notebook's). See the method doc for the scope rule.
  * @property {Function}          ensureMath — `() => Promise<sdk>`. Lazy-loads the math SDK.
  *   CodecView and any surface needing the codec runtime calls this; the result is cached.
  * @property {object}            frqtl      — The `caps.frqtl` sugar object (see module doc).
@@ -961,6 +989,7 @@ export const Runtime = {
     init:    init,
     run:     run,
     runCell: runCell,
+    resetMathScope: resetMathScope,
     ensureMath: _ensureMathSdk,
     get frqtl()   { return _frqtlObj;   },
     get math()    { return _mathSdk;     },

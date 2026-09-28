@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<!-- Copyright 2023-2026 by Essam Abadir -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>EGPT — Tunnel Lab (DirectedTunnel isolation)</title>
+    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <style>
+        .experiment-controls {
+            flex: 0 0 auto; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+            padding: 6px 12px; background: #0d0d0d; border-top: 1px solid #2a2a2a;
+            font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #aaa;
+        }
+        .experiment-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+        .experiment-controls input[type="range"] { width: 100px; cursor: pointer; accent-color: #7ec8e3; }
+        .experiment-controls select {
+            background: #1a1a1a; color: #7ec8e3; border: 1px solid #2a2a2a; border-radius: 3px;
+            font-family: inherit; font-size: 12px; padding: 2px 4px;
+        }
+        .experiment-controls span.val { color: #7ec8e3; min-width: 26px; display: inline-block; text-align: right; }
+        .control-group { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .control-divider { width: 1px; align-self: stretch; background: #2a2a2a; margin: 0 2px; }
+        .preset-btn {
+            background: #27424f; color: #7ec8e3; border: 1px solid #7ec8e3; border-radius: 3px;
+            font-size: 12px; padding: 3px 12px; cursor: pointer; font-family: inherit;
+        }
+        .preset-btn:hover { background: #315a6b; }
+        .legend { color: #888; font-size: 11px; }
+        .cam-preset { background:#1a1a1a; color:#aaa; border:1px solid #2a2a2a; border-radius:3px; font-size:11px; padding:2px 7px; cursor:pointer; margin:0 2px; }
+        .cam-preset:hover { color:#7ec8e3; border-color:#7ec8e3; }
+    </style>
+</head>
+<body>
+    <script>window._egptDefaultEngine = "wasm";
+    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egpt3D = true;</script>
+
+    <!--
+    ── TUNNEL LAB — DirectedTunnel ISOLATION (I1, directed-tunnel composition model §3) ──
+
+    ONE DirectedTunnel, gun-chamber mechanics visible (fill / escape / dispersion — the
+    CEO's Gun Chamber screenshots are the visual reference): a closed breech (capNegX:true)
+    hand-placed burst source bunched near the TOP wall (the biased-entry shape — see
+    docs/internal/physics-lab/directed-tunnel-scale-sweep/README.md) fires INTO the bore; quanta bounce
+    off TOP/BOTTOM (native BOUNCE, 'option2' default) or redirect (host-trig, 'option1'),
+    filling the bore, then escape the OPEN muzzle (capPosX:false) and disperse freely with
+    no walls — exactly the CEO's model ("particles ping-pong in a tube, escape the open
+    end, spread comes from dispersion AFTER escape").
+
+    This page is the VISUAL half of the scale-sweep measurement
+    (docs/internal/physics-lab/directed-tunnel-scale-sweep/sweep.cjs) — SAME methodology (hand-placed
+    walk quanta, biased entrance, per-frame wavelength override, fundamentalDimension=2),
+    SAME object (DirectedTunnel, zero new physics — canonical-bench SU1).
+
+    Two presets (both MEASURED cells from the sweep's own table — README.md's results
+    table): 'dse-scale' (bore=8, length=16 — exitRatio 1.76, UNIFORMIZES; the
+    LightSource composition's actual sugar default — the DEFAULT on load, CEO drive
+    #2 2026-07-14: unifying the default scale with lightsource-lab's own default is
+    what makes wallBehavior switches STRONGLY visible — 62% of the population shows
+    a clean collimation signature after switching to laserBeam at this scale, vs
+    only 5% at the larger gun-scale, pkg-node-measured) and 'gun-scale' (bore=16,
+    length=128 — exitRatio 1.66, UNIFORMIZES; one click away). Both visibly
+    uniformize; bore/length are REINIT-CLASS (a fresh runner.setup() call, matching
+    the sweep's own per-cell tunnel construction — geometry is not a live-resizable
+    rect), everything else (wavelength, wallBehavior, source density/rate/active) is
+    LIVE (no reload).
+
+    WAVELENGTH CEILING (CEO drive #2, 2026-07-14 — "the wavelength slider has no
+    effect"): Engine Invariant #6 is `mass = max(1, capacity/wavelength)`; at this
+    page's FUNDAMENTAL_DIMENSION=2, capacity=16, so ANY wavelength >= 16 saturates
+    mass at its floor (1) — wavelength=64 (the OLD default) was physically IDENTICAL
+    to wavelength=16, 128, or any larger value (verified: byte-identical mass AND
+    transverse-position-variance over 1000 ticks, pkg-node). The slider's max is
+    now clamped to `setupTunnelLab.MAX_USEFUL_WAVELENGTH` (=capacity, ONE authority,
+    never a hand-typed "16") so its ENTIRE range is physically meaningful; the
+    default moved to 8 (mass=2, distinctly different from the ceiling's mass=1).
+
+    3D MODE (CEO drive #2 item 1, 2026-07-14 — "give the labs the 3D mode ...
+    defaulting to the view that matches the reference images"): the CEO's
+    reference images (`docs/internal/physics-lab/img/dse/LightSource_Expected_
+    Output_{DownTheBarrel,Rooftop}.png`) are 3D — this page now boots 3D-only
+    (`window._egpt3D=true`, the SAME two-line recipe `gun-chamber/index.html`
+    uses), with `depth` (= the current bore, a real z-containment box — Tube/
+    DirectedTunnel heritage, `activeAxes:{x,y,z}`) passed to `setupTunnelLab`.
+    Camera presets mirror `dse-lab`'s own `runner.cameraControl` capability-
+    check idiom EXACTLY (down-barrel/table-top/rooftop — `three-provider.js`'s
+    one authority); DEFAULT PRESET is 'down-barrel' (matches
+    `LightSource_Expected_Output_DownTheBarrel.png`'s camera angle — the SAME
+    "down-barrel IS the canonical default view" ruling `gun-chamber` already
+    uses), 'rooftop' is one click away (matches `_Rooftop.png`).
+
+    POPULATION DENSITY (CEO drive #2 O1/O2 qualification, 2026-07-14 — "idle at
+    ~50-70 alive quanta vs the reference's ~10,000+ dense cloud, a population-
+    scale gap only"): ground-truthed `setupGunChamber.js`'s own emission
+    (`burstSize=20`/tick, `burstTicks=600` — literally matching this rate at
+    dse-scale collapses steady-state TPS from ~2900 to ~55-60 ticks/sec,
+    pkg-node-measured — too close to the 60 TPS floor once real render
+    overhead is added). Calibrated instead: DEFAULT density/rate raised from
+    5/10 (0.5 quanta/tick) to 10/1 (10 quanta/tick, matching HALF the gun-
+    chamber's own per-tick rate) — pkg-node measured ~3600 alive @ t=600 with
+    ~110 ticks/sec steady-state (comfortable ~1.8x margin over 60 TPS for
+    render overhead). Density's slider max raised 20->30 (headroom toward the
+    gun-chamber's own literal rate for anyone who wants to push it and accept
+    the TPS cost — NOT the default).
+
+    ws-dse-3d round 2 (CEO drive #2 round-2 ruling, 2026-07-14 — "the reflections
+    on one of the axes is missing... we are not using the same objects with the
+    same contracts"): the `randomXY`/`symmetric` wallBehaviors now ALSO scatter
+    `vz` (in addition to vx/vy) when a real-depth tunnel is armed
+    (`slitLinerScatter.js`'s new `hasRealDepth` gate) — a scatter event redraws
+    all 3 axes, not 2. A new `profile:` select (velocityProfile — 'spray'
+    default/'beam') exposes the SAME `SustainedSource.SOURCE_SPEC_FIELDS` axis
+    `LightSource`'s own particleWalk burst always uses, closing the "tunnel-lab
+    has no source-profile selection" gap — set 'beam' here to compare directly
+    against lightsource-lab's default particleWalk mode at matched settings.
+    -->
+
+    <script src="../_shared/stack-boot.js"
+        data-page-scripts="
+            ../../js/game/setup/setupTunnelLab.js,
+            ../_shared/experiment-metrics.js
+        "></script>
+
+    <div class="experiment-container">
+        <div class="experiment-canvas" id="canvas-wrapper"></div>
+        <div class="experiment-controls">
+            <div class="control-group">
+                <span>presets:</span>
+                <button type="button" class="preset-btn" id="preset-gun-scale">gun-scale</button>
+                <button type="button" class="preset-btn" id="preset-dse-scale">dse-scale</button>
+            </div>
+            <div class="control-divider"></div>
+            <div class="control-group">
+                <label title="Tunnel bore (interior height) — REINIT">
+                    bore:
+                    <input type="range" id="ctrl-bore" min="4" max="60" step="1" value="8">
+                    <span class="val" id="ctrl-bore-val">8</span>
+                </label>
+                <label title="Tunnel length (interior width) — REINIT">
+                    length:
+                    <input type="range" id="ctrl-length" min="8" max="300" step="1" value="16">
+                    <span class="val" id="ctrl-length-val">16</span>
+                </label>
+                <label title="Per-frame wavelength override — LIVE. Max is CLAMPED to setupTunnelLab.MAX_USEFUL_WAVELENGTH (=capacity at this page's FUNDAMENTAL_DIMENSION) at boot — any higher value is physically identical to the ceiling (mass=max(1,capacity/wavelength) saturates).">
+                    &lambda;:
+                    <input type="range" id="ctrl-wavelength" min="1" max="16" step="1" value="8">
+                    <span class="val" id="ctrl-wavelength-val">8</span>
+                </label>
+            </div>
+            <div class="control-divider"></div>
+            <div class="control-group">
+                <label title="Wall collision behavior — LIVE">
+                    wallBehavior:
+                    <select id="ctrl-wallbehavior"></select>
+                </label>
+            </div>
+            <div class="control-divider"></div>
+            <div class="control-group">
+                <label title="Source velocity profile — LIVE. ws-dse-3d AC3 (CEO drive #2 round-2, 'tunnel-lab gains the source-profile selection off the shared surface'): the SAME SustainedSource.SOURCE_SPEC_FIELDS.velocityProfile axis LightSource's own particleWalk burst uses ('beam', hardcoded there). 'spray' (default) = the original biased random fan; 'beam' = a collimated +X stream — set this to 'beam' to compare directly against lightsource-lab's default particleWalk mode at matched bore/length/wavelength/wallBehavior.">
+                    profile:
+                    <select id="ctrl-velocityprofile"></select>
+                </label>
+            </div>
+            <div class="control-divider"></div>
+            <div class="control-group">
+                <label title="Quanta per burst — LIVE. Default raised (CEO drive #2, population-density fix) to 10/tick — half the gun-chamber's own 20/tick emission rate, chosen to keep steady-state TPS comfortably above 60 at this bore scale.">
+                    density:
+                    <input type="range" id="ctrl-density" min="1" max="30" step="1" value="10">
+                    <span class="val" id="ctrl-density-val">10</span>
+                </label>
+                <label title="Ticks between bursts — LIVE. Default lowered to 1 (fire every tick, the densest reachable cadence) — CEO drive #2 population-density fix.">
+                    rate:
+                    <input type="range" id="ctrl-rate" min="1" max="60" step="1" value="1">
+                    <span class="val" id="ctrl-rate-val">1</span>
+                </label>
+                <label title="Master on/off for the burst source — LIVE">
+                    <input type="checkbox" id="ctrl-active" checked> source active
+                </label>
+            </div>
+            <div class="control-divider"></div>
+            <span id="camera-controls" style="display:none; align-items:center; gap:6px;">
+                <span>cam:</span>
+                <button type="button" id="cam-preset-down-barrel" class="cam-preset">down-barrel</button>
+                <button type="button" id="cam-preset-table-top" class="cam-preset">table-top</button>
+                <button type="button" id="cam-preset-rooftop" class="cam-preset">rooftop</button>
+            </span>
+            <span class="legend" id="legend-text">closed breech (source) &middot; open muzzle (escape) &middot; biased entry near TOP wall</span>
+        </div>
+        <div id="metrics-panel"></div>
+    </div>
+
+    <script>
+    /* Copyright 2023-2026 by Essam Abadir */
+
+    /**
+     * Tunnel Lab — DirectedTunnel isolation (I1). Declares the control list ONCE
+     * (the g3-lo-collide/dse-lab idiom) and uses it for BOTH the page's own static
+     * sliders/selects AND `runner.experimentControls` (the GYM control-strip
+     * capability — CompareView.jsx). Bore/length changes call runner.setup() again
+     * (REINIT-CLASS, matches the scale-sweep's own per-cell construction); every
+     * other control mutates a LIVE handle (setupResult.tunnel.updateBehavior /
+     * setupResult.sourceState.*) with zero reload.
+     */
+
+    var runner = null, metrics = null, tick = 0;
+    // dse-scale DEFAULT (CEO drive #2, 2026-07-14) — matches lightsource-lab's own
+    // default exactly (one shared scale, "layered" not "separate builds"); the
+    // wavelength default (8) sits inside the achievable range (see the CEILING
+    // note in the file-level comment above) — mass=2, distinct from the ceiling.
+    var currentBore = 8, currentLength = 16, currentWavelength = 8;
+
+    function currentOpts() {
+        return {
+            canvasW: 700, canvasH: 400,
+            bore: currentBore, length: currentLength, wavelength: currentWavelength,
+            // 3D MODE (CEO drive #2 item 1) — depth = the current bore (a roughly
+            // square cross-section, matching the reference images' boxy aperture);
+            // setupTunnelLab.js treats this as REINIT-CLASS, same as bore/length.
+            depth: currentBore,
+            wallBehavior: document.getElementById('ctrl-wallbehavior').value,
+            // ws-dse-3d AC3 — the source-profile control (LIVE, but also read here
+            // so a REINIT (bore/length/preset change) preserves the current choice
+            // instead of silently reverting to the factory default).
+            velocityProfile: document.getElementById('ctrl-velocityprofile').value,
+            sourceDensity: parseInt(document.getElementById('ctrl-density').value, 10),
+            sourceRate: parseInt(document.getElementById('ctrl-rate').value, 10),
+            sourceActive: document.getElementById('ctrl-active').checked,
+        };
+    }
+
+    function reinit() {
+        tick = 0;
+        runner.setup(setupTunnelLab, currentOpts());
+        applyCameraForCurrentScale();
+    }
+
+    // ── CAMERA DISTANCE PER-SCALE (CEO drive #2, 2026-07-14 — "at gun-scale
+    // the tunnel renders as a tiny wireframe (camera distance tuned for
+    // dse-scale) — scale the preset's camera distance so the tunnel fills
+    // the view like the exemplar framing"): three-provider.js's own preset
+    // distances (`getCameraControl()`'s `_presets()`) are `base * factor`
+    // where `base = Math.max(canvasWidth, canvasHeight)` — a CANVAS-scale
+    // constant, totally unrelated to the tunnel's OWN bore/length. Switching
+    // scale (dse-scale bore=8/length=16 -> gun-scale bore=16/length=128)
+    // changed the tunnel's real-world size 2x-8x while the camera distance
+    // stayed fixed, breaking the framing. Fix: OVERRIDE distance (keeping the
+    // preset's own azimuth/elevation) with a value PROPORTIONAL to the
+    // tunnel's OWN relevant dimension — 'down-barrel' looks straight down the
+    // long axis (foreshortened), so BORE (the cross-section) is what fills
+    // the frame; 'table-top'/'rooftop' see the tunnel side-on/3-quarter, so
+    // LENGTH dominates. The proportionality constants are CALIBRATED so
+    // dse-scale (bore=8,length=16) reproduces the tester-confirmed-working
+    // ORIGINAL canvas-based distances EXACTLY (665/910/1050) — this is a
+    // pure "frame the SAME relative fraction regardless of absolute scale"
+    // fix (the standard graphics fit-to-view formula: distance ∝ object
+    // size, for a fixed FOV), zero regression at dse-scale, scales correctly
+    // for gun-scale (and any future scale).
+    //
+    // GUN-SCALE ROOFTOP FRAMING FIX (tester finding, follow-up): even at the
+    // CORRECT (verified via cameraControl.getOrbit() — 8400 exactly) proportional
+    // distance, gun-scale+rooftop does not visually "fill the view" the way
+    // dse-scale+rooftop does. Root-caused with a pkg-node measurement of the
+    // ACTUAL settled dispersion-cloud radius (not assumed): dse-scale
+    // (bore=8,length=16) settles to maxRadius=645px/meanRadius=195px; gun-scale
+    // (bore=16,length=128, 8x longer TUBE) settles to maxRadius=590px/
+    // meanRadius=166px — essentially the SAME absolute pixel radius, because the
+    // dispersion cloud's spread is governed by elapsed-ticks-since-escape × the
+    // engine's fixed 1px/tick speed limit, NOT by the tube's own length. The
+    // LENGTH-proportional camera distance (correctly sized for the TUBE) was
+    // therefore massively OVER-scaled for the CLOUD, which dominates the visual
+    // "fills the view" impression and does not grow with tube length. Fix:
+    // length-based presets (table-top/rooftop) clamp their effective scale
+    // dimension to MAX_LENGTH_SCALE_DIM (chosen as 2x dse-scale's own length —
+    // enough headroom to still differentiate a bigger tube's presence, nowhere
+    // near gun-scale's raw 128 which was 8x farther than the cloud needs).
+    // This is a JUDGMENT CALL for gun-scale specifically (an optional, non-
+    // default preset) — dse-scale (the default) is completely unaffected (16
+    // is already below the 32 cap).
+    var CAM_DISTANCE_FACTOR = { 'down-barrel': 83.125, 'table-top': 56.875, 'rooftop': 65.625 };
+    var MAX_LENGTH_SCALE_DIM = 32; // 2x dse-scale's own length (16) — see the note above
+    var currentCamPreset = 'down-barrel';
+    function applyCameraForCurrentScale() {
+        var cam = runner.cameraControl;
+        if (!cam) { return; }
+        cam.setPreset(currentCamPreset);
+        var o = cam.getOrbit();
+        var scaleDim = (currentCamPreset === 'down-barrel')
+            ? currentBore
+            : Math.min(currentLength, MAX_LENGTH_SCALE_DIM);
+        var factor = CAM_DISTANCE_FACTOR[currentCamPreset] || CAM_DISTANCE_FACTOR['down-barrel'];
+        cam.setOrbit({ azimuth: o.azimuth, elevation: o.elevation, distance: scaleDim * factor });
+    }
+
+    window.setup = function () {
+        runner = new FrqtlApp({
+            canvasParentId: 'canvas-wrapper',
+            canvasW: 700, canvasH: 400, seed: 42,
+            onTick: function (tickData, setupResult) {
+                tick++;
+                // C1-fix idiom (ruling_directed_tunnel_lightsource.md): the ONE call
+                // any DirectedTunnel consumer needs every tick for 'option1' to
+                // actually redirect — self-gates on the tunnel's current behavior, so
+                // this line is unconditional and never goes stale after a live switch.
+                if (setupResult && setupResult.tunnel) {
+                    setupResult.tunnel.applyRedirectIfActive(tickData);
+                }
+                if (metrics) {
+                    var fd = (tickData && tickData.frameData) ? tickData.frameData : [];
+                    var alive = fd.filter(function (f) { return f.isAlive !== false; }).length;
+                    metrics.update({ Tick: tick, 'Quanta (alive)': alive });
+                }
+            }
+        });
+
+        runner.createCanvas();
+        runner.setRenderOption('shape', 'ball');
+        runner.setRenderOption('colorScheme', 'roygbiv');
+
+        // Populate #ctrl-wallbehavior's <option>s from DirectedTunnel.BEHAVIORS
+        // BEFORE the FIRST runner.setup() call below — currentOpts() reads this
+        // <select>'s .value, and the static HTML ships it with ZERO <option>s (by
+        // design: options are derived from the one authority, never hand-typed).
+        // An empty <select>.value is "" (empty string), NOT undefined, and
+        // DirectedTunnel's constructor treats "" as an explicit (invalid) behavior
+        // rather than "omitted" — so reading it before population threw
+        // `unknown behavior ""` inside window.setup(), UNCAUGHT, which meant
+        // runner.start() (the only place window._frqtlApp gets set) never ran
+        // and the page was dead from first paint (tester O5 finding, I4 pass).
+        // Wavelength slider: clamp `max` to the ONE authority
+        // (setupTunnelLab.MAX_USEFUL_WAVELENGTH — never a hand-typed "16") so its
+        // ENTIRE range is physically meaningful (CEO drive #2 fix).
+        var sliderWl = document.getElementById('ctrl-wavelength');
+        sliderWl.max = String(setupTunnelLab.MAX_USEFUL_WAVELENGTH);
+
+        var selBehavior = document.getElementById('ctrl-wallbehavior');
+        // Label/tooltip text comes from DirectedTunnel.BEHAVIOR_META (ONE authority
+        // — CEO drive #2, 2026-07-14: "option1/option2 are non-descript"); the
+        // <option>'s VALUE stays the raw wire string ('option1'/'option2'/composable
+        // name) so updateBehavior(v) and every other consumer is UNCHANGED — only
+        // the human-facing label/tooltip is descriptive.
+        DirectedTunnel.BEHAVIORS.slice().forEach(function (name) {
+            var opt = document.createElement('option');
+            var meta = DirectedTunnel.BEHAVIOR_META && DirectedTunnel.BEHAVIOR_META[name];
+            opt.value = name;
+            opt.textContent = meta ? meta.label : name;
+            if (meta && meta.description) { opt.title = meta.description; }
+            selBehavior.appendChild(opt);
+        });
+        selBehavior.value = 'option2';
+
+        // Populate #ctrl-velocityprofile's <option>s from the ONE shared-surface
+        // authority (SustainedSource.SOURCE_SPEC_FIELDS.velocityProfile.enum —
+        // ws-dse-3d AC3, never a hand-typed ['spray','beam']) BEFORE the FIRST
+        // runner.setup() call — currentOpts() reads this <select>'s .value, and
+        // an empty <select>.value is "" (same O5-class ordering gotcha as
+        // wallBehavior above).
+        var selVelocityProfile = document.getElementById('ctrl-velocityprofile');
+        var VELOCITY_PROFILES = SustainedSource.SOURCE_SPEC_FIELDS.velocityProfile.enum;
+        VELOCITY_PROFILES.forEach(function (name) {
+            var opt = document.createElement('option'); opt.value = name; opt.textContent = name;
+            selVelocityProfile.appendChild(opt);
+        });
+        selVelocityProfile.value = 'spray'; // byte-identical to this factory's own pre-AC3 default
+
+        runner.setup(setupTunnelLab, currentOpts());
+
+        // ── CONTROLS — declared ONCE, used for BOTH the static page sliders AND
+        // runner.experimentControls (the GYM control-strip capability). ──────────
+        var CONTROLS = [
+            {
+                id: 'bore', kind: 'scalar', label: 'Bore', min: 4, max: 60, step: 1, value: currentBore,
+                fmt: function (v) { return String(Math.round(v)); },
+                onChange: function (v) { currentBore = v; reinit(); }
+            },
+            {
+                id: 'length', kind: 'scalar', label: 'Length', min: 8, max: 300, step: 1, value: currentLength,
+                fmt: function (v) { return String(Math.round(v)); },
+                onChange: function (v) { currentLength = v; reinit(); }
+            },
+            {
+                id: 'wavelength', kind: 'scalar', label: 'Wavelength', min: 1, max: setupTunnelLab.MAX_USEFUL_WAVELENGTH, step: 1, value: currentWavelength,
+                fmt: function (v) { return String(Math.round(v)); },
+                onChange: function (v) { currentWavelength = v; runner.setupResult.sourceState.wavelength = v; }
+            },
+            {
+                id: 'wallBehavior', kind: 'enum', label: 'Wall behavior',
+                values: DirectedTunnel.BEHAVIORS.slice(), value: 'option2',
+                // Descriptive label (CEO drive #2) for any host that renders this
+                // array (e.g. a future runner.experimentControls strip) — SAME
+                // BEHAVIOR_META authority the page's own <select> uses.
+                fmt: function (v) { var meta = DirectedTunnel.BEHAVIOR_META && DirectedTunnel.BEHAVIOR_META[v]; return meta ? meta.label : v; },
+                onChange: function (v) { runner.setupResult.tunnel.updateBehavior(v); }
+            },
+            {
+                // ws-dse-3d AC3 (CEO drive #2 round-2, "tunnel-lab gains the
+                // source-profile selection off the shared surface") — LIVE
+                // (mutates setupResult.sourceState.velocityProfile, no reinit;
+                // placeSourceQuanta reads it fresh every burst). Values come from
+                // the ONE declared contract (SustainedSource.SOURCE_SPEC_FIELDS),
+                // never hand-typed.
+                id: 'velocityProfile', kind: 'enum', label: 'Profile',
+                values: SustainedSource.SOURCE_SPEC_FIELDS.velocityProfile.enum.slice(), value: 'spray',
+                fmt: function (v) { return v; },
+                onChange: function (v) { runner.setupResult.sourceState.velocityProfile = v; }
+            },
+            {
+                id: 'density', kind: 'scalar', label: 'Density', min: 1, max: 30, step: 1, value: 10,
+                fmt: function (v) { return String(Math.round(v)); },
+                onChange: function (v) { runner.setupResult.sourceState.density = v; }
+            },
+            {
+                id: 'rate', kind: 'scalar', label: 'Rate', min: 1, max: 60, step: 1, value: 1,
+                fmt: function (v) { return String(Math.round(v)); },
+                onChange: function (v) { runner.setupResult.sourceState.rate = v; }
+            }
+        ];
+
+        // (1) Wire the page's own static sliders/select/checkbox.
+        var sliderBore = document.getElementById('ctrl-bore');
+        var lblBore = document.getElementById('ctrl-bore-val');
+        sliderBore.addEventListener('input', function () {
+            var v = parseInt(sliderBore.value, 10); lblBore.textContent = v; CONTROLS[0].onChange(v);
+        });
+
+        var sliderLength = document.getElementById('ctrl-length');
+        var lblLength = document.getElementById('ctrl-length-val');
+        sliderLength.addEventListener('input', function () {
+            var v = parseInt(sliderLength.value, 10); lblLength.textContent = v; CONTROLS[1].onChange(v);
+        });
+
+        // sliderWl's `.max` was already clamped above (BEFORE the first
+        // runner.setup() call) — just wire the input listener here.
+        var lblWl = document.getElementById('ctrl-wavelength-val');
+        sliderWl.addEventListener('input', function () {
+            var v = parseInt(sliderWl.value, 10); lblWl.textContent = v; CONTROLS[2].onChange(v);
+        });
+
+        // selBehavior's <option>s were already populated above (BEFORE the first
+        // runner.setup() call) from the SAME source CONTROLS[3].values uses
+        // (DirectedTunnel.BEHAVIORS) — one authority, never a hand-typed mirror.
+        // Just wire the change listener here.
+        selBehavior.addEventListener('change', function () { CONTROLS[3].onChange(selBehavior.value); });
+
+        // selVelocityProfile's <option>s were already populated above (BEFORE the
+        // first runner.setup() call) from the SAME source CONTROLS[4].values uses
+        // (SustainedSource.SOURCE_SPEC_FIELDS.velocityProfile.enum) — one
+        // authority, never a hand-typed mirror. Just wire the change listener here.
+        selVelocityProfile.addEventListener('change', function () { CONTROLS[4].onChange(selVelocityProfile.value); });
+
+        var sliderDensity = document.getElementById('ctrl-density');
+        var lblDensity = document.getElementById('ctrl-density-val');
+        sliderDensity.addEventListener('input', function () {
+            var v = parseInt(sliderDensity.value, 10); lblDensity.textContent = v; CONTROLS[5].onChange(v);
+        });
+
+        var sliderRate = document.getElementById('ctrl-rate');
+        var lblRate = document.getElementById('ctrl-rate-val');
+        sliderRate.addEventListener('input', function () {
+            var v = parseInt(sliderRate.value, 10); lblRate.textContent = v; CONTROLS[6].onChange(v);
+        });
+
+        document.getElementById('ctrl-active').addEventListener('change', function () {
+            runner.setupResult.sourceState.active = this.checked;
+        });
+
+        // (2) Expose the SAME controls to the IDE GYM (CompareView capability-checks
+        // this — g3-lo-collide/dse-lab idiom).
+        runner.experimentControls = CONTROLS;
+
+        // ── Presets (both MEASURED cells from the sweep table — see the module
+        // docstring above) — re-sync every slider/select to the new values then
+        // reinit ONCE, avoiding a triple-reinit from three separate onChange calls. ──
+        function applyPreset(bore, length, wavelength) {
+            currentBore = bore; currentLength = length; currentWavelength = wavelength;
+            sliderBore.value = bore; lblBore.textContent = bore;
+            sliderLength.value = length; lblLength.textContent = length;
+            sliderWl.value = wavelength; lblWl.textContent = wavelength;
+            reinit();
+            runner.setupResult.sourceState.wavelength = wavelength;
+        }
+        // wavelength arg is 16 (=setupTunnelLab.MAX_USEFUL_WAVELENGTH, the ceiling),
+        // NOT the old 64 — physically IDENTICAL (mass=max(1,capacity/wavelength)
+        // saturates at wavelength>=capacity=16; 16 and 64 give the byte-identical
+        // mass, pkg-node verified) but now a value the (re-clamped) slider can
+        // actually DISPLAY within its own range.
+        document.getElementById('preset-gun-scale').addEventListener('click', function () { applyPreset(16, 128, 16); });
+        document.getElementById('preset-dse-scale').addEventListener('click', function () { applyPreset(8, 16, 16); });
+
+        // ── Metrics ──────────────────────────────────────────────────────────────
+        metrics = new ExperimentMetrics('metrics-panel', [
+            { name: 'Tick', expected: null, format: function (v) { return String(v); } },
+            { name: 'Quanta (alive)', expected: null, format: function (v) { return String(v); } }
+        ]);
+
+        // ── Camera orbit control (sugar handle — mirrors gun-chamber/
+        // sphere-emitter-3d EXACTLY) — capability-checked, never
+        // renderer-sniffed. This page is 3D-only (window._egpt3D=true above), so
+        // `cam` is always present once the three.js provider is live. DEFAULT
+        // PRESET is 'down-barrel' (CEO drive #2 — matches the CEO's reference
+        // image `LightSource_Expected_Output_DownTheBarrel.png`'s camera angle;
+        // 'rooftop' matches `_Rooftop.png`, one click away). Distance is SCALE-
+        // AWARE (applyCameraForCurrentScale, above) — never the renderer's own
+        // fixed canvas-based preset distance directly. ────────────────────────
+        var cam = runner.cameraControl;
+        if (cam) {
+            document.getElementById('camera-controls').style.display = 'inline-flex';
+            (cam.presets || []).forEach(function (name) {
+                var btn = document.getElementById('cam-preset-' + name);
+                if (btn) { btn.addEventListener('click', function () { currentCamPreset = name; applyCameraForCurrentScale(); }); }
+            });
+            applyCameraForCurrentScale();
+        }
+
+        runner.start();
+        window._frqtlApp = runner;
+    };
+
+    // Boot: matches tube-l1/collision-matrix-3d's own dual-path exactly. p5
+    // (global mode) auto-invokes window.setup() itself once loaded — injecting the
+    // script is enough, no manual call/poll (a manual call here would double-fire
+    // setup()). The non-p5 path has no such auto-invoke, so it polls for this
+    // page's OWN data-page-scripts globals before calling window.setup() itself.
+    window._egptWhenEngineReady(function () {
+        window._egptWhenRendererReady(function () {
+            var r = window._egptRenderer || 'p5';
+            if (r === 'p5') {
+                var s = document.createElement('script');
+                s.src = '../../js/lib/p5.min.js';
+                document.body.appendChild(s);
+            } else {
+                (function whenRunnerReady() {
+                    if (typeof window.FrqtlApp !== 'undefined' &&
+                        typeof setupTunnelLab !== 'undefined' &&
+                        typeof ExperimentMetrics !== 'undefined' &&
+                        typeof DirectedTunnel !== 'undefined') {
+                        window.setup();
+                    } else {
+                        setTimeout(whenRunnerReady, 20);
+                    }
+                })();
+            }
+        });
+    });
+    </script>
+</body>
+</html>
