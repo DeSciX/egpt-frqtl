@@ -11,7 +11,8 @@
  * canonical loader GraphicsPane.boot() injects — `experiments/_shared/stack-boot.js`
  * — via the caller's router resolve (the one path authority), then awaits BOTH of
  * stack-boot's published signals: the `_egptWhenEngineReady` hook (engine + WASM) AND
- * `window._egptGameLayerReadyPromise` (the WHOLE GAME_LAYER_SCRIPTS roster). ONE
+ * `window._egptStackReadyPromise` (the loader's LAST phase — the whole GAME_LAYER_SCRIPTS
+ * roster, then any data-page-scripts; a tag this module injects carries none). ONE
  * engine-boot authority (stack-boot.js); no second loader.
  *
  * ── WHAT THE RETURNED PROMISE PROMISES (FRAQTL #73) ─────────────────────────
@@ -31,9 +32,8 @@
  * (the producer) runs BEFORE the canvas cell (the consumer) — but the builder
  * calls frqtl.FrqtlApp, which needs window.FrqtlApp already
  * installed. GraphicsPane installs it only when the canvas cell boots, which is
- * too late. So frqtl.ensureEngine boots the engine stack first. We boot only up to
- * the END of the GAME phase (engine + game layer) — NOT p5/the renderer, which is
- * the canvas cell's GraphicsPane concern.
+ * too late. So frqtl.ensureEngine boots the engine stack first. We wait for the stack
+ * (engine + game layer) — NOT p5, which is the canvas cell's GraphicsPane concern.
  *
  * Idempotent + cached: stack-boot.js's own <script> idempotency plus a cached
  * promise here mean repeated builder cells (and the StrictMode double-run) boot
@@ -91,9 +91,9 @@ function _injectScript(src) {
 //      stack-boot shims and engine-boot.js replaces. The onError argument is what carries
 //      a WASM failure: at injection time `_wasmReadyPromise` does not exist yet, so a
 //      synchronous capture of it alone could never see the later rejection.
-//   2. THEN the roster — `window._egptGameLayerReadyPromise`, published by stack-boot.js,
-//      settling when every GAME_LAYER_SCRIPTS entry has loaded (FRAQTL #73: never a probe of
-//      one global such as window.FrqtlApp, which is two entries before the last).
+//   2. THEN the stack — `window._egptStackReadyPromise`, published by stack-boot.js,
+//      settling after its LAST phase (FRAQTL #73/#74: never a probe of one global such as
+//      window.FrqtlApp, which is two entries before the end of the GAME roster).
 // `_wasmReadyPromise` is ALSO mirrored for the case where it already exists (a page whose
 // engine has already failed when this caller arrives).
 function _awaitStack() {
@@ -105,15 +105,15 @@ function _awaitStack() {
             return;
         }
         window._egptWhenEngineReady(function () {
-            if (!window._egptGameLayerReadyPromise) {
+            if (!window._egptStackReadyPromise) {
                 reject(new Error(
                     '[engine-stack-boot] stack-boot.js did not publish ' +
-                    'window._egptGameLayerReadyPromise — the game-layer READY contract ' +
+                    'window._egptStackReadyPromise — the stack-ready contract ' +
                     'is missing (lib/frqtl/experiments/_shared/stack-boot.js). (FAIL-LOUD.)'
                 ));
                 return;
             }
-            window._egptGameLayerReadyPromise.then(function () { resolve(); }, reject);
+            window._egptStackReadyPromise.then(function () { resolve(); }, reject);
         }, reject);
         (window._wasmReadyPromise || Promise.resolve()).catch(reject);
     });
@@ -121,8 +121,8 @@ function _awaitStack() {
 
 /**
  * ensureEngineStack(router) → Promise<void>
- * Resolves once the engine is ready AND the whole GAME_LAYER_SCRIPTS roster is
- * installed (see the module docstring — never a single-global probe).
+ * Resolves once the engine is ready AND stack-boot's stack-ready promise has settled
+ * (see the module docstring — never a single-global probe).
  *
  * @param {import('./router.js').EngineRouter} router — an engineRouter() instance
  *   (its `.resolve` locates stack-boot.js; its `.ensureBrowserPathMap()` sets the
@@ -131,10 +131,10 @@ function _awaitStack() {
 export function ensureEngineStack(router) {
     if (_bootPromise) { return _bootPromise; }
     var injected;
-    if (typeof window !== 'undefined' && window._egptGameLayerReadyPromise) {
+    if (typeof window !== 'undefined' && window._egptStackReadyPromise) {
         // stack-boot.js already EXECUTED on this page (a canvas cell's GraphicsPane.boot(),
         // an experiment page's own tag). Skip only the INJECTION — never the wait: the
-        // roster promise existing (or even having settled) says nothing about WASM.
+        // stack promise existing (or even having settled) says nothing about WASM.
         injected = Promise.resolve();
     } else {
         if (!router || typeof router.resolve !== 'function') {

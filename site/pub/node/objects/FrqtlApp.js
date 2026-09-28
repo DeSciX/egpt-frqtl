@@ -1649,18 +1649,20 @@
         }
 
         throw new Error('[FrqtlApp.createCanvas] no RendererProvider is active — ' +
-            'the page must boot one through lib/frqtl/experiments/_shared/render-boot.js ' +
-            '(window._egptWhenRendererReady) before calling createCanvas().');
+            'one is booted by lib/frqtl/experiments/_shared/render-boot.js — a page waits for it ' +
+            'with window._egptStartSketch() (stack-boot.js), a programmatic host with ' +
+            'window._egptWhenRendererReady — before calling createCanvas().');
     };
 
     // ── Experiment setup ───────────────────────────────────────────────────
 
     /**
-     * Run a setup factory (e.g. setupDoubleSlit) on this runner's universe.
+     * Run a setup factory (e.g. setupDoubleSlit) on this runner's universe: its world
+     * step (`setupFn.initWorld`, when the factory exports one), then the factory itself.
      *
      * CANONICAL TEARDOWN (CEO drive #2, 2026-07-14 — the S4 dispose discipline,
-     * generalized to setup-level reinit): `universe.init()` (called BY the setup
-     * factory, below) resets the WASM instance's physics state but does NOT
+     * generalized to setup-level reinit): `universe.init()` (called by the world step
+     * below) resets the WASM instance's physics state but does NOT
      * clear the JS-side `universe.experimentTickFunctions` array — a fact
      * `fx-experiment.js`'s own loop-control docstring already names explicitly
      * ("NOT cleared by init() and would duplicate on every reset"), which is
@@ -1691,7 +1693,15 @@
         // and every host driving a declared `restart` action — gets it for free.
         this._setupFn   = setupFn;
         this._setupOpts = opts;
-        this._setupResult  = setupFn(this.universe, opts);
+        // ONE BOOT SEQUENCE (#81): a factory that constructs a PART exports its implied
+        // world as `setupFn.initWorld(universe, opts)`; the runner runs it FIRST, then the
+        // part step. A factory that owns its world (setupDoubleSlit, the composites) exports
+        // none and inits inside. Either way `restart()` — which re-enters here — replays the
+        // whole scene from a fresh world, never the part alone on a populated one.
+        if (typeof setupFn.initWorld === 'function') {
+            setupFn.initWorld(this.universe, opts);                // 1. WORLD
+        }
+        this._setupResult  = setupFn(this.universe, opts);         // 2. PART(S)
         // NO render-list assignment: a factory's LargeObjects registered themselves with
         // the world as they were CONSTRUCTED. The old line replaced the host's shadow list
         // with `setupResult.largeObjects`, which both required every factory to remember to
@@ -1701,8 +1711,8 @@
 
     /**
      * restart() — the PAGE-LEVEL restart primitive (presentation pass Item 2,
-     * CEO-ratified E-P2b): stop → dispose → re-run the RETAINED setup factory with
-     * its ORIGINAL opts → start. The scene returns to tick 0 IN-PAGE: no reload, so
+     * CEO-ratified E-P2b): stop → dispose → re-run the RETAINED setup factory — world
+     * step then part step, via setup() — with its ORIGINAL opts → start. The scene returns to tick 0 IN-PAGE: no reload, so
      * the camera orbit, render options and any host wiring survive.
      *
      * Teardown runs EXACTLY ONCE — `setup()` above already calls the previous

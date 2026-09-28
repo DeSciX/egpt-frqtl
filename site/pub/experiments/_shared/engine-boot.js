@@ -25,9 +25,9 @@
  * FrqtlApp constructs via window.EGPTUniverse, which this module sets to the
  * WASM wrapper.
  *
- * A page boots its sketch with:
- *   window._egptWhenEngineReady(function () { ...load p5, which calls setup()... });
- * which resolves only when WASM is actually live, and fails loud otherwise.
+ * window._egptWhenEngineReady(onReady, onError) resolves only when WASM is actually live,
+ * and fails loud otherwise. A page never calls it directly: window._egptStartSketch()
+ * (stack-boot.js) composes it with renderer-ready and the stack-ready promise.
  */
 (function () {
     'use strict';

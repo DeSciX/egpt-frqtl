@@ -253,15 +253,10 @@
         window._frqtlApp = runner;
     };
 
-    // Boot once BOTH engine AND renderer are live (fail-loud otherwise). 2D/p5 only, so the
-    // p5 provider's own p5.min.js load is what invokes window.setup().
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var s = document.createElement('script');
-            s.src = '../../js/lib/p5.min.js';
-            document.body.appendChild(s);
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 (its load calls
+    // window.setup) on every renderer (FRAQTL #74).
+    window._egptStartSketch({ p5: 'always' });
     </script>
 </body>
 </html>

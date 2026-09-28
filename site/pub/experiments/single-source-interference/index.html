@@ -1338,30 +1338,10 @@
         window._frqtlApp = runner;
     };
 
-    // Boot ONLY once BOTH engine AND renderer are live (fail-loud otherwise).
-    // Dual-path (mirrors sphere-emitter-3d / dsewall-lab): the p5 provider loads
-    // p5.min.js (which auto-invokes window.setup); the three provider (?egpt3D=1)
-    // has no such auto-invoke, so poll for this page's globals then call setup().
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupSphereEmitter3D !== 'undefined' &&
-                        typeof ExperimentMetrics !== 'undefined') {
-                        window.setup();
-                    } else {
-                        setTimeout(whenRunnerReady, 20);
-                    }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>

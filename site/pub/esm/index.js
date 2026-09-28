@@ -289,9 +289,9 @@ function registerDisplay(provider) {
     return window.FrqtlDisplay.set(provider, window._egptRenderer);
 }
 
-// ── p5 global-mode boot (mirrors every canonical experiment page's own
-// "defer p5 until engine+renderer are live" discipline — see stack-boot.js's
-// docstring §DEFERRED-p5 DISCIPLINE). ───────────────────────────────────────
+// ── p5 global-mode boot (the same "defer p5 until engine+renderer are live"
+// rule every experiment page gets from window._egptStartSketch — see stack-boot.js's
+// docstring §THE ONE BOOT DANCE). ───────────────────────────────────────────
 
 function bootP5(router, onSetup) {
     window.setup = onSetup;
@@ -373,9 +373,9 @@ export async function bootDoubleSlit(mountEl, opts) {
 
 // ── The ONE runner tail — bootDoubleSlit and bootScene both end here ──────────
 //
-// Construct the runner → the factory's WORLD step (when it exports one) → the
-// factory (the PART step) → the engine's own init gate → start → resolve on the
-// runner's FIRST TICK. Two entries, one sequence. The sequence used to be
+// Construct the runner → `runner.setup(factory, opts)` (the runner's ONE boot
+// sequence: the factory's WORLD step when it exports one, then the PART step) →
+// the engine's own init gate → start → resolve on the runner's FIRST TICK. Two entries, one sequence. The sequence used to be
 // re-derived in each entry and the copies drifted: bootScene forwarded its own
 // reserved keys into the factory's strict option validator, and ran no world
 // step at all — the universe was never init'd, `doTick()` threw on every
@@ -384,12 +384,11 @@ export async function bootDoubleSlit(mountEl, opts) {
 //
 // THE WORLD STEP IS THE SKETCH'S (docs/internal/engine/THE_MINIMAL_SIM.md:
 // world.init() FIRST → CONSTRUCT parts → WIRE → RUN). A factory that constructs
-// a PART exports its implied world as `factory.initWorld(universe, opts)` —
-// the same export lib/frqtl/experiments/sphere-emitter-3d/index.html's sketch
-// and the composite factories (setupHalfAdder, setupTraceCircuit) consume; a
+// a PART exports its implied world as `factory.initWorld(universe, opts)`, and
+// `FrqtlApp.setup` runs it before the part (and `restart()` replays both); a
 // factory that owns its world (setupDoubleSlit) exports none and inits inside.
-// This tail derives NO universe.init argument of its own — it consumes the
-// factory's export, or nothing.
+// This tail neither calls initWorld nor derives a universe.init argument: the
+// runner owns the boot sequence.
 //
 // READINESS IS THE RUNNER'S, NEVER THIS FILE'S SAY-SO. The promise resolves
 // from `runner.firstTick(...)` — FrqtlApp's own promise for its first DELIVERED
@@ -417,8 +416,8 @@ var FIRST_TICK_DEADLINE_MS = 15000;
  * @param {Function} spec.setupFn - the setup factory (a PART constructor, or a
  *   self-world-owning factory).
  * @param {object} spec.setupOpts - the factory's bag — ALREADY split from the
- *   entry's own keys (see splitSceneOpts); passed verbatim to BOTH the factory's
- *   `initWorld` (when exported) and the factory.
+ *   entry's own keys (see splitSceneOpts); passed verbatim to `runner.setup`, which
+ *   hands it to BOTH the factory's `initWorld` (when exported) and the factory.
  * @param {object|undefined} spec.render - one-shot `runner.setRenderOptions` batch.
  * @returns {Promise<{runner:object, setupResult:object}>}
  */
@@ -444,10 +443,7 @@ function startSketch(spec) {
                     onTick: spec.onTick
                 });
                 runner.createCanvas();
-                if (typeof spec.setupFn.initWorld === 'function') {
-                    spec.setupFn.initWorld(runner.universe, spec.setupOpts);     // 1. WORLD (the factory's own export)
-                }
-                setupResult = runner.setup(spec.setupFn, spec.setupOpts);     // 2. PARTS
+                setupResult = runner.setup(spec.setupFn, spec.setupOpts);     // 1-2. WORLD then PARTS (the runner's one boot sequence)
                 void runner.universe.fundamentalDimension;                     // 3. the ENGINE's init gate (throws on a raw world)
             } catch (err) {
                 paintError(host, 'FRQTL ' + label + ' SETUP FAILED', String((err && err.stack) || err));

@@ -456,24 +456,9 @@
         }
     };
 
-    // ── Boot dance — wait for engine AND renderer, then branch on the resolved renderer ──
-    // Mirrors particle-walk-3d: _egptWhenRendererReady fires before FrqtlApp is
-    // defined, so for the (synchronous, vendored) three.js path we poll until the GAME
-    // layer is present before calling setup().
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                var s = document.createElement('script');
-                s.src = '../../assets/vendor/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    if (typeof window.FrqtlApp !== 'undefined') { window.setup(); }
-                    else { setTimeout(whenRunnerReady, 20); }
-                })();
-            }
-        });
-    });
+    // ── Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry, including the setup factory cfg.setup names)
+    // → p5 inject on the p5 renderer, else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
 
 })();

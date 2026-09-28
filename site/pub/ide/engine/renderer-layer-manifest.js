@@ -52,8 +52,8 @@
  *   step, injected after this phase (the analogue of `engine-boot.js`).
  * - `assets/vendor/three.min.js` — loaded LAZILY, only when the three renderer
  *   is actually selected (most 2D scenes never pay for it).
- * - `assets/vendor/p5.min.js` — deferred until engine AND renderer are live
- *   (stack-boot's §DEFERRED-p5 DISCIPLINE).
+ * - `assets/vendor/p5.min.js` — deferred until engine AND renderer are live and the
+ *   stack is complete (stack-boot's §THE ONE BOOT DANCE, window._egptStartSketch).
  *
  * ## Updating this manifest
  *

@@ -25,13 +25,14 @@
  *   3. compat/renderer/Filters.js                    (window.Filters)
  *   4. THIS FILE
  *
- * A page boots its sketch with:
- *   window._egptWhenRendererReady(function () { ...load p5 or run setup()... });
- * which resolves only when the requested renderer backend is actually live.
+ * window._egptWhenRendererReady(onReady, onError) resolves only when the requested
+ * renderer backend is actually live. A page never calls it directly:
+ * window._egptStartSketch() (stack-boot.js) composes it with engine-ready and the
+ * stack-ready promise, then loads p5 or runs setup().
  *
  * For ?renderer=p5: the promise resolves immediately (p5 provider script already
- * loaded). p5 itself is still deferred until after window._egptWhenEngineReady (the
- * engine must be live before p5 setup() runs, same as before).
+ * loaded). p5 itself is still deferred until the engine is live and the stack is
+ * complete (the engine must be live before p5 setup() runs).
  *
  * For ?renderer=three: the promise resolves after three.js loads successfully.
  * three.js is loaded dynamically from window._egptThreeUrl (default: CDN).

@@ -9,7 +9,7 @@
  * stable authoring vocabulary every exported bundle relies on — nothing more, so a
  * runner refactor can never break a bundle's eval contract:
  *
- *   exp.init(cfg)                 cfg-bag → universe.init mapping (see init() below)
+ *   exp.init(cfg)                 cfg-bag → universe.init, via FrqtlWorldInit.initArgs
  *   exp.addObject(kind, config)   ObjectFactory.create(kind, config, ctx) sugar
  *   exp.addTickFunction(fn)       universe.experimentTickFunctions.push
  *   exp.build(buildFn)            run the recipe WITHOUT starting the loop
@@ -21,10 +21,10 @@
  *                                 (see the getter below). A mode-aware recipe
  *                                 branches its dimensional deltas on it.
  *
- * The cfg→universe.init mapping and the ObjectFactory ctx are COPIED VERBATIM from
- * Experiment.js (the module this replaces): they are the ONE authoritative mapping,
- * never re-typed. Experiment.js stays alive only for wave-interference until it is
- * deleted in a later bite; the two mappings must never diverge.
+ * The cfg→universe.init mapping is `FrqtlWorldInit.initArgs` (objects/setup/_worldInit.js),
+ * consumed here, by Experiment.js and by every setup factory's world step; the ObjectFactory
+ * ctx is copied from Experiment.js. Experiment.js stays alive only for wave-interference until it is
+ * deleted in a later bite.
  *
  * Deliberately DROPPED vs Experiment.js: `restart()` (zero call sites — STUDIO's
  * Restart is an iframe reload + apply-module) and `pause()` (the empty page calls
@@ -53,72 +53,21 @@
         return _gbl[name] || (typeof module !== 'undefined' && module.exports ? null : null);
     }
 
-    // ── INIT_CFG — the recipe vocabulary, published as a contract ─────────────
-
     /**
-     * INIT_CFG — every key `exp.init(cfg)` accepts, and what each one does.
-     *
-     * THE contract, exported as `RecipeContext.INIT_CFG` so no consumer re-enumerates
-     * it. `Experiment.js` (the legacy twin this module replaces) CONSUMES this table
-     * rather than carrying a second copy — the two facades' vocabularies are the same
-     * vocabulary, and a hand-copy is how they would silently diverge.
-     *
-     * The list is derived from what `init()` below ACTUALLY reads. `interQuantumCollisions`
-     * is in it because it is still ACCEPTED (inert — it fed a removed positional slot) and
-     * STUDIO codegen prints it into every saved recipe: dropping it from the vocabulary
-     * would make every saved scene throw.
-     *
-     * @type {Array<{key:string, effect:string}>}
+     * The world-init contract (INIT_CFG + assertInitCfg + initArgs) is owned by the leaf
+     * `objects/setup/_worldInit.js`, which the roster loads ahead of this file. Resolved at
+     * call time; absent ⇒ THROW naming it.
      */
-    var INIT_CFG = [
-        { key: 'dimension',              effect: 'the fundamental (base) dimension layer — universe.init()\'s 2nd argument. default 2.' },
-        { key: 'wavelengthScale',        effect: '→ universe.init options.wavelengthScale — the GLOBAL λ multiplier. default 8.' },
-        { key: 'interQuantumCollisions', effect: 'ACCEPTED BUT INERT — it fed a removed positional slot the engine never read.' },
-        { key: 'bonding',                effect: '→ universe.init options.noEscape (the names do NOT line up 1:1). default false.' },
-        { key: 'frames',                 effect: "BOOLEAN → universe.init options.frameGenMode: true → 'topDown', false → 'groundUp'. default false." },
-        { key: 'activeAxes',             effect: '{x,y,z} 1D/2D/3D selector, ferried 1:1. Omitted ⇒ the engine\'s 2D default.' },
-        { key: 'stepping',               effect: "'fixed' | 'average' — the wave-walk sampler, ferried VERBATIM (never validated or defaulted here). Omitted ⇒ the engine's default." },
-    ];
-
-    function _initCfgKeyList() {
-        return INIT_CFG.map(function (r) { return r.key; }).join(', ');
-    }
-
-    /**
-     * THROW-OR-APPLY on the cfg bag. An unknown key is a hard error naming the legal
-     * vocabulary — never a silent drop.
-     *
-     * The defect this closes: `init()` read four named keys by explicit destructure and
-     * validated nothing else, so a saved STUDIO recipe carrying a RETIRED key loaded
-     * fine, dropped the key, and ran with different physics. `universe.init()` throws on
-     * those names, but a recipe never reaches it with them — this layer swallowed them
-     * first. That is quieter, and worse, than the loud breakage retirement is for.
-     *
-     * RETIREMENT ENRICHMENT: the universe's own class publishes the retirement ledger
-     * (`EGPTUniverse.RETIRED_CONFIG_KEYS`), so a retired name gets the SAME migration
-     * sentence the engine throws — one ledger, never a second copy here. The THROW is
-     * unconditional; only the extra sentence depends on the ledger being reachable (a
-     * bare test double may not publish it), so a missing ledger can never weaken the gate.
-     *
-     * @param {string} where — the call shape to quote back ('RecipeContext.init(cfg)')
-     * @param {Object} cfg
-     * @param {Object} universe — the live universe, for its class's retirement ledger
-     */
-    function assertInitCfg(where, cfg, universe) {
-        var Ctor    = universe ? universe.constructor : null;
-        var retired = (Ctor && Ctor.RETIRED_CONFIG_KEYS && typeof Ctor.RETIRED_CONFIG_KEYS === 'object')
-            ? Ctor.RETIRED_CONFIG_KEYS : null;
-        Object.keys(cfg).forEach(function (k) {
-            var known = INIT_CFG.some(function (r) { return r.key === k; });
-            if (known) { return; }
-            var msg = where + ": unknown option '" + k + "'. Legal options: " + _initCfgKeyList() + '.';
-            if (retired && Object.prototype.hasOwnProperty.call(retired, k)) {
-                msg += " That name is RETIRED at the engine — '" + k + "' " + retired[k] +
-                    '. Note this is the RECIPE vocabulary, not the engine option list: ' +
-                    'migrate to one of the legal options above.';
-            }
-            throw new Error(msg);
-        });
+    function _worldInit() {
+        var W = (typeof module !== 'undefined' && module.exports)
+            ? require('./setup/_worldInit.js')
+            : _gbl.FrqtlWorldInit;
+        if (!W || typeof W.initArgs !== 'function' || typeof W.assertInitCfg !== 'function') {
+            throw new Error('[RecipeContext] FrqtlWorldInit is not loaded: objects/setup/_worldInit.js ' +
+                'OWNS the exp.init(cfg) vocabulary and its universe.init mapping, and ships in the ' +
+                'game-layer roster (lib/shim/engine/game-layer-manifest.js) ahead of objects/setup/ — load it.');
+        }
+        return W;
     }
 
     // ── RecipeContext ─────────────────────────────────────────────────────────
@@ -225,23 +174,12 @@
     // ── init(cfg) ─────────────────────────────────────────────────────────────
 
     /**
-     * Initialise the universe using a named config bag.
-     *
-     * Maps the cfg bag to universe.init()'s options object. NOTE: the cfg key
-     * names predate the engine option names and DO NOT line up 1:1 — the mapping
-     * below is preserved exactly (copied verbatim from Experiment.js) so behavior
-     * stays bit-identical:
-     *   cfg.bonding         → options.noEscape
-     *   cfg.frames          → options.frameGenMode  (true → 'topDown', false → 'groundUp')
-     *   cfg.interQuantumCollisions is accepted but inert (it fed a removed
-     *     positional slot, which the engine never read).
-     *   cfg.activeAxes      → options.activeAxes  (pass-through, 1:1)
-     *
-     *   cfg.activeAxes      → options.activeAxes  (pass-through, 1:1)
-     *   cfg.stepping        → options.stepping    (pass-through, 1:1)
+     * Initialise the universe using a named config bag: validate it, store it for the
+     * `initCfg` getter, and apply `FrqtlWorldInit.initArgs(cfg, runner.canvas_rect)` — the
+     * ONE cfg→init mapping (objects/setup/_worldInit.js holds the key-by-key table).
      *
      * THROW-OR-APPLY: an unknown cfg key is a hard error naming the legal vocabulary
-     * (`INIT_CFG` above), with the engine's own migration sentence appended when the name
+     * (`FrqtlWorldInit.INIT_CFG`), with the engine's own migration sentence appended when the name
      * is a RETIRED engine key. Until this landed, unknown keys were silently ignored — so
      * a saved STUDIO recipe carrying a retired name LOADED, dropped the key, and ran with
      * different physics. `universe.init()` throws on those names, but a recipe never
@@ -261,20 +199,12 @@
      * — and THE SCENE SOURCE IS THE ONE AUTHORITY on the world it builds: there is no
      * URL/host override path into this mapping, by design.
      *
-     * Ferried VERBATIM: this layer neither validates nor defaults it. `universe.init()`
-     * is the one validator (it throws naming both legal samplers) and the engine's own
-     * serde enum is the one default, so omission must leave the key ABSENT from the
-     * init bag rather than substituting a JS-side copy that could drift.
-     *
      * Physics, for the reader: both samplers realize the same MEAN step (1 px/tick
      * along the momentum vector) and differ only in the variance about it — 'fixed'
      * walks a deterministic error accumulator (along-ray deviation bounded below 1px),
      * 'average' draws a per-axis Bernoulli coin (variance (L1/L2 − 1) px²/tick, zero
      * on-axis, 0.414 at 45°). Axis-aligned and stationary frames are bit-identical
      * under both; off-axis higher-order fringes are where they diverge.
-     *
-     * canvas_rect is sourced from runner.canvas_rect (set at construction time,
-     * always valid before init()).
      *
      * @param {Object}  cfg
      * @param {number}  [cfg.dimension=2]
@@ -288,43 +218,14 @@
     RecipeContext.prototype.init = function (cfg) {
         cfg = cfg || {};
         // THROW-OR-APPLY before anything is stored or forwarded: an unknown key must not
-        // be silently dropped on the way to universe.init(). See assertInitCfg().
-        assertInitCfg('RecipeContext.init(cfg)', cfg, this._runner.universe);
+        // be silently dropped on the way to universe.init() (FrqtlWorldInit.assertInitCfg).
+        var W = _worldInit();
+        W.assertInitCfg('RecipeContext.init(cfg)', cfg, this._runner.universe);
         this._initCfg = cfg;   // store for the initCfg getter (STUDIO codegen)
-
-        var dimension              = cfg.dimension              !== undefined ? cfg.dimension              : 2;
-        var wavelengthScale        = cfg.wavelengthScale        !== undefined ? cfg.wavelengthScale        : 8;
-        var bonding                = cfg.bonding                !== undefined ? cfg.bonding                : false;
-        var frames                 = cfg.frames                 !== undefined ? cfg.frames                 : false;
-
-        // canvas_rect is set at FrqtlApp construction time from opts.canvasW/H.
-        // universe_rect is also set at EGPTUniverse construction time (before init()).
-        // Both are valid here — we use runner.canvas_rect as the authoritative source.
-        var canvas_rect = this._runner.canvas_rect;
-
-        var initOpts = {
-            wavelengthScale: wavelengthScale,
-            noEscape: bonding,
-            // cfg.frames is a BOOLEAN in the recipe vocabulary; the engine option is the
-            // ENUM frameGenMode. The translation lives here, once, so no recipe has to
-            // know the enum and no caller can pass the boolean to the engine (it throws).
-            frameGenMode: frames ? 'topDown' : 'groundUp',
-        };
-        // Only attach activeAxes when the recipe declared it — omission lets the engine's
-        // 2D default apply, so every pre-existing recipe's config stays byte-identical.
-        if (cfg.activeAxes !== undefined && cfg.activeAxes !== null) {
-            initOpts.activeAxes = cfg.activeAxes;
-        }
-        // Same omit-when-undeclared discipline for the walk sampler: omission lets the
-        // ENGINE's serde default apply (one authority for the default), so every
-        // pre-existing recipe's init bag stays byte-identical. Declared ⇒ ferried
-        // VERBATIM to universe.init(), the one validator — a garbage value throws there
-        // naming both legal samplers rather than being silently dropped here.
-        if (cfg.stepping !== undefined && cfg.stepping !== null) {
-            initOpts.stepping = cfg.stepping;
-        }
-
-        this._runner.universe.init(canvas_rect, dimension, initOpts);
+        // runner.canvas_rect is set at FrqtlApp construction time from opts.canvasW/H and is
+        // the rect the universe was created with, so it is valid before init().
+        var u = this._runner.universe;
+        u.init.apply(u, W.initArgs(cfg, this._runner.canvas_rect));
     };
 
     // ── addObject(kind, config) ───────────────────────────────────────────────
@@ -449,11 +350,16 @@
 
     // ── Export ────────────────────────────────────────────────────────────────
 
-    // The cfg contract, published exactly as EGPTUniverse publishes CONFIG — so the
-    // legacy Experiment facade (and any future consumer) reads the vocabulary instead
-    // of re-typing it.
-    RecipeContext.INIT_CFG      = INIT_CFG;
-    RecipeContext.assertInitCfg = assertInitCfg;
+    // The world-init contract is NOT a RecipeContext static: reading one of its names here
+    // THROWS naming the owner (FAIL-LOUD — never an alias that keeps the old spelling alive).
+    ['INIT_CFG', 'assertInitCfg', 'initArgs'].forEach(function (name) {
+        Object.defineProperty(RecipeContext, name, {
+            get: function () {
+                throw new Error('RecipeContext.' + name + ' does not exist: the exp.init(cfg) world-init ' +
+                    'contract is FrqtlWorldInit.' + name + ' (objects/setup/_worldInit.js).');
+            }
+        });
+    });
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { RecipeContext: RecipeContext };

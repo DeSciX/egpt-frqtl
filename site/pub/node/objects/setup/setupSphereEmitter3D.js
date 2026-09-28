@@ -27,9 +27,11 @@
  *   setupSphereEmitter3D(universe, opts);             // 2. PART
  *   setupSphereEmitter3D(universe, opts2);            // 2. another PART, same field
  *
- * `setupSphereEmitter3D.worldCfg(opts)` is the same thing as DATA (an
- * `exp.init(cfg)` bag) for the recipe/Studio sketch surface. Both are the ONE
- * authority for the lambda_eff chain and the 2D/3D axis selection.
+ * `setupSphereEmitter3D.worldCfg(opts)` is the SINGLE SOURCE of that world, as DATA (an
+ * `exp.init(cfg)` bag) — the ONE authority for the lambda_eff chain and the 2D/3D axis
+ * selection. `initWorld` is that bag through `FrqtlWorldInit.initArgs`, the one cfg→init
+ * mapping, so `exp.init(worldCfg(opts))` and `initWorld(universe, opts)` build the same
+ * world. `FrqtlApp.setup(setupSphereEmitter3D, opts)` runs both steps in order.
  *
  * ── Layer 1: API contract ────────────────────────────────────────────────────
  *
@@ -368,13 +370,14 @@
      *
      * The one authority for the lambda_eff chain and the 2D/3D axis selection; the
      * sketch decides whether and when to apply it. Returns the `exp.init(cfg)` bag
-     * shape (RecipeContext/Experiment), which `initWorld` below adapts to the raw
-     * `universe.init(rect, dim, opts)` call.
+     * shape (RecipeContext/Experiment); `FrqtlWorldInit.initArgs` (objects/setup/_worldInit.js)
+     * is the ONE mapping of that bag to the raw `universe.init(rect, dim, opts)` call, and
+     * `initWorld` below applies it.
      *
      * ── THE lambda_eff CHAIN (the one place it is derived; cite THIS, not a constant) ──
      *   fundamentalWaveLength  (author-facing knob, default 64)
      *     -> wavelengthScale = max(1, floor(fWL / 4))            [this function]
-     *     -> universe.init({ wavelengthScale: <that> })             [initWorld]
+     *     -> universe.init({ wavelengthScale: <that> })   [FrqtlWorldInit.initArgs]
      *          — the universe STORES that as its `wavelengthScale`
      *     -> lambda_eff = (capacity / mass) * wavelengthScale
      *                   = 16 * floor(fWL / 4)     [fundamentalDimension 2, mass 1]
@@ -392,9 +395,8 @@
      * one validator (it throws naming both legal samplers), and the ENGINE's serde
      * default (`Fixed`) is the one default. The key is therefore attached to the
      * returned bag ONLY when the caller declared it — omission keeps every existing
-     * caller's cfg bag (and `universe.init` options, see `initWorld`) byte-identical.
-     * LATENT while `brownianMotion` is true: stepping is a property of the wave-walk
-     * branch and simply does not fire until the universe is on it.
+     * caller's cfg bag (and so its `universe.init` options) byte-identical. Stepping is a
+     * property of the wave-walk branch (brownianMotion false, frameGenMode 'groundUp').
      *
      * @param {Object} [options] — the SAME options bag `setupSphereEmitter3D` takes.
      * @param {string} [options.stepping] — 'fixed' | 'average'; omitted ⇒ engine default.
@@ -424,34 +426,44 @@
     }
 
     /**
+     * The ONE cfg→universe.init mapping is `FrqtlWorldInit.initArgs`, owned by the leaf
+     * `objects/setup/_worldInit.js` — a contract the roster loads AHEAD of every setup
+     * factory (the `_setupOptions.js` rule), so it is present on any page that has loaded
+     * this file. Resolved at call time; absent ⇒ THROW naming it — never a local copy.
+     */
+    function _worldInitArgs() {
+        var W = (typeof module !== 'undefined' && module.exports)
+            ? require('./_worldInit.js')
+            : window.FrqtlWorldInit;
+        if (!W || typeof W.initArgs !== 'function') {
+            throw new Error('setupSphereEmitter3D.initWorld: FrqtlWorldInit is not loaded, so the ' +
+                'world step cannot be mapped to universe.init(). objects/setup/_worldInit.js OWNS the ' +
+                'cfg→init mapping and ships in the game-layer roster ahead of objects/setup/ — load it.');
+        }
+        return W.initArgs;
+    }
+
+    /**
      * initWorld — THE SKETCH STEP. Init the world this emitter implies, on a RAW
-     * universe, BEFORE constructing any part.
+     * universe, BEFORE constructing any part:
      *
-     *   setupSphereEmitter3D.initWorld(universe, opts);   // 1. world
-     *   setupSphereEmitter3D(universe, opts);             // 2. part
+     *   universe.init(...FrqtlWorldInit.initArgs(worldCfg(opts), universe.universe_rect))
+     *
+     * i.e. exactly the world `exp.init(worldCfg(opts))` builds — one factory, one world,
+     * whichever surface the author used (conformance: one-world-per-factory.test.mjs).
      *
      * `universe.init()` is a universe-GLOBAL reset (it clears every frame and fixes the
      * base fundamental, wavelengthScale and activeAxes), which is exactly why it belongs
-     * to the sketch and runs ONCE. A second emitter on the same field just skips this
-     * call — that is what deleted `skipInit`.
+     * to the sketch and runs ONCE. `FrqtlApp.setup(setupSphereEmitter3D, opts)` runs it
+     * before the part step (and `restart()` replays both); a second emitter on the same
+     * field just skips this call — that is what deleted `skipInit`.
      *
-     * @param {Object} universe — a constructed, NOT-yet-init'd universe.
+     * @param {Object} universe — a constructed universe (init'd or not; this re-inits it).
      * @param {Object} [options] — the SAME options bag `setupSphereEmitter3D` takes.
      */
     function initWorld(universe, options) {
-        var cfg = worldCfg(options);
-        var initOpts = {
-            wavelengthScale: cfg.wavelengthScale,
-            brownianMotion: false,
-            activeAxes: cfg.activeAxes,
-        };
-        // stepping — attached ONLY when the sketch declared it (see worldCfg): omission
-        // lets the engine's own default sampler apply, so every OTHER setup's init bag
-        // stays byte-identical. Ferried VERBATIM; universe.init() is the validator.
-        if (cfg.stepping !== undefined && cfg.stepping !== null) {
-            initOpts.stepping = cfg.stepping;
-        }
-        universe.init(universe.universe_rect, cfg.dimension, initOpts);
+        var args = _worldInitArgs()(worldCfg(options), universe.universe_rect);
+        universe.init.apply(universe, args);
     }
     /**
      * OPTIONS — this factory's own option vocabulary: EXACTLY the keys it reads.
@@ -488,6 +500,12 @@
      * someone has to remember to update.
      */
     var SKETCH_OPTIONS = OPTIONS.concat(['emissionCap', 'gateCounter']);
+
+    /**
+     * PRESETS — the emission presets `applyPreset` knows, exported so the preset control
+     * and every conformance test consume ONE list instead of retyping it.
+     */
+    var PRESETS = ['spherical', 'hemisphere', 'laser', 'drum', 'particle-walk'];
 
     /**
      * RETIRED_OPTIONS — names this factory claims with its OWN migration message.
@@ -1157,7 +1175,7 @@
                 onChange: function (v) { control.setEmissionBoxSide(v); }
             },
             {
-                id: 'preset', label: 'preset', kind: 'select', options: ['spherical', 'hemisphere', 'laser', 'drum', 'particle-walk'],
+                id: 'preset', label: 'preset', kind: 'select', options: PRESETS.slice(),
                 value: state.preset,
                 fmt: function (v) { return String(v); },
                 get: function () { return control.getPreset(); },
@@ -1222,6 +1240,7 @@
     setupSphereEmitter3D.initWorld = initWorld;
 
     setupSphereEmitter3D.OPTIONS = OPTIONS;
+    setupSphereEmitter3D.PRESETS = PRESETS;
     setupSphereEmitter3D.SKETCH_OPTIONS = SKETCH_OPTIONS;
     setupSphereEmitter3D.RETIRED_OPTIONS = RETIRED_OPTIONS;
 

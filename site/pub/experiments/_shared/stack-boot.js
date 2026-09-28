@@ -30,7 +30,8 @@
  * etc. are guaranteed to be available when each file executes.
  *
  * After this tag the page keeps ONLY:
- *   - Its experiment sketch <script> block (calls window._egptWhenEngineReady etc.)
+ *   - Its experiment sketch <script> block (defines window.setup, then calls
+ *     window._egptStartSketch() — the one boot dance, see below)
  *   - Its controls/layout markup
  *   - Any vendor extras placed BEFORE this tag that must load first (idempotent)
  *
@@ -88,20 +89,18 @@
  *
  *   PAGE SCRIPTS (data-page-scripts):
  *     — per-page objects, setup factories, and _shared helpers
- *       guaranteed to run AFTER FrqtlApp is in the global scope
+ *       guaranteed to run AFTER the whole GAME roster is in the global scope
  *
- * ── DEFERRED-p5 DISCIPLINE ─────────────────────────────────────────────────
+ * ── THE ONE BOOT DANCE (deferred p5) ───────────────────────────────────────
  *
- *   p5 is NOT injected here. Each page's sketch must load it after BOTH
- *   engine AND renderer are live:
+ *   p5 is NOT injected by the sequence. A page's sketch ends with ONE call:
  *
- *     window._egptWhenEngineReady(function () {
- *         window._egptWhenRendererReady(function () {
- *             var s = document.createElement('script');
- *             s.src = '../../assets/vendor/p5.min.js';
- *             document.body.appendChild(s);
- *         });
- *     });
+ *     window._egptStartSketch();                 // p5 on the p5 renderer, else setup()
+ *     window._egptStartSketch({ p5: 'always' }); // p5 whatever the renderer
+ *
+ *   which waits for engine ready, renderer ready AND the stack-complete promise
+ *   (below), then injects p5 (whose load calls window.setup) or calls
+ *   window.setup() itself. No page polls a global or re-implements the dance.
  *
  * ── EARLY SHIMS ────────────────────────────────────────────────────────────
  *
@@ -112,15 +111,17 @@
  *   The shims drain their queues once engine-boot.js and render-boot.js have
  *   run and replaced the shims with real implementations.
  *
- * ── GAME-LAYER READY ───────────────────────────────────────────────────────
+ * ── STACK READY ────────────────────────────────────────────────────────────
  *
- *   window._egptGameLayerReadyPromise resolves when the ENTIRE GAME phase (every
- *   GAME_LAYER_SCRIPTS entry, in order) has loaded, and rejects with the boot
- *   error if the sequence stopped. This loader owns the roster, so it publishes
- *   "the roster is complete" rather than leaving a consumer to watch one global
- *   and infer the rest: `_egptWhenEngineReady` fires long BEFORE the GAME phase
- *   (it drains right after engine-boot.js), so engine-ready alone never implies a
- *   loaded game layer. lib/shim/engine/engine-stack-boot.js awaits both.
+ *   window._egptStackReadyPromise resolves when this loader's LAST phase has
+ *   loaded — the whole GAME roster AND every data-page-scripts entry, in order —
+ *   and rejects with the boot error if the sequence stopped. This loader owns the
+ *   phases, so it publishes "the stack is complete" rather than leaving a consumer
+ *   to watch one global and infer the rest: `_egptWhenEngineReady` fires long
+ *   BEFORE the GAME phase (it drains right after engine-boot.js), so engine-ready
+ *   alone never implies a loaded stack, and stack-complete says nothing about WASM.
+ *   lib/shim/engine/engine-stack-boot.js and GraphicsPane.boot() await both;
+ *   window._egptStartSketch() composes both for a page.
  *
  * ── IDEMPOTENT / FAIL-LOUD ─────────────────────────────────────────────────
  *
@@ -554,6 +555,7 @@
         { src: _u('objects/objects/FrqtlVision.js') },
         { src: _u('objects/objects/CameraPath.js') },
         { src: _u('objects/setup/_setupOptions.js') },
+        { src: _u('objects/setup/_worldInit.js') },
         { src: _u('objects/setup/_collisionMatrixLanes.js') },
         { src: _u('objects/setup/setupSphereEmitter3D.js') },
         { src: _u('objects/objects/SphereEmitter.js') },
@@ -588,6 +590,9 @@
         RENDERER: 'RENDERER_LAYER_SCRIPTS (lib/shim/engine/renderer-layer-manifest.js)',
         SHIM: 'ENGINE_SHIM_CONTRACT_SCRIPTS (lib/shim/engine/shim-contract-manifest.js)'
     };
+    /* The deferred p5 load _egptStartSketch performs — a RENDERER-axis script this loader
+       injects outside the three phase lists. */
+    var _P5_ENTRY = 'assets/vendor/p5.min.js';
     var _BOOT_SCRIPT_PHASE = {
         'experiments/_shared/engine-boot.js': 'ENGINE',
         'experiments/_shared/render-boot.js': 'RENDERER'
@@ -630,6 +635,10 @@
         } else if (page) {
             phase = 'PAGE';
             owner = '`' + page.entry + '`, its data-page-scripts entry on this experiment page';
+        } else if (entry === _P5_ENTRY) {
+            phase = 'RENDERER';
+            owner = '`' + entry + '`, the deferred p5 load window._egptStartSketch() performs ' +
+                '(lib/frqtl/experiments/_shared/stack-boot.js)';
         } else if (entry && _BOOT_SCRIPT_PHASE[entry]) {
             phase = _BOOT_SCRIPT_PHASE[entry];
             owner = '`' + entry + '`, the ' + phase + ' phase\'s boot script in stack-boot.js';
@@ -644,6 +653,33 @@
             'The sequence stops at the first script that fails; nothing after it loaded.\n\n' +
             'Remedy: make the host serve ' + src + ' — the file is missing from this tree,\n' +
             'or a built host\'s build did not copy it.';
+    }
+
+    /* The boot-failure painter — console + overlay, one text owner (_bootFailureMessage). */
+    function _paintBootFailure(err) {
+        var msg = _bootFailureMessage(err);
+        if (window.console && console.error) { console.error(msg); }
+        /* The ONE boot-failure painter (engine-boot.js) when it is installed — it is
+           not when the ENGINE phase itself failed, since engine-boot.js loads last in
+           that phase. stack-boot writes its OWN phase-labeled text: engine-boot's
+           failLoud is the ENGINE banner and carries the WASM build remedy, which is the
+           wrong remedy for a script the host did not serve. */
+        if (typeof window._egptPaintFailOverlay === 'function') {
+            window._egptPaintFailOverlay({
+                msg: msg,
+                fullViewportId: 'egpt-engine-error',
+                scopedMarkerAttr: 'data-egpt-engine-error'
+            });
+        } else if (!document.getElementById('egpt-engine-error')) {
+            var b = document.createElement('div');
+            b.id = 'egpt-engine-error';
+            b.setAttribute('data-egpt-boot-error', '1');
+            b.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#1a0000;' +
+                'color:#ff6b6b;font:13px/1.55 ui-monospace,monospace;padding:22px;' +
+                'white-space:pre-wrap;overflow:auto;border:2px solid #b6161c;';
+            b.textContent = msg;
+            (document.body || document.documentElement).appendChild(b);
+        }
     }
 
     /* Default renderer unless already set by page or build */
@@ -688,54 +724,79 @@
         })
         .then(function () { return _seq(_gameList()); });
 
-    /* ── THE GAME-LAYER READY CONTRACT ──────────────────────────────────────
-       window._egptGameLayerReadyPromise settles when the ENTIRE GAME phase — every
-       entry of GAME_LAYER_SCRIPTS, in order — has loaded; it REJECTS with the boot
-       error if the sequence stopped. This loader is the only thing that knows when
-       that roster is complete, so it publishes the fact rather than leaving each
-       consumer to guess a sentinel global: a programmatic host that injects this
-       file (lib/shim/engine/engine-stack-boot.js, behind caps.frqtl.ensureEngine)
-       must not hand a builder cell an engine-ready promise that resolves while the
-       roster's LAST entries are still in flight — a recipe canvas reads
-       window.RecipeContext, installed by the final entry, on the line after the
-       await (FRAQTL #73).
+    /* ── THE STACK-READY CONTRACT (FRAQTL #73, #74) ──────────────────────────
+       window._egptStackReadyPromise settles when this loader's LAST phase has loaded —
+       ENGINE, RENDERER, the whole GAME roster, then every data-page-scripts entry, in
+       order — and REJECTS with the boot error if the sequence stopped. This loader is the
+       only thing that knows when the stack is complete, so it publishes that one fact
+       rather than leaving each consumer to guess a sentinel global: a page sketch reads its
+       own page-script globals (a setup factory, ExperimentMetrics), which load AFTER the
+       GAME phase, and a programmatic host (engine-stack-boot.js, GraphicsPane.boot) reads
+       game-layer globals such as window.RecipeContext, the roster's final entry.
 
-       `.catch` here marks the promise HANDLED so a page that never consumes it
-       produces no unhandled-rejection noise; the rejection still reaches any
-       consumer's own .then/.catch (the same idiom engine-boot.js uses for
-       window._wasmReadyPromise). */
-    window._egptGameLayerReadyPromise = _throughGameLayer;
-    _throughGameLayer.catch(function () {});
+       It says nothing about WASM: engine-ready (`_egptWhenEngineReady`) settles on its own
+       clock, so a consumer composes both — `_egptStartSketch` below is that composition
+       for a page.
 
-    _throughGameLayer
-        .then(function () {
-            /* Load page-specific scripts (data-page-scripts attr) after game layer. */
-            return _seq(_pageScripts);
-        })
+       `.catch` here marks the promise HANDLED so a page that never consumes it produces
+       no unhandled-rejection noise; the rejection still reaches any consumer's own
+       .then/.catch (the same idiom engine-boot.js uses for window._wasmReadyPromise). */
+    var _stackReady = _throughGameLayer.then(function () {
+        /* Load page-specific scripts (data-page-scripts attr) after game layer. */
+        return _seq(_pageScripts);
+    });
+    window._egptStackReadyPromise = _stackReady;
+    _stackReady.catch(function () {});
+
+    /* The game-layer promise is DELETED: it settled before the page scripts, which is the
+       #74 race. Any reader or publisher of the old name fails loud naming the replacement. */
+    function _deletedGameLayerPromise() {
+        throw new Error('[stack-boot] window._egptGameLayerReadyPromise is deleted — it settled ' +
+            'before the page scripts loaded (FRAQTL #74). Await window._egptStackReadyPromise, ' +
+            'which settles after the LAST phase, or call window._egptStartSketch() on a page.');
+    }
+    Object.defineProperty(window, '_egptGameLayerReadyPromise', {
+        configurable: true,
+        get: _deletedGameLayerPromise,
+        set: _deletedGameLayerPromise
+    });
+
+    /* ── THE ONE PAGE BOOT DANCE ────────────────────────────────────────────
+       window._egptStartSketch(opts) — engine ready → renderer ready → stack complete →
+       then EITHER inject p5 (whose load calls window.setup) OR call window.setup()
+       directly (the three.js path: vendored and already live, nothing else will call it).
+
+         opts.p5 === 'always'   inject p5 whatever the resolved renderer (a page whose
+                                sketch is p5-driven on every renderer)
+         default                inject p5 only when the resolved renderer is 'p5'
+
+       Failures: engine/renderer/stack failures are already painted by their owners
+       (engine-boot.js, render-boot.js, this loader's catch below), so this dance only
+       stops. A p5 load failure is painted here through the same boot-failure painter. A
+       throw inside window.setup() is NOT caught — it surfaces as the page's own error. */
+    window._egptStartSketch = function (opts) {
+        var alwaysP5 = !!(opts && opts.p5 === 'always');
+        window._egptWhenEngineReady(function () {
+            window._egptWhenRendererReady(function () {
+                _stackReady.then(function () {
+                    var r = window._egptRenderer || 'p5';
+                    if (alwaysP5 || r === 'p5') {
+                        _inject(_u(_P5_ENTRY)).catch(_paintBootFailure);
+                        return;
+                    }
+                    if (typeof window.setup !== 'function') {
+                        throw new Error('[stack-boot] _egptStartSketch: the page defines no ' +
+                            'window.setup() to run on the ' + r + ' renderer. (FAIL-LOUD.)');
+                    }
+                    window.setup();
+                }, function () { /* painted by this loader's boot-failure catch */ });
+            });
+        });
+    };
+
+    _stackReady
         .catch(function (err) {
-            var msg = _bootFailureMessage(err);
-            if (window.console && console.error) { console.error(msg); }
-            /* The ONE boot-failure painter (engine-boot.js) when it is installed — it is
-               not when the ENGINE phase itself failed, since engine-boot.js loads last in
-               that phase. stack-boot writes its OWN phase-labeled text: engine-boot's
-               failLoud is the ENGINE banner and carries the WASM build remedy, which is the
-               wrong remedy for a script the host did not serve. */
-            if (typeof window._egptPaintFailOverlay === 'function') {
-                window._egptPaintFailOverlay({
-                    msg: msg,
-                    fullViewportId: 'egpt-engine-error',
-                    scopedMarkerAttr: 'data-egpt-engine-error'
-                });
-            } else if (!document.getElementById('egpt-engine-error')) {
-                var b = document.createElement('div');
-                b.id = 'egpt-engine-error';
-                b.setAttribute('data-egpt-boot-error', '1');
-                b.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#1a0000;' +
-                    'color:#ff6b6b;font:13px/1.55 ui-monospace,monospace;padding:22px;' +
-                    'white-space:pre-wrap;overflow:auto;border:2px solid #b6161c;';
-                b.textContent = msg;
-                (document.body || document.documentElement).appendChild(b);
-            }
+            _paintBootFailure(err);
             /* R2 (ws-stackboot-dev-map SEAM RULING): REJECT the early-shim queues too —
                painting the overlay is not enough. A caller that already registered via
                the QUEUE-BASED shim (window._egptWhenEngineReady/_egptWhenRendererReady,

@@ -306,39 +306,10 @@
         window._frqtlApp = runner;
     };
 
-    // Boot: same pattern as particle-walk-3d. _egpt3D resolves renderer to 'three';
-    // render-boot fires the ready callback; we poll for FrqtlApp to be defined.
-    //
-    // WS Studio Controls Realignment S5b fix-loop (same root cause as
-    // particle-walk-3d's identical guard, see that page's own comment): also poll
-    // for setupCollisionMatrix3D itself (a data-page-scripts entry, loaded AFTER
-    // the GAME-layer FrqtlApp in stack-boot's chain) — FrqtlApp
-    // being defined does not guarantee this page's own setup script has finished.
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                // Fallback: _egpt3D should have forced three, but if renderer was overridden
-                // to p5 explicitly via ?renderer=p5, honour it (z=0 slice — no depth).
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    // S5b fix-loop residual (tester re-verify, Oracle D) — same
-                    // ExperimentMetrics guard as particle-walk-3d's identical
-                    // pattern (see that page's own comment for the race detail).
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupCollisionMatrix3D !== 'undefined' &&
-                        typeof ExperimentMetrics !== 'undefined') {
-                        window.setup();
-                    } else {
-                        setTimeout(whenRunnerReady, 20);
-                    }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>

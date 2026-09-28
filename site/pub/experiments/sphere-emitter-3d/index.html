@@ -202,14 +202,9 @@
     window.__frqtlSphereEmitter = { activeQuanta: 0, R: 24, preset: 'spherical' };
 
     // THE SKETCH — world.init() FIRST, then CONSTRUCT parts. `setupSphereEmitter3D`
-    // is a PART constructor and never inits; `setupSphereEmitter3D.initWorld` is the
-    // world step (the ONE authority for this emitter's implied wavelengthScale +
-    // activeAxes). This page is the sketch, so it owns that call — and every
-    // restart-in-place (is2D / lambda-demo) re-runs the sketch, world step included.
-    function sphereEmitterSketch(universe, opts) {
-        setupSphereEmitter3D.initWorld(universe, opts);
-        return setupSphereEmitter3D(universe, opts);
-    }
+    // is a PART constructor and never inits; its exported `initWorld` is the world
+    // step. `runner.setup(setupSphereEmitter3D, opts)` runs both in that order, so
+    // every restart-in-place (is2D / lambda-demo) re-runs the world step too.
 
     // Read every CURRENT-DOM control value that must survive a REINIT-CLASS
     // restart (is2D toggle OR wvdemo toggle) — ONE authority, reused by both
@@ -379,7 +374,7 @@
         });
 
         runner.createCanvas();
-        runner.setup(sphereEmitterSketch, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
+        runner.setup(setupSphereEmitter3D, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
 
         var ctl = runner.setupResult.sphereEmitterControl;
         window.__frqtlSphereEmitter.R = ctl.getR();
@@ -404,7 +399,7 @@
         document.getElementById('ctrl-wvdemo').addEventListener('change', function (e) {
             _wvDemo = !!e.target.checked;
             var prevActive = document.getElementById('ctrl-autofire').checked;
-            runner.setup(sphereEmitterSketch, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
+            runner.setup(setupSphereEmitter3D, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
             var newCtl = runner.setupResult.sphereEmitterControl;
             newCtl.setActive(prevActive);
             buildAndWireControls(newCtl);
@@ -419,7 +414,7 @@
         document.getElementById('ctrl-is2D').addEventListener('change', function (e) {
             _is2D = !!e.target.checked;
             var prevActive = document.getElementById('ctrl-autofire').checked;
-            runner.setup(sphereEmitterSketch, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
+            runner.setup(setupSphereEmitter3D, Object.assign({ is2D: _is2D }, _currentReinitOptions()));
             var newCtl = runner.setupResult.sphereEmitterControl;
             newCtl.setActive(prevActive);
             buildAndWireControls(newCtl);
@@ -467,27 +462,10 @@
         window._frqtlApp = runner;
     };
 
-    // Boot dance — identical to cone-emitter-3d / particle-walk-3d.
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupSphereEmitter3D !== 'undefined' &&
-                        typeof ExperimentMetrics !== 'undefined') {
-                        window.setup();
-                    } else {
-                        setTimeout(whenRunnerReady, 20);
-                    }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>

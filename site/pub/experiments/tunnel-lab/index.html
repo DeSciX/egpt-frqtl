@@ -518,32 +518,10 @@
         window._frqtlApp = runner;
     };
 
-    // Boot: matches tube-l1/collision-matrix-3d's own dual-path exactly. p5
-    // (global mode) auto-invokes window.setup() itself once loaded — injecting the
-    // script is enough, no manual call/poll (a manual call here would double-fire
-    // setup()). The non-p5 path has no such auto-invoke, so it polls for this
-    // page's OWN data-page-scripts globals before calling window.setup() itself.
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupTunnelLab !== 'undefined' &&
-                        typeof ExperimentMetrics !== 'undefined' &&
-                        typeof DirectedTunnel !== 'undefined') {
-                        window.setup();
-                    } else {
-                        setTimeout(whenRunnerReady, 20);
-                    }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>

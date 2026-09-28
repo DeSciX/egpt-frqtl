@@ -94,15 +94,15 @@ const { Runtime } = await import(path.join(repoRoot, 'lib/shim/runtime/index.js'
 const { synthesizeBuilderSource } = await import(path.join(repoRoot, 'lib/shim/notebook/setup-builder.js'));
 
 // A fake FrqtlApp constructor on a page where stack-boot has already executed and BOTH of
-// its published signals are ready: engine-ready (`_egptWhenEngineReady`) and the GAME-layer
-// roster (`_egptGameLayerReadyPromise`). Runtime.init({_router}) is required for
+// its published signals are ready: engine-ready (`_egptWhenEngineReady`) and the
+// stack-ready promise (`_egptStackReadyPromise`). Runtime.init({_router}) is required for
 // caps.frqtl.ensureEngine to exist at all; with stack-boot already executed,
 // ensureEngineStack skips only the injection (neither .resolve nor .ensureBrowserPathMap()
 // is ever called) and still awaits the composed contract — so the stand-in must play both
 // signals. A pre-set window.FrqtlApp alone is not a stand-in for either (FRAQTL #73).
 function installFakeFrqtlApp() {
     globalThis.window._egptWhenEngineReady = function (onReady) { onReady(); };
-    globalThis.window._egptGameLayerReadyPromise = Promise.resolve();
+    globalThis.window._egptStackReadyPromise = Promise.resolve();
     globalThis.window.FrqtlApp = function (opts) {
         this.opts = opts;
         this.setup = function (fn, knobOpts) { this._fn = fn; this._opts = knobOpts; };

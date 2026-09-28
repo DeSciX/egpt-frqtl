@@ -49,8 +49,9 @@
  * ── WASM deferred-p5 contract ────────────────────────────────────────────
  *
  *   For the browser WASM path, window._wasmReadyPromise is set by
- *   wasm-load-browser.js before the WASM binary fetch begins.  Experiment
- *   pages that defer p5's setup() until WASM is ready await this promise.
+ *   wasm-load-browser.js before the WASM binary fetch begins. engine-boot.js's
+ *   window._egptWhenEngineReady settles on it; an experiment page reaches it only
+ *   through window._egptStartSketch() (stack-boot.js), which defers p5 until then.
  *
  * ── Classic-script + CommonJS dual-mode ─────────────────────────────────
  *

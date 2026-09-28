@@ -109,32 +109,10 @@
 
     document.getElementById('reset').addEventListener('click', function () { window.location.reload(); });
 
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';   // p5 load invokes window.setup
-                document.body.appendChild(s);
-            } else {
-                // three.js (vendored, synchronous): poll until the GAME layer is defined.
-                //
-                // S5b fix-loop — same unguarded-page-script race class fixed on
-                // particle-walk-3d/collision-matrix-3d (frqtl-tester re-verify,
-                // Oracle D): poll for the page's OWN data-page-scripts globals too
-                // (setupG1Race, ExperimentMetrics), not just FrqtlApp.
-                (function whenRunnerReady() {
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupG1Race !== 'undefined' &&
-                        typeof ExperimentMetrics !== 'undefined') {
-                        window.setup();
-                    } else {
-                        setTimeout(whenRunnerReady, 20);
-                    }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>

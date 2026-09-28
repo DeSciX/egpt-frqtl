@@ -302,36 +302,10 @@
         window._frqtlApp = runner;
     };
 
-    // Boot: same pattern as particle-walk-3d. _egpt3D resolves renderer to 'three';
-    // render-boot fires the ready callback; we poll for FrqtlApp to be defined.
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                // Fallback: _egpt3D should have forced three, but if renderer was overridden
-                // to p5 explicitly via ?renderer=p5, honour it (z=0 slice — no depth).
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    // Wait for BOTH the GAME-layer FrqtlApp AND the page-script
-                    // ExperimentMetrics (data-page-scripts) — setup() constructs ExperimentMetrics
-                    // before runner.start(), so a too-early call throws and the sim never starts.
-                    //
-                    // S5b fix-loop (frqtl-tester re-verify, Oracle D): this guard was
-                    // missing the THIRD data-page-scripts global — setupCollisionMatrix3D
-                    // itself (runner.setup(setupCollisionMatrix3D, ...) below) — the SAME
-                    // unguarded-global race class as ExperimentMetrics, just not yet hit
-                    // in practice on this page.
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupCollisionMatrix3D !== 'undefined' &&
-                        typeof window.ExperimentMetrics !== 'undefined') { window.setup(); }
-                    else { setTimeout(whenRunnerReady, 20); }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>

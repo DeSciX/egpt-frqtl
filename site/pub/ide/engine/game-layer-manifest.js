@@ -232,6 +232,11 @@ export var OBJECT_SCRIPTS = [
     // position is about the shared roster being loaded before any page script runs —
     // which is what lets a per-page setup factory get the gate without a scripts[] delta.
     'objects/setup/_setupOptions.js',
+    // _worldInit.js — the ONE world-init contract (exp.init(cfg) vocabulary + its
+    // universe.init mapping, window.FrqtlWorldInit). Same roster rule as _setupOptions.js:
+    // a setup factory's world step resolves it at CALL time, so it must load ahead of every
+    // objects/setup/ script; RecipeContext and Experiment (below) consume it too.
+    'objects/setup/_worldInit.js',
     // _collisionMatrixLanes.js — the ONE collision-matrix lane table (densities, and the
     // capacity→mass resolution). Shared by the 2D and 3D matrices, whose capacities differ
     // (2^(2·level) vs 2^(3·level)) while their DENSITY sweep is identical. Same roster rule

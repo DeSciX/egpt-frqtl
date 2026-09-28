@@ -341,31 +341,10 @@
         window._frqtlApp = runner;
     };
 
-    window._egptWhenEngineReady(function () {
-        window._egptWhenRendererReady(function () {
-            var r = window._egptRenderer || 'p5';
-            if (r === 'p5') {
-                var s = document.createElement('script');
-                s.src = '../../js/lib/p5.min.js';
-                document.body.appendChild(s);
-            } else {
-                (function whenRunnerReady() {
-                    // S5b fix-loop — same unguarded-page-script race class fixed on
-                    // particle-walk-3d/collision-matrix-3d (frqtl-tester re-verify,
-                    // Oracle D): poll for the page's OWN data-page-scripts globals
-                    // too (setupCollisionMatrix, ExperimentMetrics), not just the
-                    // GAME-layer FrqtlApp.
-                    if (typeof window.FrqtlApp !== 'undefined' &&
-                        typeof setupCollisionMatrix !== 'undefined' &&
-                        typeof ExperimentMetrics !== 'undefined') {
-                        window.setup();
-                    } else {
-                        setTimeout(whenRunnerReady, 20);
-                    }
-                })();
-            }
-        });
-    });
+    // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
+    // promise (every data-page-scripts entry) → p5 on the p5 renderer (its load calls
+    // window.setup), else window.setup() (FRAQTL #74).
+    window._egptStartSketch();
     </script>
 </body>
 </html>
