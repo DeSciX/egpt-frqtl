@@ -167,6 +167,13 @@ function _bigintGcd(a, b) {
   }
   return a;
 }
+var WASM_PROVIDER_EXTRAS = Object.freeze([
+  "toMathString",
+  "getScalarParts",
+  "getBaseRationalParts",
+  "toPPF",
+  "resetScope"
+]);
 function buildWasmMathProvider(wasmFacade) {
   if (!wasmFacade || typeof wasmFacade !== "object") {
     throw new MathBackendRegistrationError(
@@ -224,7 +231,8 @@ function buildWasmMathProvider(wasmFacade) {
     toCanonicalStr(h) {
       return _materializeStr(h, "toCanonicalStr");
     },
-    // ── Scaled-vector introspection (ws-egpt-math-rust-ops) ──────────────────
+    // ── Value-method transport (WASM_PROVIDER_EXTRAS, not contract ops) ──────
+    // Called only by the same-named EGPTReal value methods in ./wasm-facade.js.
     // The opaque handle may be a scaled irrational vector {scalar, base}; these
     // expose the symbolic structure (never the linear projection). getScalarParts
     // is (1,1) for a plain rational handle; toMathString shows "(s) * H(b)".
@@ -481,7 +489,7 @@ function buildWasmMathProvider(wasmFacade) {
       const r = wasmFacade.arenaPolyGcd(polyToJson(a, "polyGcd"), polyToJson(b, "polyGcd"));
       return jsonToHandles(unwrap(r, "polyGcd"));
     },
-    // ── Handle identity predicate (37th op) ──────────────────────────────────
+    // ── Handle identity predicate ────────────────────────────────────────────
     // Pure structural type check of the V3 handle shape {p:'wasm-math',e,h}.
     // Never throws. Architect ruling (b), Option-JS-only: isHandle answers a
     // TYPE question, not a LIVENESS question — a structurally-valid but stale

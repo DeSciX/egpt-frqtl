@@ -1,7 +1,7 @@
 {
   "upstream_repo": "FRAQTL",
-  "upstream_sha": "4ffca71e",
+  "upstream_sha": "7702bd1a",
   "file_count": 741,
-  "tree_sha256": "858e7fef31ab78dc295011ba8c707d974837f7906c08b3862e3a32b198b15bd8",
+  "tree_sha256": "2480b29a5b276e847f16d1cde5d35b029e94e3ef9a2b74245011c290d40ded12",
   "refreshed_by_script": "scripts/refresh-site.sh"
 }

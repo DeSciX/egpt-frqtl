@@ -77,7 +77,7 @@ export declare const EGPTMatrix: {
   format(M: EGPTReal[][], label?: string): string;
   print(M: EGPTReal[][], label?: string): void;
   // toValueReps/fromValueReps are NOT part of this facade — see wasm-facade.js
-  // module doc (the correct op isn't in the 37-op provider contract).
+  // module doc (the correct op isn't in the provider's REQUIRED_OPS).
 };
 
 export declare const EGPTFFT: {
