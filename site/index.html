@@ -1,24 +1,543 @@
-<!DOCTYPE html>
-<!-- Copyright 2023-2026 by Essam Abadir -->
-<html data-frqtl-site-build="7bab05b7" lang="en">
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>FRQTL IDE</title>
-    <style>
-        html, body, #root {
-            margin: 0; padding: 0;
-            width: 100%; height: 100%;
-            overflow: hidden;
-            background: #0d0d0d;
-        }
-    </style>
+<meta charset="utf-8">
+<script>if(location.search)location.replace("app.html"+location.search+location.hash);</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FRQTL — Impossible things, running</title>
+<meta name="description" content="FRQTL, the physics engine that doesn't know any physics equations: the double slit, a sun, a mirror loop, a blackbody, a half-adder, a big bang, an atom, all computed live in your tab. Open STUDIO.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#0b0f14; --bg2:#10161e; --panel:#151d27; --line:#233040; --line2:#2f3f52;
+  --ink:#e9eef3; --ink2:#b3bfcc; --mute:#7f8ea0;
+  --cyan:#5fcbe6; --cyan2:#3aa9c6; --cyan-ink:#06202a;
+  --gold:#e5b95a;
+  --serif:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+img{max-width:100%;display:block}
+h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.08;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:clamp(30px,4.2vw,46px)}
+h3{font-size:22px}
+p{margin:0}
+.wrap{max-width:1120px;margin:0 auto;padding-inline:20px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan)}
+.sec{padding-block:88px;border-top:1px solid var(--line)}
+.sec-head{display:grid;gap:14px;max-width:760px;margin-bottom:44px}
+.lede{font-size:19px;color:var(--ink2);max-width:62ch}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:4px;font-family:var(--sans);font-weight:600;font-size:16px;border:1px solid transparent;cursor:pointer;text-decoration:none!important;transition:background .15s,border-color .15s}
+.btn-primary{background:var(--cyan);color:var(--cyan-ink)}
+.btn-primary:hover{background:#7ad6ec}
+.btn-ghost{background:transparent;color:var(--ink);border-color:var(--line2)}
+.btn-ghost:hover{border-color:var(--cyan);color:var(--cyan)}
+code,.mono{font-family:var(--mono)}
+code{font-size:.92em;color:var(--cyan);background:rgba(95,203,230,.08);padding:2px 6px;border-radius:3px}
 
-  <script type="importmap" data-frqtl-vendor-importmap>{"imports":{"d3-array":"./pub/vendor/d3-array/src/index.js","internmap":"./pub/vendor/internmap/src/index.js","@frqtl/setups/wave-interference":"./pub/js/game/setup-esm/setupWaveInterference.js","@frqtl/setups/double-slit":"./pub/js/game/setup-esm/setupDoubleSlit.js","@frqtl/setups/atomic-model":"./pub/js/game/setup-esm/setupAtomicModel.js","@frqtl/setups/blackbody":"./pub/js/game/setup-esm/setupBlackbody.js","@frqtl/setups/big-bang":"./pub/js/game/setup-esm/setupBigBang.js","@frqtl/setups/circuit-basic":"./pub/js/game/setup-esm/setupCircuitBasic.js","@frqtl/setups/circuit-sat":"./pub/js/game/setup-esm/setupHalfAdder.js","@frqtl/setups/particle-walk-3d":"./pub/js/game/setup-esm/setupParticleWalk3D.js","@frqtl/setups/collision-matrix-3d":"./pub/js/game/setup-esm/setupCollisionMatrix3D.js"}}</script>
-    <script type="module" crossorigin src="./app-assets/index-ngs4Pllu.js"></script>
-  <link rel="stylesheet" crossorigin href="./app-assets/index-DMlx7z1P.css">
+/* nav */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:rgba(11,15,20,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px;height:64px}
+.brand{display:flex;align-items:baseline;gap:10px;color:var(--ink);text-decoration:none!important}
+.brand b{font-family:var(--serif);font-weight:600;font-size:20px;letter-spacing:.01em}
+.brand span{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.navlinks{display:flex;gap:26px;font-size:15px}
+.navlinks a{color:var(--ink2)}
+.navlinks a:hover{color:var(--cyan);text-decoration:none}
+@media (max-width:820px){.navlinks{display:none}}
+
+/* hero */
+.hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
+.hero-art{position:absolute;inset:0;pointer-events:none}
+.hero-art img{position:absolute;right:-6%;top:50%;transform:translateY(-50%);height:118%;width:auto;max-width:none;opacity:.85;mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.6) 30%,#000 60%);-webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,.6) 30%,#000 60%)}
+.hero .wrap{position:relative;padding-block:96px 84px;display:grid;gap:26px;max-width:1120px}
+.hero h1{font-size:clamp(40px,6.4vw,78px);font-weight:300;max-width:12ch}
+.hero h1 em{font-style:italic;font-weight:500;color:var(--cyan)}
+.hero .lede{font-size:20px;max-width:56ch}
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
+.kicker{margin-top:30px;padding-top:22px;border-top:1px solid var(--line2);max-width:70ch;font-family:var(--mono);font-size:13px;line-height:1.7;color:var(--mute)}
+.kicker b{color:var(--ink2);font-weight:500}
+@media (max-width:820px){.hero-art img{opacity:.35;right:-30%}}
+
+/* vs */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.vs > div{background:var(--bg2);padding:34px 30px;display:grid;gap:14px;align-content:start}
+.vs .side{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.vs .left .side{color:var(--mute)}
+.vs .right{background:var(--panel)}
+.vs .right .side{color:var(--cyan)}
+.vs h3{font-size:26px}
+.vs p{color:var(--ink2)}
+.vs-close{margin-top:26px;font-family:var(--serif);font-size:24px;color:var(--ink);max-width:40ch}
+.vs table{width:100%;border-collapse:collapse;margin-top:8px;font-size:15px}
+.vs table td{padding:8px 0;border-top:1px solid var(--line);vertical-align:top}
+.vs table td:first-child{color:var(--mute);width:38%;padding-right:12px}
+@media (max-width:820px){.vs{grid-template-columns:1fr}}
+
+/* loop */
+.loop{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;counter-reset:step}
+.loop > div{background:var(--bg2);padding:26px 22px;display:grid;gap:12px;align-content:start;position:relative}
+.loop .step{font-family:var(--mono);font-size:12px;color:var(--cyan);letter-spacing:.1em;text-transform:uppercase}
+.loop .step::before{counter-increment:step;content:counter(step) " · "}
+.loop h3{font-size:22px}
+.loop p{font-size:15px;color:var(--ink2)}
+.loop q{display:block;font-family:var(--serif);font-style:italic;font-size:17px;color:var(--ink);quotes:"“" "”"}
+.loop-note{margin-top:26px;padding:22px 26px;border-left:2px solid var(--cyan);color:var(--ink2);max-width:80ch}
+.loop-note b{color:var(--ink)}
+.why{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:52px}
+.why h3{font-size:19px;font-family:var(--sans);font-weight:600;margin-bottom:8px}
+.why p{color:var(--ink2);font-size:15.5px}
+@media (max-width:1000px){.loop{grid-template-columns:repeat(2,1fr)}.loop>div:last-child{grid-column:1/-1}}
+@media (max-width:820px){.why{grid-template-columns:1fr}}
+@media (max-width:560px){.loop{grid-template-columns:1fr}}
+
+/* proof grid */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.tile{position:relative;display:block;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#05080c;color:var(--ink);text-decoration:none!important;aspect-ratio:3/2;max-width:100%}
+.tile img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease,opacity .3s}
+.tile:hover img{transform:scale(1.03)}
+.tile .cap{position:absolute;inset:auto 0 0 0;padding:18px 18px 16px;background:linear-gradient(180deg,transparent,rgba(5,8,12,.92) 45%);display:grid;gap:4px}
+.tile .cap b{font-family:var(--serif);font-weight:500;font-size:20px}
+.tile .cap span{font-size:13.5px;color:var(--ink2)}
+.tile .cap i{font-style:normal;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan);margin-top:6px}
+.tile.dark{background:radial-gradient(60% 60% at 50% 40%,#132030 0,#05080c 100%)}
+.tile.dark .cap{background:none;inset:0;align-content:end}
+.grid-note{margin-top:26px;color:var(--mute);font-size:15px;max-width:70ch}
+@media (max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:520px){.grid{grid-template-columns:1fr}}
+
+/* products */
+.maxi-card{display:grid;grid-template-columns:1.15fr 1fr;gap:0;border:1px solid var(--cyan2);border-radius:6px;overflow:hidden;background:var(--panel);margin-bottom:18px}
+.maxi-card .txt{padding:36px 34px;display:grid;gap:16px;align-content:start}
+.maxi-card .art{background:#05080c;position:relative;min-height:260px}
+.maxi-card .art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.9}
+.maxi-card h3{font-size:34px}
+.maxi-card .tag{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan)}
+.maxi-card p{color:var(--ink2)}
+.prods{display:grid;grid-template-columns:repeat(5,1fr);gap:18px}
+.prod{border:1px solid var(--line);border-radius:6px;background:var(--bg2);padding:24px 22px;display:grid;gap:10px;align-content:start}
+.prod .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.prod h3{font-family:var(--mono);font-weight:500;font-size:20px;letter-spacing:.02em}
+.prod p{font-size:14.5px;color:var(--ink2)}
+.prod code{font-size:12.5px;word-break:break-all}
+.prod a.more{font-size:14px;margin-top:4px}
+.map{margin-top:30px;color:var(--mute);font-size:15px;max-width:80ch}
+.map b{color:var(--ink2);font-weight:500}
+@media (max-width:1000px){.prods{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:820px){.maxi-card{grid-template-columns:1fr}.maxi-card .art{min-height:220px;order:-1}}
+@media (max-width:640px){.prods{grid-template-columns:1fr 1fr}}
+@media (max-width:440px){.prods{grid-template-columns:1fr}}
+
+
+/* open core */
+.oc{display:grid;gap:34px}
+.oc figure{margin:0;border:1px solid var(--line);border-radius:6px;background:var(--bg2);padding:26px 22px 18px}
+.oc svg{display:block;width:100%;height:auto;max-width:100%;color:var(--ink);font-family:var(--sans)}
+.oc figcaption{margin-top:14px;font-size:14px;color:var(--mute);max-width:80ch}
+.oc-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.oc-cols h3{font-size:19px;font-family:var(--sans);font-weight:600;margin-bottom:8px}
+.oc-cols p{color:var(--ink2);font-size:15.5px}
+@media (max-width:820px){.oc-cols{grid-template-columns:1fr}}
+
+/* heritage */
+.heritage{background:var(--bg2)}
+.heritage .wrap{display:grid;grid-template-columns:1fr 1.4fr;gap:60px;align-items:start}
+.heritage h2{font-size:clamp(34px,4.6vw,52px)}
+.heritage .story{font-family:var(--serif);font-size:20px;line-height:1.6;color:var(--ink2);display:grid;gap:22px;max-width:60ch}
+.heritage .story .close{color:var(--ink)}
+.heritage .years{font-family:var(--mono);font-size:13px;letter-spacing:.1em;color:var(--mute);display:grid;gap:10px;margin-top:22px}
+.heritage .years span{color:var(--cyan)}
+.overnight{margin-top:14px;padding-top:26px;border-top:1px solid var(--line2);font-family:var(--serif);font-size:26px;color:var(--ink);line-height:1.3}
+.overnight b{color:var(--gold);font-weight:500}
+@media (max-width:820px){.heritage .wrap{grid-template-columns:1fr;gap:30px}}
+
+/* patent */
+.patent{border:1px solid var(--line);border-radius:6px;background:var(--bg2);padding:32px 34px;display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:center}
+.patent .num{font-family:var(--mono);font-size:clamp(20px,3vw,30px);color:var(--cyan);letter-spacing:.02em}
+.patent .num small{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-bottom:8px}
+.patent h3{font-size:22px;font-style:italic;font-weight:500}
+.patent p{color:var(--ink2);margin-top:8px}
+.patent .links{margin-top:12px;display:flex;gap:18px;font-size:14px;font-family:var(--mono)}
+@media (max-width:720px){.patent{grid-template-columns:1fr}}
+
+/* licensing */
+.lic{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.lic > div{border:1px solid var(--line);border-radius:6px;background:var(--bg2);padding:28px 26px;display:grid;gap:12px;align-content:start}
+.lic h3{font-size:22px}
+.lic p{color:var(--ink2);font-size:15.5px}
+.lic .big{font-family:var(--mono);font-size:28px;color:var(--ink);letter-spacing:.01em}
+.lic .big small{display:block;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin-top:6px}
+@media (max-width:820px){.lic{grid-template-columns:1fr}}
+
+/* form */
+.form-wrap{display:grid;grid-template-columns:1fr 1.5fr;gap:60px;align-items:start}
+form{display:grid;gap:16px}
+.field{display:grid;gap:6px}
+.field label{font-family:var(--mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+.field input,.field select,.field textarea{width:100%;background:var(--bg2);border:1px solid var(--line2);border-radius:4px;color:var(--ink);font-family:var(--sans);font-size:16px;padding:12px 14px}
+.field textarea{min-height:110px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.radios{display:flex;gap:18px;flex-wrap:wrap;font-size:15px;color:var(--ink2)}
+.radios label{display:flex;align-items:center;gap:8px;font-family:var(--sans);text-transform:none;letter-spacing:0;font-size:15px}
+.done{grid-column:2;border:1px solid var(--cyan2);border-radius:6px;padding:28px;background:var(--panel);display:grid;gap:10px}
+.done h3{color:var(--cyan)}
+.form-side p{color:var(--ink2)}
+.form-side .small{font-size:14px;color:var(--mute);margin-top:18px}
+@media (max-width:820px){.form-wrap{grid-template-columns:1fr;gap:30px}.two{grid-template-columns:1fr}.done{grid-column:auto}}
+
+
+/* hover links */
+.hl{position:relative;color:var(--ink2);border-bottom:1px dotted var(--cyan);text-decoration:none!important;cursor:help}
+.hl .tip{position:absolute;left:0;bottom:calc(100% + 10px);width:min(440px,80vw);background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:14px 16px;font-family:var(--serif);font-size:14px;line-height:1.5;color:var(--ink);opacity:0;pointer-events:none;transform:translateY(4px);transition:opacity .15s,transform .15s;z-index:30;text-transform:none;letter-spacing:0;font-style:italic}
+.hl .tip small{display:block;margin-top:8px;font-family:var(--mono);font-size:11px;font-style:normal;color:var(--mute)}
+.hl:hover .tip,.hl:focus .tip,.hl:focus-within .tip{opacity:1;pointer-events:auto;transform:none}
+/* technology */
+.tech{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:start}
+.tech .quote{border:1px solid var(--cyan2);border-radius:6px;background:var(--panel);padding:30px 30px 24px;display:grid;gap:14px}
+.tech .quote blockquote{margin:0;font-family:var(--serif);font-size:20px;line-height:1.45;color:var(--ink)}
+.tech .quote cite{font-style:normal;font-family:var(--mono);font-size:12px;color:var(--mute);line-height:1.6}
+.tech .quote .ax{font-family:var(--mono);font-size:12px;color:var(--ink2);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px 14px;line-height:1.7;overflow-x:auto}
+.tech .quote .ax b{color:var(--cyan);font-weight:500}
+.tech .body{display:grid;gap:18px}
+.tech .body p{color:var(--ink2)}
+.chains{width:100%;border-collapse:collapse;font-size:14px;margin-top:6px}
+.chains th{text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:500;padding:8px 10px 8px 0;border-bottom:1px solid var(--line2)}
+.chains td{padding:10px 10px 10px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink2)}
+.chains td code{font-size:12px}
+.tech-links{display:flex;flex-wrap:wrap;gap:10px 22px;font-family:var(--mono);font-size:13px}
+.tech-close{margin-top:40px;font-family:var(--serif);font-size:24px;line-height:1.35;max-width:52ch;color:var(--ink)}
+@media (max-width:900px){.tech{grid-template-columns:1fr}}
+/* media */
+.media{display:grid;grid-template-columns:1.3fr 1fr;gap:30px;align-items:stretch}
+.video{position:relative;display:block;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#05080c;aspect-ratio:16/9;max-width:100%;text-decoration:none!important;color:var(--ink)}
+.video img{width:100%;height:100%;object-fit:cover;opacity:.55}
+.video .play{position:absolute;inset:0;display:grid;place-items:center}
+.video .play span{width:84px;height:84px;border-radius:50%;border:2px solid var(--cyan);display:grid;place-items:center;background:rgba(11,15,20,.6)}
+.video .play span::after{content:"";border-left:26px solid var(--cyan);border-top:15px solid transparent;border-bottom:15px solid transparent;margin-left:6px}
+.video .cap{position:absolute;left:0;right:0;bottom:0;padding:18px;background:linear-gradient(transparent,rgba(5,8,12,.9));display:grid;gap:4px}
+.video .cap b{font-family:var(--serif);font-size:20px;font-weight:500}
+.video .cap span{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+.media-side{display:grid;gap:14px;align-content:start}
+.media-side p{color:var(--ink2)}
+.media-side .item{border:1px solid var(--line);border-radius:6px;padding:16px 18px;background:var(--bg2);display:grid;gap:4px}
+.media-side .item b{font-size:15px}
+.media-side .item span{font-size:13.5px;color:var(--mute)}
+@media (max-width:820px){.media{grid-template-columns:1fr}}
+/* licence roles */
+.roles{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:10px}
+.roles th{text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);font-weight:500;padding:8px 12px 8px 0;border-bottom:1px solid var(--line2)}
+.roles td{padding:12px 12px 12px 0;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink2)}
+.roles td:first-child{color:var(--ink);font-weight:600}
+.roles td.mono{font-family:var(--mono);font-size:13px;color:var(--cyan);white-space:nowrap}
+.wp{margin-top:30px;border:1px solid var(--line);border-radius:6px;background:var(--bg2);padding:26px 28px;display:grid;grid-template-columns:auto 1fr;gap:26px;align-items:start}
+.wp .tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan);white-space:nowrap;padding-top:4px}
+.wp p{color:var(--ink2);font-size:15px}
+.wp h3{margin-bottom:8px}
+@media (max-width:720px){.wp{grid-template-columns:1fr}}
+/* wallet check */
+.wallet{border:1px solid var(--line2);border-radius:6px;background:var(--bg2);padding:18px 20px;display:grid;gap:12px}
+.wallet .row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.wallet .bal{font-family:var(--mono);font-size:14px;color:var(--ink2)}
+.wallet .bal b{color:var(--ink);font-weight:500}
+.wallet .need{font-family:var(--mono);font-size:12px;color:var(--mute)}
+.wallet .ok{color:#7fd8a8}.wallet .short{color:var(--gold)}
+.btn-sm{padding:10px 16px;font-size:14px}
+
+/* footer */
+footer{border-top:1px solid var(--line);padding-block:44px 60px;color:var(--mute);font-size:14px}
+footer .wrap{display:grid;gap:22px}
+footer .row{display:flex;flex-wrap:wrap;gap:8px 24px}
+footer .row a{color:var(--ink2)}
+footer .legal{max-width:80ch;font-size:13px}
+@media (prefers-reduced-motion:reduce){.tile img{transition:none}}
+
+/* egpt-frqtl */
+.hero h1{max-width:14ch}
+.brand b{white-space:nowrap}
+.navlinks{gap:18px;font-size:14.5px;white-space:nowrap}
+</style>
 </head>
-<body>
-    <div id="root"></div>
+<body data-frontpage-app="egpt-frqtl" data-frontpage-template="2694f7f" data-frontpage-build="f9105e3">
+
+<nav class="nav"><div class="wrap">
+  <a class="brand" href="#top"><b>FRQTL</b><span>physics engine</span></a>
+  <div class="navlinks">
+    <a href="#proof">Proof</a><a href="#technology">Technology</a><a href="#products">Tools</a><a href="#earn">Earn</a><a href="#media">Media</a><a href="#opencore">Open core</a><a href="app.html?preset=author" class="mono" style="color:var(--cyan)">Open STUDIO →</a>
+  </div>
+</div></nav>
+
+<header class="hero" id="top">
+  <div class="hero-art"><img src="images/dse.jpg" alt="Three-dimensional double slit: two red slabs, two blue slit tunnels, the detector wall painting its own interference pattern hit by hit"></div>
+  <div class="wrap">
+    <p class="eyebrow">FRQTL · the physics engine that doesn't know any physics equations</p>
+    <h1>Impossible things, <em>running.</em></h1>
+    <p class="lede">Two slits, a sun, a mirror loop, a pool, a blackbody, a half-adder, a big bang, an atom. Each scene is computed live in your tab from integer rules; nothing here is a recording. Open one and watch it happen.</p>
+    <div class="cta-row">
+      <a href="app.html?preset=author" class="btn btn-primary">Open STUDIO</a>
+      <a href="app.html?preset=author&amp;walkthrough=dse-tunnel-rebuild&amp;mode=3d" class="btn btn-ghost">Watch the double slit in 3D</a>
+    </div>
+    <p class="kicker"><b>Discrete fractal physics.</b> Integer rules, Rust compiled to WASM, the same binary in the browser and headless in Node. Efficient enough to run the 3D double slit on an iPhone, offline.</p>
+  </div>
+</header>
+
+<section class="sec" id="proof"><div class="wrap">
+  <div class="sec-head">
+    <p class="eyebrow">Proof</p>
+    <h2>Impossible things, running.</h2>
+    <p class="lede">Each scene opens live in the engine. Click one and watch it compute in your own tab.</p>
+  </div>
+  <div class="grid">
+    <a class="tile" href="app.html?preset=author"><img src="images/dse.jpg" alt="Three-dimensional double slit: two red slabs, two blue slit tunnels, a detector wall painting an interference heatmap"><span class="cap"><b>Double slit</b><span>Two slits, one particle at a time. Feynman's “only mystery,” with no amplitudes to add.</span><i>Open live ↗</i></span></a>
+    <a class="tile" href="app.html?preset=author"><img src="images/sun.jpg" alt="A sun: a sphere emitter with god-rays and glow emerging from particle density"><span class="cap"><b>A sun</b><span>Put light in the scene and let light do what light does. No Standard Model; god-rays from particle density.</span><i>Open live ↗</i></span></a>
+    <a class="tile" href="app.html?preset=author"><img src="images/mirror.jpg" alt="Infinite mirror: a ring of ten coloured mirrors with a beam of particles walking the loop"><span class="cap"><b>Infinite mirror</b><span>Ten mirrors in a ring. Light walks the loop. No Fresnel equations.</span><i>Open live ↗</i></span></a>
+    <a class="tile" href="app.html?preset=author&experiment=single-source-interference"><img src="images/pool.jpg" alt="A pool: concentric rings of particles from a single source"><span class="cap"><b>A pool</b><span>One source. Rings. Interference as the geometry of random walks, not a wave.</span><i>Open live ↗</i></span></a>
+    <a class="tile" href="app.html?preset=author&experiment=blackbody"><img src="images/blackbody.jpg" alt="Blackbody: particles in a cavity with the intensity-frequency histogram beside it"><span class="cap"><b>Blackbody</b><span>Particles in a box. The Planck curve appears; no quanta assumed.</span><i>Open live ↗</i></span></a>
+    <a class="tile dark" href="app.html?preset=author&experiment=circuit-sat"><span class="cap"><b>Circuit SAT</b><span>A half-adder settles on its own answer. No search algorithm runs.</span><i>Open live ↗</i></span></a>
+    <a class="tile" href="app.html?preset=author&experiment=big-bang"><img src="images/bigbang.jpg" alt="Big Bang: a red cluster of bound structures and filaments forming from a uniform field"><span class="cap"><b>Big Bang</b><span>A uniform field. Filaments and voids form. No gravity law, no constant.</span><i>Open live ↗</i></span></a>
+    <a class="tile dark" href="app.html?preset=author&experiment=atomic-model"><span class="cap"><b>Atomic model</b><span>Particles bind and stay bound. Stable orbits without quantum numbers.</span><i>Open live ↗</i></span></a>
+    <a class="tile" href="app.html?preset=ide"><img src="images/collide.jpg" alt="3D Collisions Lab: coloured cubes colliding in perspective"><span class="cap"><b>3D Collisions Lab</b><span>Balls in a box. Contact, momentum, settling. The same engine that makes light makes mechanics; no second physics.</span><i>Open in FAT ↗</i></span></a>
+  </div>
+  <p class="grid-note">Nothing here is a recording. Each scene is computed in your tab by an engine that doesn't know any physics equations, and it either shows up or it doesn't. The same engine runs on an iPhone with the network off, simulating the double slit in 3D.</p>
+</div></section>
+
+<section class="sec" id="technology"><div class="wrap">
+  <div class="sec-head">
+    <p class="eyebrow">Technology</p>
+    <h2>FRQTL: a P=NP hyper-computer.</h2>
+    <p class="lede">Hardware quantum computers, still years away, hope to simulate a hundred particles. FRQTL simulates billions on off-the-shelf chips, today, and the mathematics of why it works is machine-checked and published.</p>
+  </div>
+  <div class="tech">
+    <div class="body">
+      <p>FRQTL is the FRame And QuanTum Language virtual machine: physics computed by combinatorics and fractal recursion instead of calculus, quantum “balls” in gravitational frame “boxes.” It exceeds what a superposition-based quantum computer could do in theory, on classical hardware, in your browser.</p>
+      <p>Behind it is a proof of P = NP, formalised in Lean 4 in three independent chains. Two of them use only Lean's two structural axioms, <code>propext</code> and <code>Quot.sound</code>: no <code>sorryAx</code>, no <code>Classical.choice</code>. A choice-free proof is constructive: it does not just say a solution exists, it is the algorithm that finds it.</p>
+      <table class="chains">
+        <tr><th>Chain</th><th>Capstone</th><th>Axioms</th></tr>
+        <tr><td>Information-theoretic</td><td><code>P_eq_NP_info</code></td><td><code>propext</code>, <code>Quot.sound</code></td></tr>
+        <tr><td>Definitional identity</td><td><code>P_eq_NP</code></td><td><code>propext</code>, <code>Quot.sound</code></td></tr>
+        <tr><td>Standard complexity</td><td><code>P_eq_NP_info_standard</code></td><td><code>propext</code>, <code>Quot.sound</code>, <code>Classical.choice</code></td></tr>
+      </table>
+      <div class="tech-links">
+        <a href="app.html?preset=author">STUDIO</a>
+        <a href="https://github.com/leanprover-community/mathlib4/pull/38824" target="_blank" rel="noopener">The Mathlib PR ↗</a>
+        <a href="https://egpt.descix.net/#08_LEAN/PROOF_CHAINS.md" target="_blank" rel="noopener">The three proof chains ↗</a>
+        <a href="https://egpt.descix.net/#08_LEAN/README.md" target="_blank" rel="noopener">The Lean sources and axiom inventories ↗</a>
+        <a href="app.html?preset=author">Run it</a>
+      </div>
+    </div>
+    <div class="quote">
+      <p class="eyebrow">Lean Zulip, 3:47 PM</p>
+      <div class="ax">This proof boils down to the following three claims:<br><br><b>axiom</b> Electrons_On_Circuits_Is_Physical_SAT<br><b>axiom</b> RET_Reduction_PhysicsEntropy_to_ShannonEntropy<br><b>axiom</b> ShannonEntropyInPbyShannonCoding</div>
+      <blockquote>“Certainly, it follows from these three assumptions that P = NP. I don't know what are the shannon entropy problem and the physical system entropy problem, but the result here suggests that you should really dig into these because at least one of these assumptions is probably faulty.”</blockquote>
+      <cite>Mario Carneiro, Lean maintainer, on the first draft of the proof. The entailment conceded, the doubt located in three axioms. The three chains above are those axioms, discharged.</cite>
+    </div>
+  </div>
+  <p class="tech-close">The most publicly and rigorously substantiated quantum and computing breakthrough there is: the impossible calculations run in your browser, and the proofs of why they run are published for anyone to check.</p>
+</div></section>
+
+<section class="sec" id="products"><div class="wrap">
+  <div class="sec-head">
+    <p class="eyebrow">Products</p>
+    <h2>One model. Two engines. Three tools.</h2>
+  </div>
+  <div class="maxi-card">
+    <div class="txt">
+      <p class="tag">The AI model · the VLA stack</p>
+      <h3>Maxi</h3>
+      <p>The imagining model. Builds, intervenes, runs the counterfactual, sees, learns. Ships as a stack: the model, its scene-program vocabulary, the capture instruments, and the FRQTL engine it runs in.</p>
+      <p>Integrates into a robotics policy as the middle of the chain: observation in, imagined futures out, the policy judges and acts.</p>
+      <div class="cta-row"><a class="btn btn-primary" href="#request">License Maxi</a><a class="btn btn-ghost" href="https://egpt-godsworld.descix.net" target="_blank" rel="noopener">Talk to it ↗</a></div>
+    </div>
+    <div class="art"><img src="images/studio.jpg" alt="STUDIO: the double-slit experiment being built on a live 3D canvas, palette on the left, layers and inspector on the right"></div>
+  </div>
+  <div class="prods">
+    <div class="prod"><p class="tag">The engine</p><h3>FRQTL</h3><p>The physics engine that doesn't know any physics equations. Discrete fractal physics, integer rules, Rust compiled to WASM. Efficient enough to run the 3D double slit on an iPhone, offline. Same binary in the browser and headless in Node. For game-engine developers: a sprite is a quantum, a layer is a dimension, a tick is a tick.</p><p class="tag" style="margin-top:10px">Developer alpha of the SDK: after the preview, and it earns DAITA.</p></div>
+    <div class="prod"><p class="tag">The arithmetic</p><h3>EGPT Math</h3><p>Bit-exact real and transcendental arithmetic in place of floating point. Matrices, polynomials, order-finding and transcendental functions on exact values, so error never accumulates.</p></div>
+    <div class="prod"><p class="tag">The builder</p><h3>STUDIO</h3><p>Drag-and-drop desktop physics. Emitters, walls, tunnels, detector walls and logic gates on a palette; a live 2D/3D canvas; layers and an inspector; every project is also code.</p><a class="more" href="app.html?preset=author">Open STUDIO ↗</a></div>
+    <div class="prod"><p class="tag">The codec builder</p><h3>ROSETTA</h3><p>A visual flow canvas for building codecs on exact arithmetic, with the code drawer always in sync. Drop a transform, see the chain; edit the code, see the chain rebuild.</p><a class="more" href="app.html?preset=codec">Open ROSETTA ↗</a></div>
+    <div class="prod"><p class="tag">The notebook</p><h3>FAT</h3><p>Mathematica meets cellular automata, named with a nod to Lean. <code>.frqnb</code> notebooks with math, canvas, chart, view and module cells; the canvas cell is a live simulation. Same files in the browser and in VS Code.</p><a class="more" href="app.html?preset=ide">Open FAT ↗</a></div>
+  </div>
+  <p class="map"><b>Which one do you need?</b> Robotics and embodied-AI teams license Maxi. Chip and hardware makers start with FRQTL and the FAT tier. Simulation teams take STUDIO and the engine. Codec and signal-processing teams take ROSETTA and EGPT Math. Research groups start in FAT.</p>
+</div></section>
+
+<section class="sec" id="earn"><div class="wrap">
+  <div class="sec-head">
+    <p class="eyebrow">Promote, build, earn</p>
+    <h2>The scenes are the product. Share them.</h2>
+    <p class="lede">Every scene on this page runs in your own tab and opens in STUDIO with one click. Show them, record them, build new ones, and earn the token that licensees buy.</p>
+  </div>
+  <div class="lic">
+    <div>
+      <h3>Promote the simulations</h3>
+      <p>Open a scene, run it, capture it, and put it where people will see it. The engine is the demo; nothing is rendered in advance.</p>
+      <p><a href="app.html?preset=author">Open STUDIO</a> · <a href="app.html?preset=ide">Open FAT</a></p>
+    </div>
+    <div>
+      <h3>Earn the token</h3>
+      <p><q data-src="guide/make-money.md">anyone who gets involved can earn the crypto representing the value of their contribution</q></p>
+      <p><a href="https://egpt.descix.net/#guide/make-money.md" target="_blank" rel="noopener">Make money</a> · <a href="https://egpt.descix.net/#guide/get-involved.md" target="_blank" rel="noopener">Get involved</a></p>
+    </div>
+    <div>
+      <h3>Build new scenes</h3>
+      <p>STUDIO, ROSETTA and FAT are open in the browser now; every project is also code. Developer alpha of the SDK: after the preview, and it earns DAITA.</p>
+    </div>
+  </div>
+</div></section>
+
+
+<section class="sec" id="media"><div class="wrap">
+  <div class="sec-head">
+    <p class="eyebrow">Media</p>
+    <h2>Watch it.</h2>
+  </div>
+  <div class="media">
+    <a class="video" href="https://youtu.be/jwMhAf1ej2I" target="_blank" rel="noopener"><img src="images/dse.jpg" alt=""><span class="play"><span></span></span><span class="cap"><b>FRQTL: the promo film</b><span>YouTube · opens in a new tab</span></span></a>
+    <div class="media-side">
+      <p>The FRQTL film from the open-source launch, the press release that announced the first hyper-computer, and the record of the proofs.</p>
+      <div class="item"><b>DeSciX Announces Arrival of the World's First Hyper Computer</b><span>Press release, 18 March 2025</span></div>
+      <div class="item"><b>The All-In letter</b><span>An open letter on the Blueprints, September 2026</span></div>
+      <div class="item"><b>Robotic Imagination</b><span>An industry report on world models and GAPI, August 2026</span></div>
+    </div>
+  </div>
+</div></section>
+
+<section class="sec" id="opencore"><div class="wrap">
+  <div class="sec-head">
+    <p class="eyebrow">Open core</p>
+    <h2>How open core pays the people who do the science.</h2>
+    <p class="lede">The engines are open inside the DeSciX community. Commercial use is licensed outside it. Licence revenue buys the community's token. That is the whole wheel, and it turns on its own.</p>
+  </div>
+  <div class="oc">
+  <figure>
+  <svg viewBox="0 0 1000 620" role="img" aria-label="The value-return flywheel: contributors improve Maxi and FRQTL inside DeSciX; Courant Group licenses commercial-grade builds outside; at least 10 percent of licence revenue, 50 percent in year one, buys EGPT tokens back from the pools; contributors who hold EGPT gain, and more contribute.">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+      <marker id="arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5fcbe6"/></marker>
+    </defs>
+    <line x1="500" y1="18" x2="500" y2="602" stroke="currentColor" stroke-opacity=".3" stroke-dasharray="6 6"/>
+    <text x="480" y="34" text-anchor="end" font-size="12" letter-spacing="2" fill="currentColor" fill-opacity=".6">OPEN INSIDE · DeSciX community</text>
+    <text x="520" y="34" text-anchor="start" font-size="12" letter-spacing="2" fill="currentColor" fill-opacity=".6">VALUE RETURN OUTSIDE · Courant Group</text>
+    <circle cx="500" cy="310" r="44" fill="#0b0f14" stroke="#5fcbe6" stroke-width="1.5"/>
+    <text x="500" y="316" text-anchor="middle" font-size="17" font-weight="600" fill="#5fcbe6">EGPT</text>
+    <g fill="none" stroke="currentColor" stroke-opacity=".55">
+      <rect x="100" y="62" width="300" height="88" rx="5"/>
+      <rect x="600" y="62" width="300" height="88" rx="5"/>
+      <rect x="680" y="266" width="300" height="88" rx="5"/>
+      <rect x="600" y="450" width="300" height="88" rx="5"/>
+      <rect x="100" y="450" width="300" height="88" rx="5" stroke="#5fcbe6" stroke-opacity="1"/>
+      <rect x="20" y="266" width="300" height="88" rx="5"/>
+    </g>
+    <g font-size="13" fill="currentColor">
+      <text x="116" y="88" font-weight="600">1 · Contribute</text>
+      <text x="116" y="108" fill-opacity=".8">Code, proofs, the corpus, Maxi's training.</text>
+      <text x="116" y="126" fill-opacity=".8">Paid in EGPT under the Community Agreement.</text>
+      <text x="616" y="88" font-weight="600">2 · Maxi and FRQTL improve</text>
+      <text x="616" y="108" fill-opacity=".8">Every contribution lands in the same engine</text>
+      <text x="616" y="126" fill-opacity=".8">the commercial builds are cut from.</text>
+      <text x="696" y="292" font-weight="600">3 · Courant Group licenses</text>
+      <text x="696" y="312" fill-opacity=".8">Commercial-grade builds to OEM, ODM,</text>
+      <text x="696" y="330" fill-opacity=".8">chip and platform companies.</text>
+      <text x="616" y="476" font-weight="600">4 · Licences, paid in EGPT</text>
+      <text x="616" y="496" fill-opacity=".8">The licensee buys tokens on the open market.</text>
+      <text x="616" y="514" fill-opacity=".8">10M EGPT for the first, 100M for the tenth.</text>
+      <text x="116" y="476" font-weight="600" fill="#5fcbe6">5 · Treasury buys back EGPT</text>
+      <text x="116" y="496" fill-opacity=".8">At least 10% of licence revenue, 50% in year one,</text>
+      <text x="116" y="514" fill-opacity=".8">bought from the open pools.</text>
+      <text x="36" y="292" font-weight="600">6 · Contributors gain</text>
+      <text x="36" y="312" fill-opacity=".8">The token they earned is the token being</text>
+      <text x="36" y="330" fill-opacity=".8">bought. More people contribute.</text>
+    </g>
+    <g stroke="currentColor" stroke-width="1.5" fill="none" marker-end="url(#ar)">
+      <line x1="402" y1="106" x2="596" y2="106"/>
+      <line x1="790" y1="152" x2="830" y2="262"/>
+      <line x1="830" y1="358" x2="790" y2="446"/>
+      <line x1="170" y1="448" x2="130" y2="358"/>
+      <line x1="130" y1="262" x2="170" y2="152"/>
+    </g>
+    <line x1="596" y1="494" x2="404" y2="494" stroke="#5fcbe6" stroke-width="2.5" fill="none" marker-end="url(#arc)"/>
+    <g font-size="11" fill="currentColor" fill-opacity=".75">
+      <text x="499" y="94" text-anchor="middle">open builds, open science</text>
+      <text x="790" y="212" text-anchor="end">source behind the KYC gate;</text>
+      <text x="790" y="226" text-anchor="end">builds licensed</text>
+      <text x="790" y="408" text-anchor="end">negotiated one by one</text>
+      <text x="500" y="482" text-anchor="middle" fill="#5fcbe6" fill-opacity="1" font-weight="600">≥ 10% of proceeds · 50% in year one</text>
+      <text x="172" y="408" text-anchor="start">demand for EGPT rises</text>
+      <text x="172" y="212" text-anchor="start">held by the people who built it</text>
+    </g>
+    <path d="M500,356 L500,466" stroke="currentColor" stroke-opacity=".5" stroke-width="1.2" stroke-dasharray="4 4" fill="none" marker-end="url(#ar)"/>
+    <text x="488" y="405" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">on-platform AI-credit sales</text>
+    <text x="488" y="420" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">also fund buybacks, pro rata by use</text>
+  </svg>
+  <figcaption>The value-return flywheel. Inside the line, the work is open and paid in EGPT. Outside it, Courant Group sells commercial-grade licences and sends at least a tenth of the revenue, half in year one, back through the DeSciX treasury to buy the token contributors hold. Each turn makes the engine better and the token scarcer.</figcaption>
+  </figure>
+  <div class="oc-cols">
+    <div><h3>Why open core.</h3><p>A physics engine nobody can read is a physics engine nobody trusts. Approved developers inside DeSciX read the source, run the builds, and improve them; that is where the science gets done and where it gets checked.</p></div>
+    <div><h3>Why a licence.</h3><p>Commercial products need optimised, supported, commercial-grade builds, hardware integration, and terms that respect export controls and exclusivity. That is what Courant Group sells, and it is the only thing it sells.</p></div>
+    <div><h3>Why it is decentralized science.</h3><p>Academic economics pay for publishing. This wheel pays for understanding: the people who make Maxi imagine better are paid in the asset that commercial use buys back. The incentive and the outcome point the same way.</p></div>
+  </div>
+  </div>
+</div></section>
+
+<section class="sec heritage" id="heritage"><div class="wrap">
+  <div>
+    <p class="eyebrow">Heritage</p>
+    <h2 style="margin-top:14px">Why “Courant.”</h2>
+    <div class="years">
+      <div><span>1951</span> &nbsp;Rota, Church's star undergraduate, at Princeton; von Neumann in Fine Hall</div>
+      <div><span>1952</span> &nbsp;AEC computer installed at NYU's Courant Institute</div>
+      <div><span>1955</span> &nbsp;Von Neumann takes his seat on the Atomic Energy Commission</div>
+      <div><span>1956</span> &nbsp;Rota arrives at Courant</div>
+      <div><span>1957</span> &nbsp;Von Neumann dies, the new science unpublished</div>
+      <div><span>1991</span> &nbsp;Rota hands the Blueprints to a student</div>
+      <div><span>2012</span> &nbsp;courantgroup.com registered</div>
+      <div><span>2024</span> &nbsp;The FRQTL patent filed</div>
+      <div><span>2026</span> &nbsp;Maxi</div>
+    </div>
+  </div>
+  <div class="story">
+    <p>In 1952 the Atomic Energy Commission put an electronic computer at NYU's Courant Institute. Von Neumann, then an AEC commissioner, had corresponded with Courant for decades about computing shocks with difference equations: the continuous world, handled by discrete steps.</p>
+    <p>In 1951 a star undergraduate of Alonzo Church's named Gian-Carlo Rota was at Princeton, with von Neumann lurking in Fine Hall. A few years later, in 1956, that same young man, now a newly minted Yale PhD, arrived at Courant as a postdoc. Von Neumann died the next year with his new science unpublished. Rota spent the rest of his life at Los Alamos and MIT carrying what Ulam and von Neumann had started, and in 1991 he handed it to a student.</p>
+    <p class="close">Courant Group is named for the room where continuous physics met discrete computation, and for the year the work went underground. Maxi is that work, finished: a physics engine that doesn't know any physics equations, and a mind that imagines in it.</p>
+    <p class="overnight">Courant Group registered this domain in November 2012. Fourteen years later, this is the <b>overnight success.</b></p>
+    <p style="font-family:var(--sans);font-size:15px"><a href="https://egpt.descix.net/#00_OUTPUTS/EGPT_Backstory.md" target="_blank" rel="noopener">The full story, with the documents ↗</a></p>
+  </div>
+</div></section>
+
+<section class="sec" id="licence"><div class="wrap">
+  <div class="wp">
+    <p class="tag">Licensing</p>
+    <div>
+      <h3>Commercial use is licensed by Courant Group.</h3>
+      <p>The public builds are for learning and experimenting; commercial-grade builds come with a licence, and licence revenue buys back the community's tokens. The documents behind every claim are in the EGPT library.</p>
+      <p style="margin-top:12px"><a href="https://egpt-courantgroup.descix.net" target="_blank" rel="noopener">Courant Group ↗</a> · <a href="https://egpt.descix.net/#14_COURANT_GROUP/Business_Plan.md" target="_blank" rel="noopener">The plan</a> · <a href="https://egpt.descix.net/" target="_blank" rel="noopener">The EGPT library</a></p>
+    </div>
+  </div>
+</div></section>
+
+
+<footer><div class="wrap">
+  <div class="brand"><b>FRQTL</b><span>physics engine</span></div>
+  <div class="row">
+    <a href="app.html?preset=author">Open STUDIO</a><a href="app.html?preset=codec">ROSETTA</a><a href="app.html?preset=ide">FAT</a><a href="https://egpt-courantgroup.descix.net" target="_blank" rel="noopener">Courant Group</a><a href="https://egpt.descix.net/" target="_blank" rel="noopener">EGPT library</a><a href="https://egpt-godsworld.descix.net" target="_blank" rel="noopener">Gods World</a><a href="https://descix.net" target="_blank" rel="noopener">DeSciX</a>
+  </div>
+  <p class="legal">FRQTL is a trademark of Courant Group, LLC. EGPT is a community project on DeSciX.</p>
+</div></footer>
+
+<script src="DeSciXAppSDK.js"></script>
+<script>
+(function(){
+  if(!(window.DeSciX&&typeof DeSciX.ready==='function'))return;
+  DeSciX.ready().then(function(r){
+    if(!r||r.mode!=='shell')return;
+    var v=DeSciX.view; if(v&&typeof v.set==='function')v.set('CodeSite');
+  });
+})();
+</script>
 </body>
 </html>
