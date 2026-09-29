@@ -5,6 +5,10 @@ export function arenaAdd(a: bigint, b: bigint): bigint;
 
 export function arenaBreakToBigint(n: bigint): string;
 
+/**
+ * → `{"v": <number>, "w": [...]}`. Non-finite results cross as the strings the JS
+ * `Number` renders ("NaN", "Infinity", "-Infinity"), which JSON cannot hold as numbers.
+ */
 export function arenaBreakToJsNumber(n: bigint): string;
 
 /**
@@ -24,7 +28,12 @@ export function arenaFromAtomRoot(json: string): bigint;
 
 export function arenaFromAtomVec(json: string): bigint;
 
-export function arenaFromPpfJson(json: string): bigint;
+/**
+ * → `{"v": "<handle>", "w": [...]}`; a zero denominator warns (if non-canonical) then throws.
+ */
+export function arenaFromPpfJson(json: string): string;
+
+export function arenaFromRational(num: string, den: string): bigint;
 
 export function arenaGcd(a: bigint, b: bigint): string;
 
@@ -32,7 +41,11 @@ export function arenaGetBaseParts(h: bigint): string;
 
 export function arenaGetBitLength(n: bigint): string;
 
+export function arenaGetRationalParts(h: bigint): string;
+
 export function arenaGetScalarParts(h: bigint): string;
+
+export function arenaInternUnreduced(num: string, den: string): bigint;
 
 export function arenaLcm(a: bigint, b: bigint): string;
 
@@ -44,27 +57,24 @@ export function arenaModPow(base: bigint, exp: bigint, modulus: bigint): bigint;
 
 export function arenaMul(a: bigint, b: bigint): bigint;
 
+export function arenaNegate(h: bigint): bigint;
+
 export function arenaNormalDiv(a: bigint, b: bigint): bigint;
 
-export function arenaPolyAdd(a_json: string, b_json: string): string;
+/**
+ * `EGPTMath.pow` with BigInt exponents (decimal strings — never narrowed to i32).
+ */
+export function arenaPow(base: bigint, exp_num: string, exp_den: string): bigint;
 
-export function arenaPolyDiv(dividend_json: string, divisor_json: string): string;
-
-export function arenaPolyEval(poly_json: string, x: bigint): bigint;
-
-export function arenaPolyFwd(coeffs_json: string, n: number): string;
-
-export function arenaPolyGcd(a_json: string, b_json: string): string;
-
-export function arenaPolyInv(samples_json: string, n: number): string;
-
-export function arenaPolyMul(a_json: string, b_json: string): string;
-
-export function arenaPow(base: bigint, exp_num: number, exp_den: number): bigint;
-
-export function arenaPpfDecode(json: string): bigint;
+/**
+ * The JS reference's PPF integer decode → `{"v": "<handle>", "w": [...]}` (comments on
+ * exports ship in the wasm-bindgen glue, so the core-internal name stays out of it).
+ */
+export function arenaPpfDecode(json: string): string;
 
 export function arenaPpfEncode(n: bigint): string;
+
+export function arenaScalarOp(h: bigint, op: string, s: string): bigint;
 
 export function arenaSqrt(a: bigint): bigint;
 
@@ -107,6 +117,31 @@ export function materializeStr(handle: bigint): string;
  */
 export function materializeV2(handle: bigint): Uint8Array;
 
+export function orderFinderCalculateSampleSize(n: string): number;
+
+/**
+ * `OrderFinder.findOrder` → decimal string, or "" for the JS `null`.
+ */
+export function orderFinderFindOrder(a: string, n: string, a_disp: string, n_disp: string): string;
+
+export function orderFinderVerifyOrder(a: string, n: string, r: string): boolean;
+
+/**
+ * One export for the vector-in/vector-out statics: `op` names the JS method.
+ */
+export function polyPort(op: string, a_json: string, b_json: string): string;
+
+/**
+ * `matMul(A, B)` over JSON matrices of handles; tags index the row-major flattening.
+ */
+export function polyPortMatMul(a_json: string, b_json: string): string;
+
+/**
+ * `forwardTransform(coeffs, N)` / `inverseTransform(samples, N)` — N is the JS number;
+ * `n_disp` its `${N}` for the length message.
+ */
+export function polyPortTransform(op: string, a_json: string, n: number, n_disp: string): string;
+
 export function poly_add_wasm(a_json: string, b_json: string): string;
 
 export function poly_div_wasm(a_json: string, b_json: string): string;
@@ -121,6 +156,56 @@ export function poly_inverse_transform_wasm(samples_json: string, n: number): st
 
 export function poly_mul_wasm(a_json: string, b_json: string): string;
 
+export function primeAtomBigOmega(n: string): string;
+
+export function primeAtomBitLength(n: string): number;
+
+export function primeAtomDivisorsOf(n: string): string;
+
+/**
+ * `factMultiply` → `{"product":[…], "compressedOps":k}`.
+ */
+export function primeAtomFactMultiply(va_json: string, vb_json: string): string;
+
+export function primeAtomFactorize(n: string): string;
+
+export function primeAtomLogspaceSum(n: string): string;
+
+/**
+ * `makeMeter()` — the meter's keys (zero-valued), as a JSON object.
+ */
+export function primeAtomMakeMeter(): string;
+
+export function primeAtomOmega(n: string): number;
+
+export function primeAtomReconstruct(v_json: string): string;
+
+export function primeAtomTotient(n: string): string;
+
+/**
+ * `RULE_OR_RATIONAL_CANCEL` over `[[signIsOne, primeToken, locationToken], …]` → surviving indices.
+ */
+export function primeCompositeCancelRule(recs_json: string): string;
+
+export function primeCompositeCongruent(a: bigint, b: bigint): boolean;
+
+export function primeCompositeDivide(a: bigint, b: bigint): bigint;
+
+export function primeCompositeFromReal(h: bigint): bigint;
+
+export function primeCompositeIsComposite(h: bigint): boolean;
+
+export function primeCompositeMultiply(a: bigint, b: bigint): bigint;
+
+export function primeCompositeNew(json: string): bigint;
+
+/**
+ * `recordsMultisetKey` over a JSON array of the `${sign}:${prime}:${location}` strings.
+ */
+export function primeCompositeRecordsKey(parts_json: string): string;
+
+export function primeCompositeState(h: bigint): string;
+
 /**
  * Mark the slot at `handle` as None (free memory).
  */
@@ -130,6 +215,21 @@ export function releaseHandle(handle: bigint): void;
  * Clear the entire arena and increment epoch.
  */
 export function resetScope(): void;
+
+/**
+ * `EGPTranscendental.exp({real, imag})` → `{"v": {"x": "<h>", "y": "<h>"}, "w": [...]}`.
+ */
+export function transcendentalExp(re: bigint, im: bigint): string;
+
+/**
+ * `EGPTranscendental.factorial(n)` → `{"v": "<h>", "w": [...]}`.
+ */
+export function transcendentalFactorial(n: string): string;
+
+/**
+ * `EGPTranscendental._phaseToCircularCartesian(H)` → `{"x": "<h>", "y": "<h>"}`.
+ */
+export function transcendentalPhaseToCircular(h: bigint): string;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -144,27 +244,25 @@ export interface InitOutput {
     readonly arenaExp2: (a: bigint) => [bigint, number, number];
     readonly arenaFromAtomRoot: (a: number, b: number) => [bigint, number, number];
     readonly arenaFromAtomVec: (a: number, b: number) => [bigint, number, number];
-    readonly arenaFromPpfJson: (a: number, b: number) => [bigint, number, number];
+    readonly arenaFromPpfJson: (a: number, b: number) => [number, number, number, number];
+    readonly arenaFromRational: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly arenaGcd: (a: bigint, b: bigint) => [number, number, number, number];
     readonly arenaGetBaseParts: (a: bigint) => [number, number, number, number];
     readonly arenaGetBitLength: (a: bigint) => [number, number, number, number];
+    readonly arenaGetRationalParts: (a: bigint) => [number, number, number, number];
     readonly arenaGetScalarParts: (a: bigint) => [number, number, number, number];
+    readonly arenaInternUnreduced: (a: number, b: number, c: number, d: number) => [bigint, number, number];
     readonly arenaLcm: (a: bigint, b: bigint) => [number, number, number, number];
     readonly arenaLog2: (a: bigint) => [bigint, number, number];
     readonly arenaMod: (a: bigint, b: bigint) => [bigint, number, number];
     readonly arenaModPow: (a: bigint, b: bigint, c: bigint) => [bigint, number, number];
     readonly arenaMul: (a: bigint, b: bigint) => [bigint, number, number];
+    readonly arenaNegate: (a: bigint) => [bigint, number, number];
     readonly arenaNormalDiv: (a: bigint, b: bigint) => [bigint, number, number];
-    readonly arenaPolyAdd: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly arenaPolyDiv: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly arenaPolyEval: (a: number, b: number, c: bigint) => [bigint, number, number];
-    readonly arenaPolyFwd: (a: number, b: number, c: number) => [number, number, number, number];
-    readonly arenaPolyGcd: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly arenaPolyInv: (a: number, b: number, c: number) => [number, number, number, number];
-    readonly arenaPolyMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly arenaPow: (a: bigint, b: number, c: number) => [bigint, number, number];
-    readonly arenaPpfDecode: (a: number, b: number) => [bigint, number, number];
+    readonly arenaPow: (a: bigint, b: number, c: number, d: number, e: number) => [bigint, number, number];
+    readonly arenaPpfDecode: (a: number, b: number) => [number, number, number, number];
     readonly arenaPpfEncode: (a: bigint) => [number, number, number, number];
+    readonly arenaScalarOp: (a: bigint, b: number, c: number, d: number, e: number) => [bigint, number, number];
     readonly arenaSqrt: (a: bigint) => [bigint, number, number];
     readonly arenaStats: () => [number, number];
     readonly arenaSub: (a: bigint, b: bigint) => [bigint, number, number];
@@ -178,7 +276,32 @@ export interface InitOutput {
     readonly releaseHandle: (a: bigint) => [number, number];
     readonly resetScope: () => void;
     readonly arenaToMathString: (a: bigint) => [number, number, number, number];
+    readonly polyPort: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly polyPortMatMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly polyPortTransform: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+    readonly orderFinderCalculateSampleSize: (a: number, b: number) => [number, number, number];
+    readonly orderFinderFindOrder: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly orderFinderVerifyOrder: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
+    readonly primeAtomBigOmega: (a: number, b: number) => [number, number, number, number];
+    readonly primeAtomBitLength: (a: number, b: number) => [number, number, number];
+    readonly primeAtomDivisorsOf: (a: number, b: number) => [number, number, number, number];
+    readonly primeAtomFactMultiply: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly primeAtomFactorize: (a: number, b: number) => [number, number, number, number];
+    readonly primeAtomLogspaceSum: (a: number, b: number) => [number, number, number, number];
+    readonly primeAtomMakeMeter: () => [number, number];
+    readonly primeAtomOmega: (a: number, b: number) => [number, number, number];
+    readonly primeAtomReconstruct: (a: number, b: number) => [number, number, number, number];
+    readonly primeAtomTotient: (a: number, b: number) => [number, number, number, number];
     readonly bridge_version: () => [number, number];
+    readonly primeCompositeCancelRule: (a: number, b: number) => [number, number, number, number];
+    readonly primeCompositeCongruent: (a: bigint, b: bigint) => [number, number, number];
+    readonly primeCompositeDivide: (a: bigint, b: bigint) => [bigint, number, number];
+    readonly primeCompositeFromReal: (a: bigint) => [bigint, number, number];
+    readonly primeCompositeIsComposite: (a: bigint) => [number, number, number];
+    readonly primeCompositeMultiply: (a: bigint, b: bigint) => [bigint, number, number];
+    readonly primeCompositeNew: (a: number, b: number) => [bigint, number, number];
+    readonly primeCompositeRecordsKey: (a: number, b: number) => [number, number, number, number];
+    readonly primeCompositeState: (a: bigint) => [number, number, number, number];
     readonly poly_add_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly poly_div_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly poly_evaluate_at_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
@@ -186,6 +309,9 @@ export interface InitOutput {
     readonly poly_gcd_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly poly_inverse_transform_wasm: (a: number, b: number, c: number) => [number, number, number, number];
     readonly poly_mul_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
+    readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
+    readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
     readonly egpt_add: (a: number, b: number) => number;
     readonly egpt_cmp: (a: number, b: number) => number;
     readonly egpt_div: (a: number, b: number) => number;

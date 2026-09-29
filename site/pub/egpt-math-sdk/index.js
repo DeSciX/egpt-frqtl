@@ -1,3 +1,6 @@
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
+
 // src/browser/wasm-loader.js
 async function probeWasmArtifact(wasmUrl) {
   if (!wasmUrl) {
@@ -19,10 +22,12 @@ async function probeWasmArtifact(wasmUrl) {
     return { ok: false, reason: `artifact-fetch-error:${String(error)}` };
   }
 }
+__name(probeWasmArtifact, "probeWasmArtifact");
 function normalizeBrowserUrl(url) {
   if (!url || typeof document === "undefined") return url;
   return new URL(url, document.baseURI).href;
 }
+__name(normalizeBrowserUrl, "normalizeBrowserUrl");
 async function loadEgptMathWasm({ wasmUrl, wasmModuleUrl } = {}) {
   wasmUrl = normalizeBrowserUrl(wasmUrl);
   wasmModuleUrl = normalizeBrowserUrl(wasmModuleUrl);
@@ -74,9 +79,61 @@ async function loadEgptMathWasm({ wasmUrl, wasmModuleUrl } = {}) {
     };
   }
 }
+__name(loadEgptMathWasm, "loadEgptMathWasm");
+
+// src/browser/wasm-port-calls.js
+var _calls = null;
+function setWasmPortCalls(facade) {
+  _calls = facade;
+}
+__name(setWasmPortCalls, "setWasmPortCalls");
+var _TYPED_ERRORS = [["RangeError: ", RangeError], ["TypeError: ", TypeError]];
+function wasmCallError(msg) {
+  let text = msg || "wasm-result-unknown-error";
+  if (text.startsWith('{"w":')) {
+    const env = JSON.parse(text);
+    emitWarnings(env.w);
+    text = env.e;
+  }
+  for (const [prefix, Cls] of _TYPED_ERRORS) {
+    if (text.startsWith(prefix)) return new Cls(text.slice(prefix.length));
+  }
+  return new Error(text);
+}
+__name(wasmCallError, "wasmCallError");
+function emitWarnings(lines) {
+  for (const line of lines) console.warn(line);
+}
+__name(emitWarnings, "emitWarnings");
+function valueWithWarnings(json) {
+  const env = JSON.parse(json);
+  emitWarnings(env.w);
+  return env.v;
+}
+__name(valueWithWarnings, "valueWithWarnings");
+function callWasm(op, ...args) {
+  if (!_calls) {
+    throw new Error(
+      `EGPT Math SDK (WASM-only dist): no WASM call facade injected (op '${op}'). createEgptMathSdk() must complete successfully before the ported classes are used.`
+    );
+  }
+  const fn = _calls[op];
+  if (typeof fn !== "function") {
+    throw new Error(
+      `EGPT Math SDK: WASM op '${op}' is not in the call facade \u2014 add it to wasm-call-facade.js::WASM_ARENA_OPS and rebuild the bridge (npm run build:wasm-bridge).`
+    );
+  }
+  const r = fn(...args);
+  if (r && r.ok) return r.value;
+  throw wasmCallError(r && r.error);
+}
+__name(callWasm, "callWasm");
 
 // src/browser/wasm-math-provider.js
 var MathBackendRegistrationError = class extends Error {
+  static {
+    __name(this, "MathBackendRegistrationError");
+  }
   constructor(message) {
     super(message);
     this.name = "MathBackendRegistrationError";
@@ -84,21 +141,24 @@ var MathBackendRegistrationError = class extends Error {
 };
 function unwrap(result, opName) {
   if (!result || !result.ok) {
-    const msg = result?.error ?? "wasm-result-unknown-error";
-    throw new Error(`WasmMathBackendProvider.${opName}: WASM call failed \u2014 ${msg}`);
+    throw wasmCallError(result?.error);
   }
   return result.value;
 }
+__name(unwrap, "unwrap");
 function makeHandle(epoch, idx) {
   return { p: "wasm-math", e: epoch, h: idx };
 }
+__name(makeHandle, "makeHandle");
 function unpackResult(u64BigInt) {
   const n = typeof u64BigInt === "bigint" ? u64BigInt : BigInt(Math.round(Number(u64BigInt)));
   return { e: Number(n >> 32n), h: Number(n & 0xFFFFFFFFn) };
 }
+__name(unpackResult, "unpackResult");
 function packHandle(epoch, idx) {
   return BigInt(epoch) * 0x100000000n + BigInt(idx);
 }
+__name(packHandle, "packHandle");
 var _wasmFacade = null;
 function _internStr(canonStr) {
   const r = _wasmFacade.internStr(canonStr);
@@ -106,11 +166,22 @@ function _internStr(canonStr) {
   const { e, h } = unpackResult(packed);
   return makeHandle(e, h);
 }
+__name(_internStr, "_internStr");
 function _materializeStr(handle, opName) {
   const packed = packHandle(handle.e, handle.h);
   const r = _wasmFacade.materializeStr(packed);
   return unwrap(r, opName + ".materializeStr");
 }
+__name(_materializeStr, "_materializeStr");
+function handleFromPacked(packed) {
+  const { e, h } = unpackResult(typeof packed === "string" ? BigInt(packed) : packed);
+  return makeHandle(e, h);
+}
+__name(handleFromPacked, "handleFromPacked");
+function packedFromHandle(h, opName) {
+  return extractHandle(h, opName);
+}
+__name(packedFromHandle, "packedFromHandle");
 function extractHandle(h, opName) {
   if (h !== null && typeof h === "object") {
     if (h.p === "wasm-math") {
@@ -133,40 +204,24 @@ function extractHandle(h, opName) {
     `WasmMathBackendProvider.${opName}: foreign or invalid handle \u2014 expected wasm-math handle {p:'wasm-math',e,h} or EGPTReal instance; got ${typeof h}: ${h === null ? "null" : JSON.stringify(h)}`
   );
 }
+__name(extractHandle, "extractHandle");
 function polyToJson(arr, opName) {
   return JSON.stringify(arr.map((h) => String(extractHandle(h, opName))));
 }
-function jsonToHandles(json) {
-  const arr = JSON.parse(json);
-  return arr.map((s) => {
-    const n = BigInt(s);
-    const { e, h } = unpackResult(n);
-    return makeHandle(e, h);
+__name(polyToJson, "polyToJson");
+function portTagsToHandles(tags, args) {
+  return tags.map((t) => {
+    const [k, x, y] = t.split(":");
+    if (k === "h" || k === "p") return handleFromPacked(x);
+    return args[Number(x)][Number(y)];
   });
 }
-function jsonPolyDivToObj(json) {
-  const obj = JSON.parse(json);
-  return {
-    quotient: obj.quotient.map((s) => {
-      const n = BigInt(s);
-      const { e, h } = unpackResult(n);
-      return makeHandle(e, h);
-    }),
-    remainder: obj.remainder.map((s) => {
-      const n = BigInt(s);
-      const { e, h } = unpackResult(n);
-      return makeHandle(e, h);
-    })
-  };
+__name(portTagsToHandles, "portTagsToHandles");
+function polyPort(op, a, b, opName) {
+  const json = unwrap(_wasmFacade.polyPort(op, polyToJson(a, opName), polyToJson(b, opName)), opName);
+  return JSON.parse(json);
 }
-function _bigintGcd(a, b) {
-  a = a < 0n ? -a : a;
-  b = b < 0n ? -b : b;
-  while (b) {
-    [a, b] = [b, a % b];
-  }
-  return a;
-}
+__name(polyPort, "polyPort");
 var WASM_PROVIDER_EXTRAS = Object.freeze([
   "toMathString",
   "getScalarParts",
@@ -214,16 +269,7 @@ function buildWasmMathProvider(wasmFacade) {
       return _internStr(String(n));
     },
     fromRational(num, den) {
-      const g = _bigintGcd(num < 0n ? -num : num, den < 0n ? -den : den);
-      if (g === 0n) return _internStr("0");
-      let rn = num / g;
-      let rd = den / g;
-      if (rd < 0n) {
-        rn = -rn;
-        rd = -rd;
-      }
-      const canonical = rd === 1n ? String(rn) : `${rn}/${rd}`;
-      return _internStr(canonical);
+      return handleFromPacked(unwrap(wasmFacade.arenaFromRational(String(num), String(den)), "fromRational"));
     },
     fromRationalStr(str) {
       return _internStr(str.trim());
@@ -306,12 +352,8 @@ function buildWasmMathProvider(wasmFacade) {
     },
     // ── Exponentiation / roots ──────────────────────────────────────────────
     pow(base, expNum, expDen) {
-      const en = Number(expNum);
-      const ed = Number(expDen);
-      const r = wasmFacade.arenaPow(extractHandle(base, "pow"), en, ed);
-      const packed = unwrap(r, "pow");
-      const { e, h } = unpackResult(packed);
-      return makeHandle(e, h);
+      const r = wasmFacade.arenaPow(extractHandle(base, "pow"), String(expNum), String(expDen));
+      return handleFromPacked(unwrap(r, "pow"));
     },
     sqrt(a) {
       const r = wasmFacade.arenaSqrt(extractHandle(a, "sqrt"));
@@ -343,7 +385,7 @@ function buildWasmMathProvider(wasmFacade) {
     ppfDecodeInteger(ppf) {
       const json = JSON.stringify({ N: String(ppf.N), offset: String(ppf.offset) });
       const r = wasmFacade.arenaPpfDecode(json);
-      const packed = unwrap(r, "ppfDecodeInteger");
+      const packed = BigInt(valueWithWarnings(unwrap(r, "ppfDecodeInteger")));
       const { e, h } = unpackResult(packed);
       const decoded = _materializeStr(makeHandle(e, h), "ppfDecodeInteger");
       return BigInt(decoded);
@@ -356,9 +398,7 @@ function buildWasmMathProvider(wasmFacade) {
         scalar: { numerator: String(scalar.numerator ?? 1n), denominator: String(scalar.denominator ?? 1n) }
       });
       const r = wasmFacade.arenaFromPpfJson(json);
-      const packed = unwrap(r, "fromPPF");
-      const { e, h } = unpackResult(packed);
-      return makeHandle(e, h);
+      return handleFromPacked(valueWithWarnings(unwrap(r, "fromPPF")));
     },
     // ── Bit-length ──────────────────────────────────────────────────────────
     getIntegerBitLength(n) {
@@ -368,11 +408,11 @@ function buildWasmMathProvider(wasmFacade) {
     // ── Break-symbolic exits ────────────────────────────────────────────────
     breakSymbolicToApproximateBigInt(h) {
       const r = wasmFacade.arenaBreakToBigint(extractHandle(h, "breakSymbolicToApproximateBigInt"));
-      return BigInt(unwrap(r, "breakSymbolicToApproximateBigInt"));
+      return BigInt(valueWithWarnings(unwrap(r, "breakSymbolicToApproximateBigInt")));
     },
     breakSymbolicToApproximateJSNumber(h) {
       const r = wasmFacade.arenaBreakToJsNumber(extractHandle(h, "breakSymbolicToApproximateJSNumber"));
-      return Number(unwrap(r, "breakSymbolicToApproximateJSNumber"));
+      return Number(valueWithWarnings(unwrap(r, "breakSymbolicToApproximateJSNumber")));
     },
     breakSymbolicToString(h) {
       const r = wasmFacade.arenaBreakToString(extractHandle(h, "breakSymbolicToString"));
@@ -458,36 +498,33 @@ function buildWasmMathProvider(wasmFacade) {
       const str = _materializeStr(makeHandle(e, h), "modPow.result");
       return BigInt(str);
     },
-    // ── Polynomial ops ──────────────────────────────────────────────────────
+    // ── Polynomial ops — the Rust EGPTPolynomial port (poly_port.rs) ────────
     polyAdd(a, b) {
-      const r = wasmFacade.arenaPolyAdd(polyToJson(a, "polyAdd"), polyToJson(b, "polyAdd"));
-      return jsonToHandles(unwrap(r, "polyAdd"));
+      return portTagsToHandles(polyPort("add", a, b, "polyAdd"), [a, b]);
     },
     polyMul(a, b) {
-      const r = wasmFacade.arenaPolyMul(polyToJson(a, "polyMul"), polyToJson(b, "polyMul"));
-      return jsonToHandles(unwrap(r, "polyMul"));
+      return portTagsToHandles(polyPort("multiply", a, b, "polyMul"), [a, b]);
     },
     polyDiv(dividend, divisor) {
-      const r = wasmFacade.arenaPolyDiv(polyToJson(dividend, "polyDiv"), polyToJson(divisor, "polyDiv"));
-      return jsonPolyDivToObj(unwrap(r, "polyDiv"));
+      const r = polyPort("divide", dividend, divisor, "polyDiv");
+      return {
+        quotient: portTagsToHandles(r.quotient, [dividend, divisor]),
+        remainder: portTagsToHandles(r.remainder, [dividend, divisor])
+      };
     },
     polyForwardTransform(coeffs, n) {
-      const r = wasmFacade.arenaPolyFwd(polyToJson(coeffs, "polyForwardTransform"), n);
-      return jsonToHandles(unwrap(r, "polyForwardTransform"));
+      const r = wasmFacade.polyPortTransform("forwardTransform", polyToJson(coeffs, "polyForwardTransform"), n, `${n}`);
+      return portTagsToHandles(JSON.parse(unwrap(r, "polyForwardTransform")), [coeffs]);
     },
     polyInverseTransform(samples, n) {
-      const r = wasmFacade.arenaPolyInv(polyToJson(samples, "polyInverseTransform"), n);
-      return jsonToHandles(unwrap(r, "polyInverseTransform"));
+      const r = wasmFacade.polyPortTransform("inverseTransform", polyToJson(samples, "polyInverseTransform"), n, `${n}`);
+      return portTagsToHandles(JSON.parse(unwrap(r, "polyInverseTransform")), [samples]);
     },
     polyEvaluateAt(poly, x) {
-      const r = wasmFacade.arenaPolyEval(polyToJson(poly, "polyEvaluateAt"), extractHandle(x, "polyEvaluateAt"));
-      const packed = unwrap(r, "polyEvaluateAt");
-      const { e, h } = unpackResult(packed);
-      return makeHandle(e, h);
+      return portTagsToHandles(polyPort("evaluateAt", poly, [x], "polyEvaluateAt"), [poly, [x]])[0];
     },
     polyGcd(a, b) {
-      const r = wasmFacade.arenaPolyGcd(polyToJson(a, "polyGcd"), polyToJson(b, "polyGcd"));
-      return jsonToHandles(unwrap(r, "polyGcd"));
+      return portTagsToHandles(polyPort("gcd", a, b, "polyGcd"), [a, b]);
     },
     // ── Handle identity predicate ────────────────────────────────────────────
     // Pure structural type check of the V3 handle shape {p:'wasm-math',e,h}.
@@ -505,6 +542,7 @@ function buildWasmMathProvider(wasmFacade) {
   });
   return provider;
 }
+__name(buildWasmMathProvider, "buildWasmMathProvider");
 
 // src/browser/wasm-call-facade.js
 var WASM_ARENA_OPS = Object.freeze([
@@ -514,6 +552,8 @@ var WASM_ARENA_OPS = Object.freeze([
   "materializeStr",
   "materializeV2",
   "releaseHandle",
+  "arenaInternUnreduced",
+  "arenaFromRational",
   // scalar arithmetic
   "arenaAdd",
   "arenaSub",
@@ -538,6 +578,9 @@ var WASM_ARENA_OPS = Object.freeze([
   "arenaGetScalarParts",
   "arenaGetBaseParts",
   "arenaToPpfFull",
+  "arenaGetRationalParts",
+  "arenaNegate",
+  "arenaScalarOp",
   // prime-atom representations
   "arenaToPrimeAtoms",
   "arenaFromAtomVec",
@@ -547,19 +590,45 @@ var WASM_ARENA_OPS = Object.freeze([
   "arenaModPow",
   "arenaGcd",
   "arenaLcm",
-  // polynomial ops
-  "arenaPolyAdd",
-  "arenaPolyMul",
-  "arenaPolyDiv",
-  "arenaPolyFwd",
-  "arenaPolyInv",
-  "arenaPolyEval",
-  "arenaPolyGcd"
+  // polynomial ops — the EGPTPolynomial / SolvePolynomialSystem / MatrixAsPolynomial port
+  // (poly_port.rs)
+  "polyPort",
+  "polyPortTransform",
+  "polyPortMatMul",
+  // prime-atom layer — PrimeAtomPolynomial / MatrixAsPrimeAtoms / OrderFinder ports
+  // (prime_atom.rs; consumed through wasm-port-calls.js)
+  "primeAtomFactorize",
+  "primeAtomTotient",
+  "primeAtomDivisorsOf",
+  "primeAtomOmega",
+  "primeAtomBigOmega",
+  "primeAtomBitLength",
+  "primeAtomLogspaceSum",
+  "primeAtomMakeMeter",
+  "primeAtomFactMultiply",
+  "primeAtomReconstruct",
+  "orderFinderFindOrder",
+  "orderFinderVerifyOrder",
+  "orderFinderCalculateSampleSize",
+  // EGPTPrimeComposite port (prime_composite.rs)
+  "primeCompositeNew",
+  "primeCompositeFromReal",
+  "primeCompositeMultiply",
+  "primeCompositeDivide",
+  "primeCompositeState",
+  "primeCompositeCongruent",
+  "primeCompositeRecordsKey",
+  "primeCompositeCancelRule",
+  "primeCompositeIsComposite",
+  // EGPTranscendental class-body port (transcendental_port.rs)
+  "transcendentalExp",
+  "transcendentalFactorial",
+  "transcendentalPhaseToCircular"
 ]);
 var WASM_DIRECT_OPS = Object.freeze(["resetScope", "arenaStats"]);
 function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge") {
   const mod = wasmModule ?? null;
-  const safeCall = (name, ...args) => {
+  const safeCall = /* @__PURE__ */ __name((name, ...args) => {
     if (!mod || typeof mod[name] !== "function") {
       return { ok: false, error: `wasm-function-unavailable:${name}`, backend: backendTag };
     }
@@ -568,7 +637,7 @@ function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge") {
     } catch (error) {
       return { ok: false, error: String(error), backend: backendTag };
     }
-  };
+  }, "safeCall");
   const facade = {};
   for (const op of WASM_ARENA_OPS) {
     facade[op] = (...args) => safeCall(op, ...args);
@@ -578,6 +647,7 @@ function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge") {
   }
   return facade;
 }
+__name(buildWasmCallFacade, "buildWasmCallFacade");
 
 // ../../lib/egpt/js/model/shared/matrixAlgorithm.js
 function createEGPTMatrix({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, EGPTPolynomial: EGPTPolynomial2 }) {
@@ -588,9 +658,11 @@ function createEGPTMatrix({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, EGPTPolyno
     }
     return M;
   }
+  __name(_zeros, "_zeros");
   function _shape(M) {
     return { rows: M.length, cols: M.length === 0 ? 0 : M[0].length };
   }
+  __name(_shape, "_shape");
   function dotViaPolynomial(a, b) {
     if (a.length !== b.length) {
       throw new Error(`dotViaPolynomial: length mismatch ${a.length} vs ${b.length}`);
@@ -602,6 +674,7 @@ function createEGPTMatrix({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, EGPTPolyno
     const product = EGPTPolynomial2.multiply(a, reversed);
     return product[n - 1] !== void 0 ? product[n - 1] : EGPTReal2.fromBigInt(0n);
   }
+  __name(dotViaPolynomial, "dotViaPolynomial");
   const matrix = {
     zeros: _zeros,
     identity(n) {
@@ -705,6 +778,7 @@ function createEGPTMatrix({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, EGPTPolyno
   }
   return Object.freeze(matrix);
 }
+__name(createEGPTMatrix, "createEGPTMatrix");
 
 // ../../lib/egpt/js/model/shared/fftAlgorithm.js
 function createEGPTFFT({ EGPTPolynomial: EGPTPolynomial2 }) {
@@ -721,6 +795,7 @@ function createEGPTFFT({ EGPTPolynomial: EGPTPolynomial2 }) {
     }
   });
 }
+__name(createEGPTFFT, "createEGPTFFT");
 
 // ../../lib/egpt/js/model/shared/statAlgorithm.js
 function bigIntSqrt(value) {
@@ -734,6 +809,7 @@ function bigIntSqrt(value) {
   }
   return x;
 }
+__name(bigIntSqrt, "bigIntSqrt");
 function createEGPTStat({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, getEGPTStatData }) {
   function _normalSqrt(a_en) {
     const rational = a_en.getRationalParts();
@@ -741,15 +817,18 @@ function createEGPTStat({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, getEGPTStatD
     const sqrt_den = bigIntSqrt(rational.denominator);
     return EGPTReal2.fromRational(sqrt_num, sqrt_den);
   }
+  __name(_normalSqrt, "_normalSqrt");
   function mean(vectors) {
     if (vectors.length === 0) throw new Error("Cannot calculate mean of empty vector array");
     let sum = vectors[0].clone();
     for (let i = 1; i < vectors.length; i++) sum = EGPTMath2.add(sum, vectors[i]);
     return EGPTMath2.normalDivide(sum, EGPTReal2.fromBigInt(BigInt(vectors.length)));
   }
+  __name(mean, "mean");
   function absoluteDifference(H_a, H_b) {
     return EGPTMath2.compare(H_a, H_b) >= 0 ? EGPTMath2.subtract(H_a, H_b) : EGPTMath2.subtract(H_b, H_a);
   }
+  __name(absoluteDifference, "absoluteDifference");
   function variance(vectors) {
     if (vectors.length === 0) throw new Error("Cannot calculate variance of empty vector array");
     const mean_vector = mean(vectors);
@@ -770,6 +849,7 @@ function createEGPTStat({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, getEGPTStatD
       }
     };
   }
+  __name(variance, "variance");
   function comprehensiveStatisticalAnalysis(values, options = {}) {
     if (values.length === 0) throw new Error("Cannot analyze empty array of entropy values");
     const EGPTStatData2 = typeof getEGPTStatData === "function" ? getEGPTStatData() : null;
@@ -783,12 +863,17 @@ function createEGPTStat({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, getEGPTStatD
       ...options
     });
   }
+  __name(comprehensiveStatisticalAnalysis, "comprehensiveStatisticalAnalysis");
   return Object.freeze({ _normalSqrt, mean, absoluteDifference, variance, comprehensiveStatisticalAnalysis });
 }
+__name(createEGPTStat, "createEGPTStat");
 
 // ../../lib/egpt/js/model/shared/statDataAlgorithm.js
 function createEGPTStatData({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, getEGPTStat }) {
   class EGPTStatData2 {
+    static {
+      __name(this, "EGPTStatData");
+    }
     constructor({
       raw_values = [],
       mean = null,
@@ -904,6 +989,7 @@ function createEGPTStatData({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, getEGPTS
   }
   return EGPTStatData2;
 }
+__name(createEGPTStatData, "createEGPTStatData");
 
 // ../../lib/egpt/js/model/shared/transcendentalAlgorithm.js
 function createEGPTranscendental({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
@@ -911,12 +997,14 @@ function createEGPTranscendental({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
     const exp_rational = H_entropy.getRationalParts();
     return EGPTMath2.pow(EGPTReal2.fromBigInt(2n), exp_rational.numerator, exp_rational.denominator);
   }
+  __name(exp2, "exp2");
   function log2(x_en) {
     const H_one = EGPTReal2.fromBigInt(1n);
     if (x_en.equals(H_one)) return EGPTReal2.fromBigInt(0n);
     const half_x = EGPTMath2.divide(x_en, EGPTReal2.fromBigInt(2n));
     return EGPTMath2.add(log2(half_x), H_one);
   }
+  __name(log2, "log2");
   function _phaseToCartesian(H_fraction) {
     const H_ZERO = EGPTReal2.fromBigInt(0n);
     const H_ONE = EGPTReal2.fromBigInt(1n);
@@ -941,12 +1029,15 @@ function createEGPTranscendental({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
       return { x: progress, y: EGPTMath2.subtract(progress, H_ONE) };
     }
   }
+  __name(_phaseToCartesian, "_phaseToCartesian");
   function cos(H_phase) {
     return _phaseToCartesian(H_phase).x;
   }
+  __name(cos, "cos");
   function sin(H_phase) {
     return _phaseToCartesian(H_phase).y;
   }
+  __name(sin, "sin");
   function _calcTriangularWavePosition(H_P, H_x) {
     const H_zero = EGPTReal2.fromBigInt(0n);
     if (H_P.equals(H_zero)) return H_zero.clone();
@@ -958,6 +1049,7 @@ function createEGPTranscendental({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
     }
     return EGPTMath2.subtract(H_period, H_time_in_period);
   }
+  __name(_calcTriangularWavePosition, "_calcTriangularWavePosition");
   function _getVectorFromPhase(H_n, H_phase) {
     const H_zero = EGPTReal2.fromBigInt(0n);
     const H_one = EGPTReal2.fromBigInt(1n);
@@ -970,12 +1062,17 @@ function createEGPTranscendental({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
     const H_x_normalized = is_negative ? H_zero.clone() : EGPTMath2.sqrt(one_minus_y_sq);
     return { x: H_x_normalized, y: H_y_normalized };
   }
+  __name(_getVectorFromPhase, "_getVectorFromPhase");
   return Object.freeze({ exp2, log2, _phaseToCartesian, cos, sin, _calcTriangularWavePosition, _getVectorFromPhase });
 }
+__name(createEGPTranscendental, "createEGPTranscendental");
 
 // ../../lib/egpt/js/model/shared/complexAlgorithm.js
 function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcendental, phaseToCircular }) {
   class ComplexEGPTReal2 {
+    static {
+      __name(this, "ComplexEGPTReal");
+    }
     constructor(realPart, imagPart) {
       if (!(realPart instanceof EGPTReal2) || !(imagPart instanceof EGPTReal2)) {
         throw new Error("ComplexEGPTReal components must be EGPTReal instances.");
@@ -1094,10 +1191,11 @@ function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcend
     }
   }
   let _Complex = ComplexEGPTReal2;
-  const mk = (x, y) => new _Complex(x, y);
+  const mk = /* @__PURE__ */ __name((x, y) => new _Complex(x, y), "mk");
   function setComplexClass(C) {
     _Complex = C;
   }
+  __name(setComplexClass, "setComplexClass");
   function coordinateMultiply(a_en, b_en) {
     const a_scalar = a_en.getScalarParts();
     const b_scalar = b_en.getScalarParts();
@@ -1114,6 +1212,7 @@ function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcend
     const product_abs = EGPTMath2.multiply(a_abs, b_abs);
     return a_neg !== b_neg ? EGPTReal2.negate(product_abs) : product_abs;
   }
+  __name(coordinateMultiply, "coordinateMultiply");
   const EGPTComplex2 = {
     complexAdd(z1, z2) {
       return mk(EGPTMath2.add(z1.real, z2.real), EGPTMath2.add(z1.imag, z2.imag));
@@ -1128,7 +1227,7 @@ function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcend
     coordinateMultiply
   };
   EGPTComplex2.complexMultiply = EGPTComplex2.complexMultiplyEuclidean;
-  EGPTComplex2.complexPower = function complexPower(H_n, s) {
+  EGPTComplex2.complexPower = /* @__PURE__ */ __name(function complexPower(H_n, s) {
     const exponent_real_parts = s.real._getPPFRationalParts();
     let H_magnitude;
     if (exponent_real_parts.numerator < 0n) {
@@ -1143,8 +1242,8 @@ function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcend
     const phase_coords = transcendental._getVectorFromPhase(H_n, H_phase);
     const H_magnitude_complex = mk(H_magnitude, EGPTReal2.fromBigInt(0n));
     return EGPTComplex2.complexMultiply(H_magnitude_complex, mk(phase_coords.x, phase_coords.y));
-  };
-  EGPTComplex2.riemannZeta = function riemannZeta(s, maxTerms = 1e3) {
+  }, "complexPower");
+  EGPTComplex2.riemannZeta = /* @__PURE__ */ __name(function riemannZeta(s, maxTerms = 1e3) {
     let sum_real = EGPTReal2.fromBigInt(0n);
     let sum_imag = EGPTReal2.fromBigInt(0n);
     const s_neg = mk(EGPTReal2.negate(s.real), EGPTReal2.negate(s.imag));
@@ -1155,8 +1254,11 @@ function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcend
       sum_imag = EGPTMath2.add(sum_imag, H_term.imag);
     }
     return mk(sum_real, sum_imag);
-  };
+  }, "riemannZeta");
   class TwiddleTable2 {
+    static {
+      __name(this, "TwiddleTable");
+    }
     constructor(k, topology = "square") {
       if (k <= 0 || !Number.isInteger(k)) throw new Error("TwiddleTable: k must be a positive integer");
       this.k = k;
@@ -1203,6 +1305,7 @@ function createEGPTComplex({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, transcend
   }
   return { ComplexEGPTReal: ComplexEGPTReal2, TwiddleTable: TwiddleTable2, EGPTComplex: EGPTComplex2, setComplexClass };
 }
+__name(createEGPTComplex, "createEGPTComplex");
 
 // ../../lib/egpt/js/model/shared/mathComposedAlgorithm.js
 function createComposedMath({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
@@ -1220,17 +1323,21 @@ function createComposedMath({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2 }) {
     const H_integer_part = EGPTReal2.fromBigInt(quotient_rational.numerator / quotient_rational.denominator);
     return EGPTMath2.subtract(H_quotient, H_integer_part);
   }
+  __name(conditionalEntropyVector, "conditionalEntropyVector");
   return Object.freeze({ conditionalEntropyVector });
 }
+__name(createComposedMath, "createComposedMath");
 
 // src/browser/active-provider.js
 var _resolver = null;
 function setActiveProviderResolver(fn) {
   _resolver = fn;
 }
+__name(setActiveProviderResolver, "setActiveProviderResolver");
 function hasActiveProvider() {
   return _resolver !== null;
 }
+__name(hasActiveProvider, "hasActiveProvider");
 function getActiveProvider() {
   if (!_resolver) {
     throw new Error(
@@ -1239,6 +1346,7 @@ function getActiveProvider() {
   }
   return _resolver();
 }
+__name(getActiveProvider, "getActiveProvider");
 
 // src/browser/wasm-facade.js
 function _p(opName) {
@@ -1249,17 +1357,27 @@ function _p(opName) {
   }
   return getActiveProvider();
 }
+__name(_p, "_p");
 function _wrap(handle) {
   return new EGPTReal(_CONSTRUCT_TOKEN, handle);
 }
+__name(_wrap, "_wrap");
+function _packed(v, opName) {
+  return packedFromHandle(_unwrap(v, opName), opName);
+}
+__name(_packed, "_packed");
 function _unwrap(v, opName) {
   if (v instanceof EGPTReal) return v._handle;
   throw new TypeError(
     `EGPT Math SDK: ${opName} expected an EGPTReal facade instance, got ${v === null ? "null" : typeof v}`
   );
 }
+__name(_unwrap, "_unwrap");
 var _CONSTRUCT_TOKEN = Symbol("egpt-real-facade-construct");
 var EGPTReal = class _EGPTReal {
+  static {
+    __name(this, "EGPTReal");
+  }
   constructor(token, handle) {
     if (token !== _CONSTRUCT_TOKEN) {
       throw new TypeError(
@@ -1272,8 +1390,17 @@ var EGPTReal = class _EGPTReal {
   static fromBigInt(n) {
     return new _EGPTReal(_CONSTRUCT_TOKEN, _p("fromBigInt").fromBigInt(BigInt(n)));
   }
-  /** @param {bigint|number} num @param {bigint|number} den @returns {EGPTReal} */
-  static fromRational(num, den) {
+  /**
+   * @param {bigint|number} num @param {bigint|number} den
+   * @param {{skipReduce?: boolean}} [options] — `skipReduce: true` keeps `num/den`
+   *   UN-reduced (the JS `skip_reduce` value state: `3/3` stays `3/3`), a Rust arena
+   *   value kind of its own (`ArenaVal::Unreduced`).
+   * @returns {EGPTReal}
+   */
+  static fromRational(num, den, options = {}) {
+    if (options.skipReduce === true) {
+      return _wrap(handleFromPacked(callWasm("arenaInternUnreduced", String(BigInt(num)), String(BigInt(den)))));
+    }
     return new _EGPTReal(_CONSTRUCT_TOKEN, _p("fromRational").fromRational(BigInt(num), BigInt(den)));
   }
   /** @param {string} str — "num" or "num/den" @returns {EGPTReal} */
@@ -1386,9 +1513,9 @@ var EGPTReal = class _EGPTReal {
     return _p("getIntegerBitLength").getIntegerBitLength(this._handle);
   }
   // ── Sugar (ws-egpt-math-facade-bench) — backend-agnostic, zero new provider ops ──
-  /** Additive inverse: `0 − this`. Provider-routed (subtract). @returns {EGPTReal} */
+  /** Additive inverse — `EGPTReal.negate(this)`. @returns {EGPTReal} */
   negate() {
-    return _EGPTReal.ZERO.subtract(this);
+    return _EGPTReal.negate(this);
   }
   /**
    * A NEW wrapper object sharing this (immutable) arena handle. The arena value
@@ -1400,33 +1527,32 @@ var EGPTReal = class _EGPTReal {
   clone() {
     return new _EGPTReal(_CONSTRUCT_TOKEN, this._handle);
   }
-  // ── In-place scalar mutation (ws-egpt-math-rust-ops) — facade-wrapper handle-swap ──
-  // The arena is immutable-by-design (every op interns a NEW handle); mutation
-  // lives HERE by reassigning `this._handle` to the new handle and returning
-  // `this` for fluent chaining. On the plain values the bench exercises these are
-  // pure provider dispatches over the linear projection (scalar reset to 1/1).
+  // ── In-place scalar mutation — the arena is immutable, so the wrapper swaps its
+  // handle to the Rust result (`arena.rs::val_scalar_*`) and returns `this`. The
+  // BigInt type check is the reference's own, verbatim.
   /** Translate by a BigInt: this ← this + s. @param {bigint} s @returns {this} */
   scalarAdd(s) {
     if (typeof s !== "bigint") throw new Error("scalarAdd requires BigInt scalar");
-    this._handle = _p("add").add(this._handle, _p("fromBigInt").fromBigInt(s));
-    return this;
+    return this._scalarOp("scalarAdd", s);
   }
   /** Translate by −s. @param {bigint} s @returns {this} */
   scalarSubtract(s) {
     if (typeof s !== "bigint") throw new Error("scalarSubtract requires BigInt scalar");
     return this.scalarAdd(-s);
   }
-  /** Scale by a BigInt: this ← this × s. @param {bigint} s @returns {this} */
+  /** Multiply the SCALAR by s (no scalar re-reduction, base untouched). @param {bigint} s @returns {this} */
   scalarMultiply(s) {
     if (typeof s !== "bigint") throw new Error("scalarMultiply requires BigInt scalar");
-    this._handle = _p("multiply").multiply(this._handle, _p("fromBigInt").fromBigInt(s));
-    return this;
+    return this._scalarOp("scalarMultiply", s);
   }
-  /** Scale by 1/s: this ← this ÷ s. @param {bigint} s @returns {this} */
+  /** Divide the SCALAR by s (no scalar re-reduction, base untouched). @param {bigint} s @returns {this} */
   scalarDivide(s) {
     if (typeof s !== "bigint") throw new Error("scalarDivide requires BigInt scalar");
-    if (s === 0n) throw new Error("Division by zero scalar is undefined");
-    this._handle = _p("divide").divide(this._handle, _p("fromBigInt").fromBigInt(s));
+    return this._scalarOp("scalarDivide", s);
+  }
+  /** @private */
+  _scalarOp(op, s) {
+    this._handle = handleFromPacked(callWasm("arenaScalarOp", _packed(this, op), op, String(s)));
     return this;
   }
   /**
@@ -1437,29 +1563,31 @@ var EGPTReal = class _EGPTReal {
    * @returns {boolean}
    */
   isInteger() {
-    const { numerator, denominator } = this.getRationalParts();
+    const { numerator, denominator } = this._getPPFRationalParts();
     if (denominator === 0n) throw new Error("Invalid rational with zero denominator");
     return numerator % denominator === 0n;
   }
   /**
-   * The rational parts `{ numerator, denominator }` bigints — DERIVED by parsing
-   * `toCanonicalStr()` ("num" or "num/den"), which is byte-for-byte dev-core
-   * `EGPTReal.toCanonicalStr(v)`: the UNREDUCED projection (scalar·base), so
-   * these parts equal dev-core `_getPPFRationalParts()` (e.g. {2n, 2n} for √2).
-   * This is the plain rational value (num/den), NOT the PPF log2-encode internals
-   * ({N, offset}); the latter stays gapped (`toPPF`). Faced modules (EGPTStat,
-   * EGPTStatData) that read `.getRationalParts()`/`._getPPFRationalParts()` route here.
+   * `_getPPFRationalParts()` — the projection `(scalar·base)` as raw, UN-reduced parts
+   * `{ numerator, denominator }` (√2 → {2n, 2n}; un-reduced 84/60 → {84n, 60n}). Parsed
+   * from `toCanonicalStr()`, which prints exactly these parts.
    * @returns {{numerator: bigint, denominator: bigint}}
    */
-  getRationalParts() {
+  _getPPFRationalParts() {
     const s = this.toCanonicalStr();
     const slash = s.indexOf("/");
     if (slash === -1) return { numerator: BigInt(s), denominator: 1n };
     return { numerator: BigInt(s.slice(0, slash)), denominator: BigInt(s.slice(slash + 1)) };
   }
-  /** Alias of {@link EGPTReal#getRationalParts} — dev-core narration name. @returns {{numerator:bigint,denominator:bigint}} */
-  _getPPFRationalParts() {
-    return this.getRationalParts();
+  /**
+   * `getRationalParts()` — the BASE parts for an identity scalar; for a scaled vector the
+   * JS reference's integer nth-root approximation over 1 (√2 → {1n, 1n}), NOT the
+   * projection. Rust port (`arena.rs::val_get_rational_parts`).
+   * @returns {{numerator: bigint, denominator: bigint}}
+   */
+  getRationalParts() {
+    const obj = valueWithWarnings(callWasm("arenaGetRationalParts", _packed(this, "getRationalParts")));
+    return { numerator: BigInt(obj.numerator), denominator: BigInt(obj.denominator) };
   }
   /**
    * The scaled-vector scalar multiplier `{s_num, s_den}`. `{1/1}` for a plain
@@ -1492,10 +1620,13 @@ var EGPTReal = class _EGPTReal {
   toPPF() {
     return _p("toPPF").toPPF(this._handle);
   }
-  /** Static form: additive inverse of `v`. @param {EGPTReal} v @returns {EGPTReal} */
+  /**
+   * `EGPTReal.negate(v)`: a unit scalar negates the value; a scaled vector negates its
+   * scalar only (√2 → (−1/2)·H(2)). Rust port (`arena.rs::val_negate`).
+   * @param {EGPTReal} v @returns {EGPTReal}
+   */
   static negate(v) {
-    if (!(v instanceof _EGPTReal)) throw new TypeError("EGPTReal.negate expected an EGPTReal facade instance");
-    return v.negate();
+    return _wrap(handleFromPacked(callWasm("arenaNegate", _packed(v, "negate"))));
   }
   /** @returns {bigint} */
   breakSymbolicToApproximateBigInt() {
@@ -1549,7 +1680,10 @@ var EGPTReal = class _EGPTReal {
     return _p("modPow").modPow(BigInt(base), BigInt(exp), BigInt(mod));
   }
 };
-var EGPTMath = class {
+var EGPTMath = class _EGPTMath {
+  static {
+    __name(this, "EGPTMath");
+  }
   constructor() {
     throw new Error("EGPTMath is a static class and cannot be instantiated.");
   }
@@ -1559,11 +1693,14 @@ var EGPTMath = class {
   static subtract(a, b) {
     return a.subtract(b);
   }
+  // Shannon multiply/divide are EGPTMath ops on any EGPTReal — never a subclass's own
+  // `multiply`/`divide` (EGPTPrimeComposite's concatenate records), so they bind the
+  // EGPTReal implementation explicitly.
   static multiply(a, b) {
-    return a.multiply(b);
+    return EGPTReal.prototype.multiply.call(a, b);
   }
   static divide(a, b) {
-    return a.divide(b);
+    return EGPTReal.prototype.divide.call(a, b);
   }
   static normalDivide(a, b) {
     return a.normalDivide(b);
@@ -1592,10 +1729,10 @@ var EGPTMath = class {
   }
   // ── Pedagogical Shannon-space aliases + sugar ──
   static addInLogSpace(a, b) {
-    return a.multiply(b);
+    return _EGPTMath.multiply(a, b);
   }
   static subtractInLogSpace(a, b) {
-    return a.divide(b);
+    return _EGPTMath.divide(a, b);
   }
   static addVectors(a, b) {
     return a.add(b);
@@ -1627,6 +1764,19 @@ var EGPTMath = class {
   static conditionalEntropyVector(k_en, p_en) {
     return _composedMath().conditionalEntropyVector(k_en, p_en);
   }
+  /**
+   * Structural congruence: value equality for two plain values, otherwise the
+   * prime-record lift compared by `congruentTo`.
+   */
+  static congruent(a_en, b_en) {
+    const aIsComposite = a_en instanceof EGPTPrimeComposite;
+    const bIsComposite = b_en instanceof EGPTPrimeComposite;
+    if (!aIsComposite && !bIsComposite) {
+      return _EGPTMath.equals(a_en, b_en);
+    }
+    const ca = aIsComposite ? a_en : EGPTPrimeComposite.fromEGPTReal(a_en);
+    return ca.congruentTo(b_en);
+  }
   /** Example irrational scaled vectors (mirrors dev-core; used by 6.7 demos). */
   static demonstrateIrrationalRoots() {
     const H_2 = EGPTReal.fromBigInt(2n);
@@ -1638,63 +1788,502 @@ var EGPTMath = class {
     };
   }
 };
+var _COMPOSITE_HANDLE = Symbol("egpt-prime-composite-handle");
+function _compositeCtorJson(records, sign) {
+  const num = /* @__PURE__ */ __name((x) => typeof x === "number" && Number.isFinite(x) ? x : null, "num");
+  return JSON.stringify({
+    sign: num(sign),
+    signIsNum: typeof sign === "number",
+    records: records.map((r) => {
+      const o = {
+        s: num(r.sign),
+        sNum: typeof r.sign === "number",
+        sRaw: `${r.sign}`,
+        p: typeof r.prime === "bigint" ? String(r.prime) : null,
+        pRaw: `${r.prime}`,
+        l: typeof r.location === "string" ? r.location : null,
+        lRaw: `${r.location}`
+      };
+      if (r.clauseIdx !== void 0) {
+        o.hc = true;
+        o.c = r.clauseIdx;
+      }
+      return o;
+    })
+  });
+}
+__name(_compositeCtorJson, "_compositeCtorJson");
+function _identityTokens() {
+  const ids = /* @__PURE__ */ new Map();
+  let unique = 0;
+  return (x) => {
+    const t = typeof x;
+    if (t === "number" && Number.isNaN(x)) return `nan:${unique++}`;
+    if (t === "object" && x !== null || t === "function" || t === "symbol") {
+      if (!ids.has(x)) ids.set(x, `id:${ids.size}`);
+      return ids.get(x);
+    }
+    return `${t}:${String(x)}`;
+  };
+}
+__name(_identityTokens, "_identityTokens");
+var EGPTPrimeComposite = class _EGPTPrimeComposite extends EGPTReal {
+  static {
+    __name(this, "EGPTPrimeComposite");
+  }
+  /**
+   * @param {Array<{sign: 1|-1, prime: bigint, location: 'numerator'|'denominator'}>} records
+   * @param {1|-1} sign — overall sign (product of the record signs).
+   */
+  constructor(records, sign) {
+    let handle;
+    if (records === _COMPOSITE_HANDLE) {
+      handle = sign;
+    } else {
+      if (!Array.isArray(records)) {
+        throw new TypeError("EGPTPrimeComposite constructor requires a records array.");
+      }
+      handle = handleFromPacked(callWasm("primeCompositeNew", _compositeCtorJson(records, sign)));
+    }
+    super(_CONSTRUCT_TOKEN, handle);
+    const st = JSON.parse(callWasm("primeCompositeState", _packed(this, "EGPTPrimeComposite")));
+    this.records = st.records.map((r) => ({
+      sign: r.sign,
+      prime: BigInt(r.prime),
+      location: r.location,
+      ...r.clauseIdx !== void 0 ? { clauseIdx: r.clauseIdx } : {}
+    }));
+    this.primes = new Map(st.primes.map(([p, e]) => [BigInt(p), BigInt(e)]));
+    this.sign = st.sign;
+  }
+  /** @param {object} h — a provider handle to an `ArenaVal::Composite`. @returns {EGPTPrimeComposite} */
+  static _fromHandle(h) {
+    return new _EGPTPrimeComposite(_COMPOSITE_HANDLE, h);
+  }
+  static fromPrimeRecords(records) {
+    if (!Array.isArray(records)) {
+      throw new TypeError("fromPrimeRecords requires an array.");
+    }
+    let overallSign = 1;
+    for (const r of records) {
+      overallSign = overallSign * r.sign;
+    }
+    return new _EGPTPrimeComposite(records, overallSign);
+  }
+  /** @param {EGPTReal} num @returns {EGPTPrimeComposite} */
+  static fromEGPTReal(num) {
+    if (!(num instanceof EGPTReal)) {
+      throw new TypeError("fromEGPTReal requires an EGPTReal argument.");
+    }
+    return _EGPTPrimeComposite._fromHandle(handleFromPacked(callWasm("primeCompositeFromReal", _packed(num, "fromEGPTReal"))));
+  }
+  /** Concatenate records (no cancellation); signs multiply. */
+  multiply(other) {
+    const rhs = other instanceof _EGPTPrimeComposite ? other : _EGPTPrimeComposite.fromEGPTReal(other);
+    return _EGPTPrimeComposite._fromHandle(handleFromPacked(
+      callWasm("primeCompositeMultiply", _packed(this, "multiply"), _packed(rhs, "multiply"))
+    ));
+  }
+  /** Flip the divisor's locations, concatenate; signs multiply. */
+  divide(other) {
+    const rhs = other instanceof _EGPTPrimeComposite ? other : _EGPTPrimeComposite.fromEGPTReal(other);
+    return _EGPTPrimeComposite._fromHandle(handleFromPacked(
+      callWasm("primeCompositeDivide", _packed(this, "divide"), _packed(rhs, "divide"))
+    ));
+  }
+  /** The composite's own value as a reduced EGPTReal (a constant evaluates to itself). */
+  evaluateAt(value) {
+    const rational = this._getPPFRationalParts();
+    return EGPTReal.fromRational(rational.numerator, rational.denominator);
+  }
+  getPrimesInNumerator() {
+    const out = /* @__PURE__ */ new Map();
+    for (const [p, e] of this.primes) {
+      if (e > 0n) out.set(p, e);
+    }
+    return out;
+  }
+  getPrimesInDenominator() {
+    const out = /* @__PURE__ */ new Map();
+    for (const [p, e] of this.primes) {
+      if (e < 0n) out.set(p, -e);
+    }
+    return out;
+  }
+  getSignedPrimes() {
+    return this.records.map((r) => ({
+      prime: r.prime,
+      location: r.location,
+      sign: r.sign,
+      exponent: 1n,
+      ...r.clauseIdx !== void 0 ? { clauseIdx: r.clauseIdx } : {}
+    }));
+  }
+  getSign() {
+    return this.sign;
+  }
+  /** A new composite from this one's records and sign. */
+  clone() {
+    return new _EGPTPrimeComposite(this.records, this.sign);
+  }
+  /** Order-independent multiset key of `${sign}:${prime}:${location}` renderings. */
+  static recordsMultisetKey(records) {
+    return callWasm(
+      "primeCompositeRecordsKey",
+      JSON.stringify(records.map((r) => `${r.sign}:${r.prime}:${r.location}`))
+    );
+  }
+  /** Same overall sign and same record multiset (a plain EGPTReal is lifted first). */
+  congruentTo(other) {
+    const lifted = other instanceof _EGPTPrimeComposite ? other : _EGPTPrimeComposite.fromEGPTReal(other);
+    return callWasm("primeCompositeCongruent", _packed(this, "congruentTo"), _packed(lifted, "congruentTo"));
+  }
+  static RULE_NO_REDUCE = /* @__PURE__ */ __name((records) => records, "RULE_NO_REDUCE");
+  /** Drop +1-signed (p, numerator)/(p, denominator) pairs until none remain. */
+  static RULE_OR_RATIONAL_CANCEL = /* @__PURE__ */ __name((records) => {
+    const token = _identityTokens();
+    const keep = JSON.parse(callWasm("primeCompositeCancelRule", JSON.stringify(
+      records.map((r) => [r.sign === 1, token(r.prime), token(r.location)])
+    )));
+    return keep.map((i) => records[i]);
+  }, "RULE_OR_RATIONAL_CANCEL");
+  applyRule(rule) {
+    return _EGPTPrimeComposite.fromPrimeRecords(rule(this.records));
+  }
+};
 var _composedMathInstance = null;
 function _composedMath() {
   if (!_composedMathInstance) _composedMathInstance = createComposedMath({ EGPTReal, EGPTMath });
   return _composedMathInstance;
 }
+__name(_composedMath, "_composedMath");
+function _handlesJson(arr, opName) {
+  return JSON.stringify(arr.map((x) => String(_packed(x, opName))));
+}
+__name(_handlesJson, "_handlesJson");
+function _fromTag(tag, args) {
+  const [k, x, y] = tag.split(":");
+  if (k === "h") return _wrap(handleFromPacked(x));
+  if (k === "p") return EGPTPrimeComposite._fromHandle(handleFromPacked(x));
+  const src = args[Number(x)][Number(y)];
+  return k === "r" ? src : src.clone();
+}
+__name(_fromTag, "_fromTag");
+function _fromTags(tags, args) {
+  return tags.map((t) => _fromTag(t, args));
+}
+__name(_fromTags, "_fromTags");
+function _polyPort(op, a, b = []) {
+  return JSON.parse(callWasm("polyPort", op, _handlesJson(a, op), _handlesJson(b, op)));
+}
+__name(_polyPort, "_polyPort");
+var _asArray = /* @__PURE__ */ __name((poly) => Array.isArray(poly) ? poly : [], "_asArray");
 var EGPTPolynomial = Object.freeze({
-  /** @param {EGPTReal[]} a @param {EGPTReal[]} b @returns {EGPTReal[]} */
-  add(a, b) {
-    return _p("polyAdd").polyAdd(a.map((x) => _unwrap(x, "polyAdd")), b.map((x) => _unwrap(x, "polyAdd"))).map(_wrap);
+  /** Trailing zeros removed (never shorter than one term); the kept terms are the caller's own objects. */
+  trimZeros(poly) {
+    return _fromTags(_polyPort("trimZeros", _asArray(poly)), [poly]);
   },
-  /** @param {EGPTReal[]} a @param {EGPTReal[]} b @returns {EGPTReal[]} */
-  multiply(a, b) {
-    return _p("polyMul").polyMul(a.map((x) => _unwrap(x, "polyMul")), b.map((x) => _unwrap(x, "polyMul"))).map(_wrap);
+  /** Highest non-zero power (0 for a constant). @returns {number} */
+  degree(poly) {
+    return Number(_polyPort("degree", _asArray(poly)));
   },
-  /** @param {EGPTReal[]} dividend @param {EGPTReal[]} divisor @returns {{quotient:EGPTReal[], remainder:EGPTReal[]}} */
+  /** Coefficient-wise `.equals()` after trimming. @returns {boolean} */
+  equals(poly1, poly2) {
+    return _polyPort("equals", _asArray(poly1), _asArray(poly2));
+  },
+  add(poly1, poly2) {
+    return _fromTags(_polyPort("add", poly1, poly2), [poly1, poly2]);
+  },
+  subtract(poly1, poly2) {
+    return _fromTags(_polyPort("subtract", poly1, poly2), [poly1, poly2]);
+  },
+  /** Convolution; all-composite operands dispatch to `multiplyNoReduce`, as the reference does. */
+  multiply(poly1, poly2) {
+    return _fromTags(_polyPort("multiply", poly1, poly2), [poly1, poly2]);
+  },
+  multiplyNoReduce(poly1, poly2) {
+    if (!Array.isArray(poly1) || !Array.isArray(poly2)) {
+      throw new TypeError("multiplyNoReduce expects two coefficient arrays.");
+    }
+    return _fromTags(_polyPort("multiplyNoReduce", poly1, poly2), [poly1, poly2]);
+  },
+  /** @returns {{quotient: EGPTReal[], remainder: EGPTReal[]}} */
   divide(dividend, divisor) {
-    const r = _p("polyDiv").polyDiv(
-      dividend.map((x) => _unwrap(x, "polyDiv")),
-      divisor.map((x) => _unwrap(x, "polyDiv"))
-    );
-    return { quotient: r.quotient.map(_wrap), remainder: r.remainder.map(_wrap) };
+    const r = _polyPort("divide", dividend, divisor);
+    return { quotient: _fromTags(r.quotient, [dividend, divisor]), remainder: _fromTags(r.remainder, [dividend, divisor]) };
   },
-  /** @param {EGPTReal[]} coeffs @param {number} n @returns {EGPTReal[]} */
-  forwardTransform(coeffs, n) {
-    return _p("polyForwardTransform").polyForwardTransform(coeffs.map((x) => _unwrap(x, "polyForwardTransform")), n).map(_wrap);
+  /** Monic GCD by the Euclidean algorithm. */
+  gcd(F, G) {
+    return _fromTags(_polyPort("gcd", F, G), [F, G]);
   },
-  /** @param {EGPTReal[]} samples @param {number} n @returns {EGPTReal[]} */
-  inverseTransform(samples, n) {
-    return _p("polyInverseTransform").polyInverseTransform(samples.map((x) => _unwrap(x, "polyInverseTransform")), n).map(_wrap);
+  /** True iff gcd(F, G) has positive degree. */
+  shareCommonFactor(F, G) {
+    return _polyPort("shareCommonFactor", F, G);
   },
-  /** @param {EGPTReal[]} poly @param {EGPTReal} x @returns {EGPTReal} */
+  /** Horner evaluation at x. */
   evaluateAt(poly, x) {
-    return _wrap(
-      _p("polyEvaluateAt").polyEvaluateAt(poly.map((c) => _unwrap(c, "polyEvaluateAt")), _unwrap(x, "polyEvaluateAt"))
-    );
+    return _fromTag(_polyPort("evaluateAt", poly, [x])[0], [poly, [x]]);
   },
-  /** @param {EGPTReal[]} a @param {EGPTReal[]} b @returns {EGPTReal[]} */
-  gcd(a, b) {
-    return _p("polyGcd").polyGcd(a.map((x) => _unwrap(x, "polyGcd")), b.map((x) => _unwrap(x, "polyGcd"))).map(_wrap);
+  /** p(k/N) for k = 0..N−1. */
+  forwardTransform(coefficients, N) {
+    return _fromTags(JSON.parse(callWasm(
+      "polyPortTransform",
+      "forwardTransform",
+      _handlesJson(coefficients, "forwardTransform"),
+      N,
+      `${N}`
+    )), [coefficients]);
+  },
+  /** Newton divided-difference interpolation from N samples at k/N. */
+  inverseTransform(samples, N) {
+    return _fromTags(JSON.parse(callWasm(
+      "polyPortTransform",
+      "inverseTransform",
+      _handlesJson(samples, "inverseTransform"),
+      N,
+      `${N}`
+    )), [samples]);
+  },
+  /** [P(2^0), P(2^1), …, P(2^D)]. */
+  toValueRepresentation(coefficients) {
+    if (!Array.isArray(coefficients)) {
+      throw new TypeError("EGPTPolynomial.toValueRepresentation expects an EGPTReal[]");
+    }
+    return _fromTags(_polyPort("toValueRepresentation", coefficients), [coefficients]);
+  },
+  /** Coefficients from D+1 samples at x = 2^0..2^D (the inverse of toValueRepresentation). */
+  fromValueRepresentation(samples) {
+    if (!Array.isArray(samples)) {
+      throw new TypeError("EGPTPolynomial.fromValueRepresentation expects an EGPTReal[]");
+    }
+    return _fromTags(_polyPort("fromValueRepresentation", samples), [samples]);
+  },
+  /** Conditional entropy H(k|p) — `EGPTMath.conditionalEntropyVector`, as the reference delegates. */
+  evaluateValueRepresentation(k, p) {
+    return EGPTMath.conditionalEntropyVector(k, p);
+  },
+  /** Rational roots with multiplicity, sorted by |r|; `{preserveUnreduced: true}` keeps p/q un-reduced. */
+  rationalRoots(P, options = {}) {
+    if (!Array.isArray(P)) {
+      throw new TypeError("EGPTPolynomial.rationalRoots expects an EGPTReal[]");
+    }
+    const op = options.preserveUnreduced === true ? "rationalRootsUnreduced" : "rationalRoots";
+    return _fromTags(_polyPort(op, P), [P]);
+  },
+  /** Integer u-space roots (L/q)·p over L = lcm of the root denominators. */
+  toNatRoots(P) {
+    return _fromTags(_polyPort("toNatRoots", P), [P]);
+  },
+  /** The prime-atom multiset of the u-roots, as an EGPTPrimeComposite. */
+  toNat(P) {
+    return _fromTag(_polyPort("toNat", P)[0], [P]);
   }
 });
+function polyGCD(a, b) {
+  return _fromTags(_polyPort("polyGCD", a, b), [a, b]);
+}
+__name(polyGCD, "polyGCD");
+function monicNormalize(poly) {
+  return _fromTags(_polyPort("monicNormalize", poly), [poly]);
+}
+__name(monicNormalize, "monicNormalize");
+function matMul(A, B) {
+  const json = /* @__PURE__ */ __name((M, op) => JSON.stringify(M.map((row) => row.map((x) => String(_packed(x, op))))), "json");
+  const rows = JSON.parse(callWasm("polyPortMatMul", json(A, "matMul"), json(B, "matMul")));
+  const args = [A.flat(), B.flat()];
+  return rows.map((row) => _fromTags(row, args));
+}
+__name(matMul, "matMul");
 var EGPTMatrix = createEGPTMatrix({ EGPTReal, EGPTMath, EGPTPolynomial });
 var EGPTFFT = createEGPTFFT({ EGPTPolynomial });
-var EGPTranscendental = createEGPTranscendental({ EGPTReal, EGPTMath });
+var _transcendental = createEGPTranscendental({ EGPTReal, EGPTMath });
+function _xyFromJson(obj) {
+  return { x: _wrap(handleFromPacked(obj.x)), y: _wrap(handleFromPacked(obj.y)) };
+}
+__name(_xyFromJson, "_xyFromJson");
+var EGPTranscendental = class {
+  static {
+    __name(this, "EGPTranscendental");
+  }
+  constructor() {
+    throw new Error("EGPTranscendental is a static class and cannot be instantiated.");
+  }
+  /**
+   * `{H_2, H_sqrt2_over_2, init()}` — √2/2 appears once `init()` has run. Read fresh from
+   * the arena on each access (an arena value cannot outlive its scope).
+   */
+  static _circularConstants = /* @__PURE__ */ (() => {
+    let inited = false;
+    return {
+      get H_2() {
+        return EGPTReal.fromBigInt(2n);
+      },
+      get H_sqrt2_over_2() {
+        return inited ? EGPTMath.sqrt(EGPTReal.fromRational(1n, 2n)) : null;
+      },
+      init() {
+        inited = true;
+        return this;
+      }
+    };
+  })();
+  /** A half-rotation in phase space — the canonical equivalent of π. */
+  static get PI_PHASE() {
+    return EGPTReal.fromRational(1n, 2n);
+  }
+  /** A full rotation in phase space. */
+  static get TAU_PHASE() {
+    return EGPTReal.fromBigInt(1n);
+  }
+  static _phaseToCartesian(H_fraction) {
+    return _transcendental._phaseToCartesian(H_fraction);
+  }
+  static _phaseToCircularCartesian(H_fraction) {
+    return _xyFromJson(JSON.parse(callWasm("transcendentalPhaseToCircular", _packed(H_fraction, "_phaseToCircularCartesian"))));
+  }
+  static _calcTriangularWavePosition(H_P, H_x) {
+    return _transcendental._calcTriangularWavePosition(H_P, H_x);
+  }
+  static _getVectorFromPhase(H_n, H_phase) {
+    return _transcendental._getVectorFromPhase(H_n, H_phase);
+  }
+  static cos(H_phase) {
+    return _transcendental.cos(H_phase);
+  }
+  static sin(H_phase) {
+    return _transcendental.sin(H_phase);
+  }
+  /** e^z on the unit square: phase b·2^(−a). @returns {{x: EGPTReal, y: EGPTReal}} */
+  static exp(z) {
+    return _xyFromJson(valueWithWarnings(callWasm("transcendentalExp", _packed(z.real, "exp"), _packed(z.imag, "exp"))));
+  }
+  static exp2(H_entropy) {
+    return _transcendental.exp2(H_entropy);
+  }
+  static log2(x_en) {
+    return _transcendental.log2(x_en);
+  }
+  /** n! — exact up to 20, the topology-native Stirling form beyond. */
+  static factorial(n) {
+    return _wrap(handleFromPacked(valueWithWarnings(callWasm("transcendentalFactorial", String(n)))));
+  }
+};
 var _EGPTStat;
-var EGPTStatData = createEGPTStatData({ EGPTReal, EGPTMath, getEGPTStat: () => _EGPTStat });
-var EGPTStat = createEGPTStat({ EGPTReal, EGPTMath, getEGPTStatData: () => EGPTStatData });
+var EGPTStatData = createEGPTStatData({ EGPTReal, EGPTMath, getEGPTStat: /* @__PURE__ */ __name(() => _EGPTStat, "getEGPTStat") });
+var EGPTStat = createEGPTStat({ EGPTReal, EGPTMath, getEGPTStatData: /* @__PURE__ */ __name(() => EGPTStatData, "getEGPTStatData") });
 _EGPTStat = EGPTStat;
-var _complex = createEGPTComplex({ EGPTReal, EGPTMath, transcendental: EGPTranscendental });
+var _complex = createEGPTComplex({
+  EGPTReal,
+  EGPTMath,
+  transcendental: EGPTranscendental,
+  phaseToCircular: /* @__PURE__ */ __name((p) => EGPTranscendental._phaseToCircularCartesian(p), "phaseToCircular")
+});
 var ComplexEGPTReal = _complex.ComplexEGPTReal;
 var TwiddleTable = _complex.TwiddleTable;
-var EGPTComplex = _complex.EGPTComplex;
+var EGPTComplex = class {
+  static {
+    __name(this, "EGPTComplex");
+  }
+  constructor() {
+    throw new Error("EGPTComplex is a static class and cannot be instantiated.");
+  }
+  static exp(z) {
+    const coords = EGPTranscendental.exp(z);
+    return new ComplexEGPTReal(coords.x, coords.y);
+  }
+};
+for (const [k, v] of Object.entries(_complex.EGPTComplex)) EGPTComplex[k] = v;
+
+// src/browser/wasm-prime-atom-facade.js
+var _big = /* @__PURE__ */ __name((x) => typeof x === "bigint" ? x : BigInt(x), "_big");
+var _factorsFromJson = /* @__PURE__ */ __name((json) => JSON.parse(json).map((f) => ({ prime: BigInt(f.prime), exponent: BigInt(f.exponent) })), "_factorsFromJson");
+var _factorsToJson = /* @__PURE__ */ __name((v) => JSON.stringify(v.map((f) => ({ prime: String(f.prime), exponent: String(f.exponent) }))), "_factorsToJson");
+var PrimeAtomPolynomial = class {
+  static {
+    __name(this, "PrimeAtomPolynomial");
+  }
+  constructor() {
+    throw new Error("PrimeAtomPolynomial is a static class and cannot be instantiated.");
+  }
+  /** @param {bigint|number} N @returns {{prime: bigint, exponent: bigint}[]} */
+  static factorize(N) {
+    return _factorsFromJson(callWasm("primeAtomFactorize", String(_big(N))));
+  }
+  /** @param {bigint|number} N @returns {bigint} */
+  static totient(N) {
+    return BigInt(callWasm("primeAtomTotient", String(_big(N))));
+  }
+  /** @param {bigint|number} n @returns {bigint[]} */
+  static divisorsOf(n) {
+    return JSON.parse(callWasm("primeAtomDivisorsOf", String(_big(n)))).map(BigInt);
+  }
+  /** @param {bigint|number} N @returns {number} */
+  static omega(N) {
+    return callWasm("primeAtomOmega", String(_big(N)));
+  }
+  /** @param {bigint|number} N @returns {bigint} */
+  static bigOmega(N) {
+    return BigInt(callWasm("primeAtomBigOmega", String(_big(N))));
+  }
+  /** @param {bigint|number} N @returns {number} */
+  static bitLength(N) {
+    return callWasm("primeAtomBitLength", String(_big(N)));
+  }
+  /** @param {bigint|number} N @returns {string} */
+  static logspaceSum(N) {
+    return callWasm("primeAtomLogspaceSum", String(_big(N)));
+  }
+};
+function makeMeter() {
+  return JSON.parse(callWasm("primeAtomMakeMeter"));
+}
+__name(makeMeter, "makeMeter");
+function factMultiply(va, vb, meter) {
+  const r = JSON.parse(callWasm("primeAtomFactMultiply", _factorsToJson(va), _factorsToJson(vb)));
+  if (meter) meter.compressedOps += r.compressedOps;
+  return r.product.map((f) => ({ prime: BigInt(f.prime), exponent: BigInt(f.exponent) }));
+}
+__name(factMultiply, "factMultiply");
+function reconstruct(v, meter) {
+  if (meter) meter.boundaryOps += 1;
+  return BigInt(callWasm("primeAtomReconstruct", _factorsToJson(v)));
+}
+__name(reconstruct, "reconstruct");
+function refactorize(N, meter) {
+  if (meter) meter.boundaryOps += 1;
+  return PrimeAtomPolynomial.factorize(N);
+}
+__name(refactorize, "refactorize");
+var OrderFinder = class {
+  static {
+    __name(this, "OrderFinder");
+  }
+  constructor() {
+    throw new Error("OrderFinder is a static class and cannot be instantiated.");
+  }
+  /** @param {bigint|number} N @returns {number} */
+  static calculateSampleSize(N) {
+    return callWasm("orderFinderCalculateSampleSize", String(_big(N)));
+  }
+  /**
+   * Smallest r > 0 with a^r ≡ 1 (mod N); requires gcd(a, N) = 1.
+   * @param {bigint|number} a @param {bigint|number} N @returns {number|null}
+   */
+  static findOrder(a, N) {
+    const r = callWasm("orderFinderFindOrder", String(_big(a)), String(_big(N)), `${a}`, `${N}`);
+    return r === "" ? null : Number(r);
+  }
+  /** @param {bigint|number} a @param {bigint|number} N @param {bigint|number} r @returns {boolean} */
+  static verifyOrder(a, N, r) {
+    return callWasm("orderFinderVerifyOrder", String(_big(a)), String(_big(N)), String(_big(r)));
+  }
+};
 
 // src/browser/log-root-order-finding.js
 function _p2() {
   return getActiveProvider();
 }
+__name(_p2, "_p");
 function toBigInt(str) {
   try {
     return BigInt(str);
@@ -1702,12 +2291,15 @@ function toBigInt(str) {
     return null;
   }
 }
+__name(toBigInt, "toBigInt");
 function bitLengthOfBigInt(n) {
   return n > 0n ? n.toString(2).length : 0;
 }
+__name(bitLengthOfBigInt, "bitLengthOfBigInt");
 function modPow(base, exp, mod) {
   return _p2().modPow(base, exp, mod);
 }
+__name(modPow, "modPow");
 function bhattacharyyaF(idealPmf, observedPmf) {
   if (!Array.isArray(idealPmf) || !Array.isArray(observedPmf) || !idealPmf.length || !observedPmf.length) {
     return { metric: "bhattacharyya", BC: null, F: null };
@@ -1723,6 +2315,7 @@ function bhattacharyyaF(idealPmf, observedPmf) {
   const F = BC * BC;
   return { metric: "bhattacharyya", BC, F };
 }
+__name(bhattacharyyaF, "bhattacharyyaF");
 function presetOptions(name) {
   if (name === "hiBits") {
     return {
@@ -1740,7 +2333,11 @@ function presetOptions(name) {
   }
   return {};
 }
+__name(presetOptions, "presetOptions");
 var EGPTdsp = class {
+  static {
+    __name(this, "EGPTdsp");
+  }
   constructor() {
     throw new Error("EGPTdsp is a static class");
   }
@@ -1921,6 +2518,7 @@ function gcd(a, b) {
   }
   return a;
 }
+__name(gcd, "gcd");
 function modPowInternal(base, exp, mod) {
   if (mod === 1n) return 0n;
   let result = 1n;
@@ -1933,6 +2531,7 @@ function modPowInternal(base, exp, mod) {
   }
   return result;
 }
+__name(modPowInternal, "modPowInternal");
 var PRIME_CACHE = /* @__PURE__ */ new Map();
 var LCM_CACHE = /* @__PURE__ */ new Map();
 function getPrimesUpToCached(n) {
@@ -1950,6 +2549,7 @@ function getPrimesUpToCached(n) {
   PRIME_CACHE.set(limit, primes);
   return primes;
 }
+__name(getPrimesUpToCached, "getPrimesUpToCached");
 function smallPrimesUpTo(n) {
   const limit = Number(n);
   const sieve = new Array(limit + 1).fill(true);
@@ -1963,9 +2563,11 @@ function smallPrimesUpTo(n) {
   for (let i = 2; i <= limit; i++) if (sieve[i]) primes.push(BigInt(i));
   return primes;
 }
+__name(smallPrimesUpTo, "smallPrimesUpTo");
 function lcm(a, b) {
   return a / gcd(a, b) * b;
 }
+__name(lcm, "lcm");
 function lcmRangeCached(B) {
   if (LCM_CACHE.has(B)) return LCM_CACHE.get(B);
   let L = 1n;
@@ -1973,6 +2575,7 @@ function lcmRangeCached(B) {
   LCM_CACHE.set(B, L);
   return L;
 }
+__name(lcmRangeCached, "lcmRangeCached");
 function findOrderLCMSmooth(a, k, B, useCache = true) {
   const L = useCache ? lcmRangeCached(B) : (() => {
     let acc = 1n;
@@ -1992,6 +2595,7 @@ function findOrderLCMSmooth(a, k, B, useCache = true) {
   }
   return r;
 }
+__name(findOrderLCMSmooth, "findOrderLCMSmooth");
 function pollardPminus1Refinement(a, k, B, useCache = true) {
   let acc = (a % k + k) % k;
   const primes = useCache ? getPrimesUpToCached(B) : smallPrimesUpTo(B);
@@ -2004,6 +2608,7 @@ function pollardPminus1Refinement(a, k, B, useCache = true) {
   if (1n < g && g < k) return g;
   return null;
 }
+__name(pollardPminus1Refinement, "pollardPminus1Refinement");
 function pollardPminus1RefinementStage2(a, k, B1, B2, useCache = true) {
   if (B2 <= B1) return null;
   let acc = (a % k + k) % k;
@@ -2021,6 +2626,7 @@ function pollardPminus1RefinementStage2(a, k, B1, B2, useCache = true) {
   if (1n < g && g < k) return g;
   return null;
 }
+__name(pollardPminus1RefinementStage2, "pollardPminus1RefinementStage2");
 function pollardPplus1Refinement(a, k, B, useCache = true) {
   let acc = (a % k + k) % k;
   const primes = useCache ? getPrimesUpToCached(B) : smallPrimesUpTo(B);
@@ -2033,32 +2639,41 @@ function pollardPplus1Refinement(a, k, B, useCache = true) {
   if (1n < g && g < k) return g;
   return null;
 }
+__name(pollardPplus1Refinement, "pollardPplus1Refinement");
 function _hFromBigInt(n) {
   return _p2().fromBigInt(n);
 }
+__name(_hFromBigInt, "_hFromBigInt");
 function _getIntegerBitLength(h) {
   return _p2().getIntegerBitLength(h);
 }
+__name(_getIntegerBitLength, "_getIntegerBitLength");
 function _breakToBigInt(h) {
   return _p2().breakSymbolicToApproximateBigInt(h);
 }
+__name(_breakToBigInt, "_breakToBigInt");
 function _breakToString(h) {
   return _p2().breakSymbolicToString(h);
 }
+__name(_breakToString, "_breakToString");
 function _normalDivide(a, b) {
   return _p2().normalDivide(a, b);
 }
+__name(_normalDivide, "_normalDivide");
 function _gcd(a, b) {
   return _p2().gcd(a, b);
 }
+__name(_gcd, "_gcd");
 function _modPow(base, exp, mod) {
   return _p2().modPow(base, exp, mod);
 }
+__name(_modPow, "_modPow");
 function floorLog2EGPT(H_x) {
   const bl = _getIntegerBitLength(H_x);
   const flo = bl > 0n ? bl - 1n : 0n;
   return _hFromBigInt(flo);
 }
+__name(floorLog2EGPT, "floorLog2EGPT");
 function iteratedFloorLog2(H_k, steps) {
   const seq = [];
   let cur = H_k;
@@ -2071,6 +2686,7 @@ function iteratedFloorLog2(H_k, steps) {
   }
   return seq;
 }
+__name(iteratedFloorLog2, "iteratedFloorLog2");
 function iteratedBitLength(H_k, steps) {
   const seq = [];
   let cur = H_k;
@@ -2083,13 +2699,14 @@ function iteratedBitLength(H_k, steps) {
   }
   return seq;
 }
+__name(iteratedBitLength, "iteratedBitLength");
 function factorizeWithLogRoot(k, bases = [2n, 3n, 5n, 7n], mode = "bitlength", options = {}) {
   const K = BigInt(k);
   const H_k = _hFromBigInt(K);
   const bits = _getIntegerBitLength(H_k);
   const startMs = Date.now();
   const timeBudgetMs = options.timeBudgetMs && options.timeBudgetMs > 0 ? Number(options.timeBudgetMs) : null;
-  const budgetExceeded = () => timeBudgetMs !== null && Date.now() - startMs > timeBudgetMs;
+  const budgetExceeded = /* @__PURE__ */ __name(() => timeBudgetMs !== null && Date.now() - startMs > timeBudgetMs, "budgetExceeded");
   const steps = bits;
   let seq;
   let L_final;
@@ -2115,9 +2732,9 @@ function factorizeWithLogRoot(k, bases = [2n, 3n, 5n, 7n], mode = "bitlength", o
   const width = BigInt(options.rNeighborhoodWidth ?? 8);
   const multPow = Number(options.rMultPow ?? 2);
   const rSet = /* @__PURE__ */ new Set();
-  const pushIfValid = (x) => {
+  const pushIfValid = /* @__PURE__ */ __name((x) => {
     if (x && x > 1n && x % 2n === 0n) rSet.add(x.toString());
-  };
+  }, "pushIfValid");
   [rEven, half, rEven * 2n, rEven + 2n, rEven - 2n, half / 2n].forEach(pushIfValid);
   for (let d = 2n; d <= width * 2n; d += 2n) {
     pushIfValid(rEven + d);
@@ -2250,6 +2867,7 @@ function factorizeWithLogRoot(k, bases = [2n, 3n, 5n, 7n], mode = "bitlength", o
   }
   return { success: false, r, mode, rCandidates: rCands, sequence: seq?.map((s) => _breakToString(s)), basesTried };
 }
+__name(factorizeWithLogRoot, "factorizeWithLogRoot");
 
 // src/browser/fraqtl-session.js
 var SDK_VERSION = "1.0.0-logroot";
@@ -2317,6 +2935,7 @@ function parsePresetString(presetStr) {
   }
   return opts;
 }
+__name(parsePresetString, "parsePresetString");
 function formatResult(res) {
   const lines = [
     `N = ${res.N}`,
@@ -2328,6 +2947,7 @@ function formatResult(res) {
   ];
   return lines.join("\n");
 }
+__name(formatResult, "formatResult");
 function runTaskFor(NStr, runOptions = {}, backend) {
   const opts = runOptions.options ?? {};
   const a = runOptions.a != null ? String(runOptions.a) : void 0;
@@ -2339,10 +2959,12 @@ function runTaskFor(NStr, runOptions = {}, backend) {
     meta: { source: "local", backend }
   });
 }
+__name(runTaskFor, "runTaskFor");
 function factorsFromRaw(raw) {
   const facs = raw?.postproc?.factors ?? [];
   return facs.map((f) => Number(f)).filter((n) => Number.isFinite(n) && n > 1);
 }
+__name(factorsFromRaw, "factorsFromRaw");
 function createFraqtlSession(sdk, options = {}) {
   const activeBackend = sdk?.activeMathBackend;
   if (!activeBackend) {
@@ -2355,6 +2977,7 @@ function createFraqtlSession(sdk, options = {}) {
   function rowFor(NStr) {
     return charted.find((r) => r.k === NStr) ?? null;
   }
+  __name(rowFor, "rowFor");
   function optionsFor(NStr) {
     const row = rowFor(NStr);
     const presetStr = (row?.presets ?? presetMap[NStr] ?? "") || "";
@@ -2364,6 +2987,7 @@ function createFraqtlSession(sdk, options = {}) {
     }
     return opts;
   }
+  __name(optionsFor, "optionsFor");
   function factor(NInput, runOptions = {}) {
     const NStr = String(NInput);
     const opts = { ...optionsFor(NStr), ...runOptions };
@@ -2394,6 +3018,7 @@ function createFraqtlSession(sdk, options = {}) {
       raw
     };
   }
+  __name(factor, "factor");
   const session = {
     backend: { base_url: `local://${activeBackend}`, mode: activeBackend },
     preset_map: presetMap,
@@ -2433,7 +3058,7 @@ function createFraqtlSession(sdk, options = {}) {
       const opts = { ...optionsFor(NStr), ...streamOptions };
       const a = streamOptions.a != null ? String(streamOptions.a) : "2";
       const events = [];
-      const push = (type, data) => events.push({ type, ...data });
+      const push = /* @__PURE__ */ __name((type, data) => events.push({ type, ...data }), "push");
       push("start", { N: NStr, base: a });
       const t0 = performance.now();
       let raw;
@@ -2464,6 +3089,7 @@ function createFraqtlSession(sdk, options = {}) {
   };
   return session;
 }
+__name(createFraqtlSession, "createFraqtlSession");
 
 // src/examples/qft-benchmark-baseline.js
 var QFT_BENCHMARK_BASELINE = Object.freeze({
@@ -2504,11 +3130,11 @@ var QFT_BENCHMARK_BASELINE = Object.freeze({
   // --- What was actually computed (so the comparison is apples-to-apples) ---
   whatWasComputed: "39-bit QFT period extraction (Shor's quantum step)"
 });
-(function assertBaselineComplete(b) {
+(/* @__PURE__ */ __name((function assertBaselineComplete(b) {
   const missing = [];
-  const req = (path, val, ok = (v) => v !== void 0 && v !== null && v !== "") => {
+  const req = /* @__PURE__ */ __name((path, val, ok = (v) => v !== void 0 && v !== null && v !== "") => {
     if (!ok(val)) missing.push(path);
-  };
+  }, "req");
   req("citation.authors", b.citation?.authors);
   req("citation.title", b.citation?.title);
   req("citation.venue", b.citation?.venue);
@@ -2534,12 +3160,13 @@ var QFT_BENCHMARK_BASELINE = Object.freeze({
       "qft-benchmark-baseline.js: incomplete baseline constant \u2014 missing/empty field(s): " + missing.join(", ") + ". A benchmark must not narrate against an absent baseline (FAIL-LOUD)."
     );
   }
-})(QFT_BENCHMARK_BASELINE);
+}), "assertBaselineComplete"))(QFT_BENCHMARK_BASELINE);
 
 // src/browser/dist-entry.js
 function buildWasmFacade(wasmMetadata) {
   return buildWasmCallFacade(wasmMetadata?.module ?? null, wasmMetadata?.mode);
 }
+__name(buildWasmFacade, "buildWasmFacade");
 async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
   const wasmMetadata = await loadEgptMathWasm({ wasmUrl, wasmModuleUrl });
   if (wasmMetadata.mode !== "wasm-bridge") {
@@ -2551,6 +3178,7 @@ async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
   const wasmFacade = buildWasmFacade(wasmMetadata);
   const wasmProvider = buildWasmMathProvider(wasmFacade);
   setActiveProviderResolver(() => wasmProvider);
+  setWasmPortCalls(wasmFacade);
   const sdk = {
     EGPTReal,
     EGPTMath,
@@ -2569,9 +3197,20 @@ async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
     EGPTComplex,
     ComplexEGPTReal,
     TwiddleTable,
-    createFraqtlSession: (options) => createFraqtlSession(sdk, options),
+    // Rust ports of the JS reference.
+    EGPTPrimeComposite,
+    polyGCD,
+    monicNormalize,
+    matMul,
+    PrimeAtomPolynomial,
+    OrderFinder,
+    makeMeter,
+    factMultiply,
+    reconstruct,
+    refactorize,
+    createFraqtlSession: /* @__PURE__ */ __name((options) => createFraqtlSession(sdk, options), "createFraqtlSession"),
     FraqtlSession: {
-      auto: (options) => createFraqtlSession(sdk, options)
+      auto: /* @__PURE__ */ __name((options) => createFraqtlSession(sdk, options), "auto")
     },
     wasm: wasmFacade,
     // The built MathBackendProvider-conformant provider object, EXPOSED so the
@@ -2596,6 +3235,7 @@ async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
   };
   return sdk;
 }
+__name(createEgptMathSdk, "createEgptMathSdk");
 export {
   EGPTFFT,
   EGPTMath,

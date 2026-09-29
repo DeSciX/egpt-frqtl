@@ -37,6 +37,8 @@ export function arenaBreakToBigint(n) {
 }
 
 /**
+ * → `{"v": <number>, "w": [...]}`. Non-finite results cross as the strings the JS
+ * `Number` renders ("NaN", "Infinity", "-Infinity"), which JSON cannot hold as numbers.
  * @param {bigint} n
  * @returns {string}
  */
@@ -152,13 +154,42 @@ export function arenaFromAtomVec(json) {
 }
 
 /**
+ * → `{"v": "<handle>", "w": [...]}`; a zero denominator warns (if non-canonical) then throws.
  * @param {string} json
- * @returns {bigint}
+ * @returns {string}
  */
 export function arenaFromPpfJson(json) {
-    const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.arenaFromPpfJson(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {string} num
+ * @param {string} den
+ * @returns {bigint}
+ */
+export function arenaFromRational(num, den) {
+    const ptr0 = passStringToWasm0(num, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.arenaFromPpfJson(ptr0, len0);
+    const ptr1 = passStringToWasm0(den, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.arenaFromRational(ptr0, len0, ptr1, len1);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -239,6 +270,29 @@ export function arenaGetBitLength(n) {
  * @param {bigint} h
  * @returns {string}
  */
+export function arenaGetRationalParts(h) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.arenaGetRationalParts(h);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * @param {bigint} h
+ * @returns {string}
+ */
 export function arenaGetScalarParts(h) {
     let deferred2_0;
     let deferred2_1;
@@ -256,6 +310,23 @@ export function arenaGetScalarParts(h) {
     } finally {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
+}
+
+/**
+ * @param {string} num
+ * @param {string} den
+ * @returns {bigint}
+ */
+export function arenaInternUnreduced(num, den) {
+    const ptr0 = passStringToWasm0(num, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(den, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.arenaInternUnreduced(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
 }
 
 /**
@@ -335,6 +406,18 @@ export function arenaMul(a, b) {
 }
 
 /**
+ * @param {bigint} h
+ * @returns {bigint}
+ */
+export function arenaNegate(h) {
+    const ret = wasm.arenaNegate(h);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
  * @param {bigint} a
  * @param {bigint} b
  * @returns {bigint}
@@ -348,192 +431,18 @@ export function arenaNormalDiv(a, b) {
 }
 
 /**
- * @param {string} a_json
- * @param {string} b_json
- * @returns {string}
- */
-export function arenaPolyAdd(a_json, b_json) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const ptr0 = passStringToWasm0(a_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(b_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.arenaPolyAdd(ptr0, len0, ptr1, len1);
-        var ptr3 = ret[0];
-        var len3 = ret[1];
-        if (ret[3]) {
-            ptr3 = 0; len3 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-}
-
-/**
- * @param {string} dividend_json
- * @param {string} divisor_json
- * @returns {string}
- */
-export function arenaPolyDiv(dividend_json, divisor_json) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const ptr0 = passStringToWasm0(dividend_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(divisor_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.arenaPolyDiv(ptr0, len0, ptr1, len1);
-        var ptr3 = ret[0];
-        var len3 = ret[1];
-        if (ret[3]) {
-            ptr3 = 0; len3 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-}
-
-/**
- * @param {string} poly_json
- * @param {bigint} x
- * @returns {bigint}
- */
-export function arenaPolyEval(poly_json, x) {
-    const ptr0 = passStringToWasm0(poly_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.arenaPolyEval(ptr0, len0, x);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-    }
-    return BigInt.asUintN(64, ret[0]);
-}
-
-/**
- * @param {string} coeffs_json
- * @param {number} n
- * @returns {string}
- */
-export function arenaPolyFwd(coeffs_json, n) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-        const ptr0 = passStringToWasm0(coeffs_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.arenaPolyFwd(ptr0, len0, n);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
-        if (ret[3]) {
-            ptr2 = 0; len2 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-}
-
-/**
- * @param {string} a_json
- * @param {string} b_json
- * @returns {string}
- */
-export function arenaPolyGcd(a_json, b_json) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const ptr0 = passStringToWasm0(a_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(b_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.arenaPolyGcd(ptr0, len0, ptr1, len1);
-        var ptr3 = ret[0];
-        var len3 = ret[1];
-        if (ret[3]) {
-            ptr3 = 0; len3 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-}
-
-/**
- * @param {string} samples_json
- * @param {number} n
- * @returns {string}
- */
-export function arenaPolyInv(samples_json, n) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-        const ptr0 = passStringToWasm0(samples_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.arenaPolyInv(ptr0, len0, n);
-        var ptr2 = ret[0];
-        var len2 = ret[1];
-        if (ret[3]) {
-            ptr2 = 0; len2 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred3_0 = ptr2;
-        deferred3_1 = len2;
-        return getStringFromWasm0(ptr2, len2);
-    } finally {
-        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-}
-
-/**
- * @param {string} a_json
- * @param {string} b_json
- * @returns {string}
- */
-export function arenaPolyMul(a_json, b_json) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-        const ptr0 = passStringToWasm0(a_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len0 = WASM_VECTOR_LEN;
-        const ptr1 = passStringToWasm0(b_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-        const len1 = WASM_VECTOR_LEN;
-        const ret = wasm.arenaPolyMul(ptr0, len0, ptr1, len1);
-        var ptr3 = ret[0];
-        var len3 = ret[1];
-        if (ret[3]) {
-            ptr3 = 0; len3 = 0;
-            throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred4_0 = ptr3;
-        deferred4_1 = len3;
-        return getStringFromWasm0(ptr3, len3);
-    } finally {
-        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-}
-
-/**
+ * `EGPTMath.pow` with BigInt exponents (decimal strings — never narrowed to i32).
  * @param {bigint} base
- * @param {number} exp_num
- * @param {number} exp_den
+ * @param {string} exp_num
+ * @param {string} exp_den
  * @returns {bigint}
  */
 export function arenaPow(base, exp_num, exp_den) {
-    const ret = wasm.arenaPow(base, exp_num, exp_den);
+    const ptr0 = passStringToWasm0(exp_num, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(exp_den, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.arenaPow(base, ptr0, len0, ptr1, len1);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -541,17 +450,30 @@ export function arenaPow(base, exp_num, exp_den) {
 }
 
 /**
+ * The JS reference's PPF integer decode → `{"v": "<handle>", "w": [...]}` (comments on
+ * exports ship in the wasm-bindgen glue, so the core-internal name stays out of it).
  * @param {string} json
- * @returns {bigint}
+ * @returns {string}
  */
 export function arenaPpfDecode(json) {
-    const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.arenaPpfDecode(ptr0, len0);
-    if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.arenaPpfDecode(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
-    return BigInt.asUintN(64, ret[0]);
 }
 
 /**
@@ -575,6 +497,24 @@ export function arenaPpfEncode(n) {
     } finally {
         wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
     }
+}
+
+/**
+ * @param {bigint} h
+ * @param {string} op
+ * @param {string} s
+ * @returns {bigint}
+ */
+export function arenaScalarOp(h, op, s) {
+    const ptr0 = passStringToWasm0(op, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(s, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.arenaScalarOp(h, ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
 }
 
 /**
@@ -799,6 +739,170 @@ export function materializeV2(handle) {
 }
 
 /**
+ * @param {string} n
+ * @returns {number}
+ */
+export function orderFinderCalculateSampleSize(n) {
+    const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.orderFinderCalculateSampleSize(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
+ * `OrderFinder.findOrder` → decimal string, or "" for the JS `null`.
+ * @param {string} a
+ * @param {string} n
+ * @param {string} a_disp
+ * @param {string} n_disp
+ * @returns {string}
+ */
+export function orderFinderFindOrder(a, n, a_disp, n_disp) {
+    let deferred6_0;
+    let deferred6_1;
+    try {
+        const ptr0 = passStringToWasm0(a, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(a_disp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ptr3 = passStringToWasm0(n_disp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len3 = WASM_VECTOR_LEN;
+        const ret = wasm.orderFinderFindOrder(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+        var ptr5 = ret[0];
+        var len5 = ret[1];
+        if (ret[3]) {
+            ptr5 = 0; len5 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred6_0 = ptr5;
+        deferred6_1 = len5;
+        return getStringFromWasm0(ptr5, len5);
+    } finally {
+        wasm.__wbindgen_free(deferred6_0, deferred6_1, 1);
+    }
+}
+
+/**
+ * @param {string} a
+ * @param {string} n
+ * @param {string} r
+ * @returns {boolean}
+ */
+export function orderFinderVerifyOrder(a, n, r) {
+    const ptr0 = passStringToWasm0(a, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(r, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.orderFinderVerifyOrder(ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] !== 0;
+}
+
+/**
+ * One export for the vector-in/vector-out statics: `op` names the JS method.
+ * @param {string} op
+ * @param {string} a_json
+ * @param {string} b_json
+ * @returns {string}
+ */
+export function polyPort(op, a_json, b_json) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(op, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(a_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(b_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.polyPort(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
+ * `matMul(A, B)` over JSON matrices of handles; tags index the row-major flattening.
+ * @param {string} a_json
+ * @param {string} b_json
+ * @returns {string}
+ */
+export function polyPortMatMul(a_json, b_json) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(a_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(b_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.polyPortMatMul(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * `forwardTransform(coeffs, N)` / `inverseTransform(samples, N)` — N is the JS number;
+ * `n_disp` its `${N}` for the length message.
+ * @param {string} op
+ * @param {string} a_json
+ * @param {number} n
+ * @param {string} n_disp
+ * @returns {string}
+ */
+export function polyPortTransform(op, a_json, n, n_disp) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(op, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(a_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(n_disp, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.polyPortTransform(ptr0, len0, ptr1, len1, n, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
  * @param {string} a_json
  * @param {string} b_json
  * @returns {string}
@@ -991,6 +1095,382 @@ export function poly_mul_wasm(a_json, b_json) {
 }
 
 /**
+ * @param {string} n
+ * @returns {string}
+ */
+export function primeAtomBigOmega(n) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomBigOmega(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {string} n
+ * @returns {number}
+ */
+export function primeAtomBitLength(n) {
+    const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.primeAtomBitLength(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0];
+}
+
+/**
+ * @param {string} n
+ * @returns {string}
+ */
+export function primeAtomDivisorsOf(n) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomDivisorsOf(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * `factMultiply` → `{"product":[…], "compressedOps":k}`.
+ * @param {string} va_json
+ * @param {string} vb_json
+ * @returns {string}
+ */
+export function primeAtomFactMultiply(va_json, vb_json) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(va_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(vb_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomFactMultiply(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * @param {string} n
+ * @returns {string}
+ */
+export function primeAtomFactorize(n) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomFactorize(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {string} n
+ * @returns {string}
+ */
+export function primeAtomLogspaceSum(n) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomLogspaceSum(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * `makeMeter()` — the meter's keys (zero-valued), as a JSON object.
+ * @returns {string}
+ */
+export function primeAtomMakeMeter() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.primeAtomMakeMeter();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
+}
+
+/**
+ * @param {string} n
+ * @returns {number}
+ */
+export function primeAtomOmega(n) {
+    const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.primeAtomOmega(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] >>> 0;
+}
+
+/**
+ * @param {string} v_json
+ * @returns {string}
+ */
+export function primeAtomReconstruct(v_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(v_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomReconstruct(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {string} n
+ * @returns {string}
+ */
+export function primeAtomTotient(n) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeAtomTotient(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * `RULE_OR_RATIONAL_CANCEL` over `[[signIsOne, primeToken, locationToken], …]` → surviving indices.
+ * @param {string} recs_json
+ * @returns {string}
+ */
+export function primeCompositeCancelRule(recs_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(recs_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeCompositeCancelRule(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {bigint} a
+ * @param {bigint} b
+ * @returns {boolean}
+ */
+export function primeCompositeCongruent(a, b) {
+    const ret = wasm.primeCompositeCongruent(a, b);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] !== 0;
+}
+
+/**
+ * @param {bigint} a
+ * @param {bigint} b
+ * @returns {bigint}
+ */
+export function primeCompositeDivide(a, b) {
+    const ret = wasm.primeCompositeDivide(a, b);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * @param {bigint} h
+ * @returns {bigint}
+ */
+export function primeCompositeFromReal(h) {
+    const ret = wasm.primeCompositeFromReal(h);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * @param {bigint} h
+ * @returns {boolean}
+ */
+export function primeCompositeIsComposite(h) {
+    const ret = wasm.primeCompositeIsComposite(h);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] !== 0;
+}
+
+/**
+ * @param {bigint} a
+ * @param {bigint} b
+ * @returns {bigint}
+ */
+export function primeCompositeMultiply(a, b) {
+    const ret = wasm.primeCompositeMultiply(a, b);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * @param {string} json
+ * @returns {bigint}
+ */
+export function primeCompositeNew(json) {
+    const ptr0 = passStringToWasm0(json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.primeCompositeNew(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * `recordsMultisetKey` over a JSON array of the `${sign}:${prime}:${location}` strings.
+ * @param {string} parts_json
+ * @returns {string}
+ */
+export function primeCompositeRecordsKey(parts_json) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(parts_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.primeCompositeRecordsKey(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * @param {bigint} h
+ * @returns {string}
+ */
+export function primeCompositeState(h) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.primeCompositeState(h);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Mark the slot at `handle` as None (free memory).
  * @param {bigint} handle
  */
@@ -1006,6 +1486,81 @@ export function releaseHandle(handle) {
  */
 export function resetScope() {
     wasm.resetScope();
+}
+
+/**
+ * `EGPTranscendental.exp({real, imag})` → `{"v": {"x": "<h>", "y": "<h>"}, "w": [...]}`.
+ * @param {bigint} re
+ * @param {bigint} im
+ * @returns {string}
+ */
+export function transcendentalExp(re, im) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.transcendentalExp(re, im);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
+ * `EGPTranscendental.factorial(n)` → `{"v": "<h>", "w": [...]}`.
+ * @param {string} n
+ * @returns {string}
+ */
+export function transcendentalFactorial(n) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.transcendentalFactorial(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * `EGPTranscendental._phaseToCircularCartesian(H)` → `{"x": "<h>", "y": "<h>"}`.
+ * @param {bigint} h
+ * @returns {string}
+ */
+export function transcendentalPhaseToCircular(h) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.transcendentalPhaseToCircular(h);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
 }
 
 function __wbg_get_imports() {

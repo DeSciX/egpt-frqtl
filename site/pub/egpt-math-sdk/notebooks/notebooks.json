@@ -63,6 +63,36 @@
       "group": "Gallery"
     },
     {
+      "id": "iso-entropy-log",
+      "file": "iso-entropy-log.html",
+      "title": "E \u2014 Entropy-Log Bijection",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-fft-polynomial",
+      "file": "iso-fft-polynomial.html",
+      "title": "F \u2014 FFT-Polynomial Isomorphism",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-matrix-four-views",
+      "file": "iso-matrix-four-views.html",
+      "title": "M \u2014 Matrix Four Views",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-number-theory-four-views",
+      "file": "iso-number-theory-four-views.html",
+      "title": "N \u2014 Number Theory Four Views",
+      "group": "Isomorphisms"
+    },
+    {
+      "id": "iso-canonical-chain",
+      "file": "iso-canonical-chain.html",
+      "title": "U \u2014 Canonical Chain Unified",
+      "group": "Isomorphisms"
+    },
+    {
       "id": "iso-pi-log-fraction-loop",
       "file": "iso-pi-log-fraction-loop.html",
       "title": "\u03c0 \u2014 Log-Fraction Unit Loop",
@@ -123,15 +153,69 @@
       "group": "Advanced Math"
     },
     {
+      "id": "matrix",
+      "file": "matrix.html",
+      "title": "Matrix GEMM",
+      "group": "Advanced Math"
+    },
+    {
+      "id": "prime-composite",
+      "file": "prime-composite.html",
+      "title": "Prime Composite",
+      "group": "Advanced Math"
+    },
+    {
       "id": "reference-egpt-fft-test",
       "file": "reference-egpt-fft-test.html",
       "title": "Reference: FFT Test",
       "group": "Reference Examples"
     },
     {
+      "id": "reference-order-finder-test",
+      "file": "reference-order-finder-test.html",
+      "title": "Reference: Order Finder",
+      "group": "Reference Examples"
+    },
+    {
+      "id": "reference-prime-atom-polynomial-test",
+      "file": "reference-prime-atom-polynomial-test.html",
+      "title": "Reference: Prime-Atom Polynomial",
+      "group": "Reference Examples"
+    },
+    {
+      "id": "reference-solve-polynomial-system-test",
+      "file": "reference-solve-polynomial-system-test.html",
+      "title": "Reference: Solve Polynomial System",
+      "group": "Reference Examples"
+    },
+    {
       "id": "egpt-test-suite",
       "file": "egpt-test-suite.html",
       "title": "EGPT Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-polynomial-test",
+      "file": "egpt-polynomial-test.html",
+      "title": "Polynomial Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-fft-test",
+      "file": "egpt-fft-test.html",
+      "title": "FFT Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-matrix-test",
+      "file": "egpt-matrix-test.html",
+      "title": "Matrix Test Suite",
+      "group": "Original Test Suites"
+    },
+    {
+      "id": "egpt-prime-composite-test",
+      "file": "egpt-prime-composite-test.html",
+      "title": "Prime Composite Test Suite",
       "group": "Original Test Suites"
     },
     {
