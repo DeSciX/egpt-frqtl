@@ -1,5 +1,9 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // src/browser/wasm-loader.js
 async function probeWasmArtifact(wasmUrl) {
@@ -457,16 +461,15 @@ function buildWasmMathProvider(wasmFacade) {
       };
     },
     fromAtomRoot(term) {
-      const lcStr = _materializeStr(term.leadingCoeff, "fromAtomRoot.leadingCoeff");
-      const rootsArr = (term.roots ?? []).map((root) => ({
-        value: _materializeStr(root.value, "fromAtomRoot.root.value"),
-        multiplicity: String(root.multiplicity)
-      }));
-      const json = JSON.stringify({ leadingCoeff: lcStr, roots: rootsArr });
+      const json = JSON.stringify({
+        leadingCoeff: String(extractHandle(term.leadingCoeff, "fromAtomRoot.leadingCoeff")),
+        roots: (term.roots ?? []).map((root) => ({
+          value: String(extractHandle(root.value, "fromAtomRoot.root.value")),
+          multiplicity: String(typeof root.multiplicity === "bigint" ? root.multiplicity : BigInt(root.multiplicity))
+        }))
+      });
       const r = wasmFacade.arenaFromAtomRoot(json);
-      const packed = unwrap(r, "fromAtomRoot");
-      const { e, h } = unpackResult(packed);
-      return makeHandle(e, h);
+      return handleFromPacked(valueWithWarnings(unwrap(r, "fromAtomRoot")));
     },
     // ── Integer helpers — contract takes bigint inputs ────────────────────────
     //
@@ -623,7 +626,25 @@ var WASM_ARENA_OPS = Object.freeze([
   // EGPTranscendental class-body port (transcendental_port.rs)
   "transcendentalExp",
   "transcendentalFactorial",
-  "transcendentalPhaseToCircular"
+  "transcendentalPhaseToCircular",
+  // PrimeCache + the codec's value arithmetic (codec_port.rs)
+  "primeCacheSieve",
+  "primeCacheIndexOf",
+  "primeCacheFactor",
+  "codecIeeeQuantize",
+  "codecIeeeUnpack",
+  "codecIeeeEncodeCheck",
+  "codecIeeeEncode",
+  "codecF64Lift",
+  "codecPolyEvalAt",
+  "codecSyntheticDivide",
+  "codecMulLinear",
+  "codecRecompose",
+  "codecDecomposeOdd",
+  "codecShiftOdd",
+  "codecLcmOfDenominators",
+  "codecScaleToNat",
+  "codecScaleDenominator"
 ]);
 var WASM_DIRECT_OPS = Object.freeze(["resetScope", "arenaStats"]);
 function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge") {
@@ -2278,6 +2299,3890 @@ var OrderFinder = class {
     return callWasm("orderFinderVerifyOrder", String(_big(a)), String(_big(N)), String(_big(r)));
   }
 };
+function sieveOfEratosthenes(limit) {
+  if (!Number.isInteger(limit)) {
+    throw new TypeError(`sieveOfEratosthenes: limit must be an integer, got ${limit}`);
+  }
+  if (limit < 2) return [];
+  return JSON.parse(callWasm("primeCacheSieve", limit, `${limit + 1}`));
+}
+__name(sieveOfEratosthenes, "sieveOfEratosthenes");
+var PrimeCache = class {
+  static {
+    __name(this, "PrimeCache");
+  }
+  constructor(limit = 1 << 16) {
+    if (!Number.isInteger(limit) || limit < 0) {
+      throw new TypeError(
+        `PrimeCache: limit must be a non-negative integer, got ${limit}`
+      );
+    }
+    this._limit = limit;
+    this._primes = null;
+  }
+  _ensureSieve() {
+    if (this._primes === null) {
+      this._primes = sieveOfEratosthenes(this._limit);
+    }
+    return this._primes;
+  }
+  get size() {
+    return this._ensureSieve().length;
+  }
+  primes() {
+    return this._ensureSieve();
+  }
+  /** @param {number|bigint} prime @returns {number|null} the prime's index in the sieve */
+  indexOf(prime) {
+    const p = typeof prime === "bigint" ? Number(prime) : prime;
+    if (!Number.isInteger(p) || p < 2) return null;
+    this._ensureSieve();
+    const idx = callWasm("primeCacheIndexOf", this._limit, p);
+    return idx < 0 ? null : idx;
+  }
+  /**
+   * @param {bigint} n — strictly positive
+   * @returns {[Array<[number, number]>, bigint]} `[[primeIndex, exponent], …]` and the cofactor
+   */
+  factor(n) {
+    if (typeof n !== "bigint") {
+      throw new TypeError(`PrimeCache.factor: expected bigint, got ${typeof n}`);
+    }
+    if (n <= 0n) {
+      throw new RangeError(
+        `PrimeCache.factor: input must be strictly positive (PPF-no-zero); got ${n}`
+      );
+    }
+    this._ensureSieve();
+    const pairs = [];
+    if (n === 1n) return [pairs, 1n];
+    const r = JSON.parse(callWasm("primeCacheFactor", this._limit, String(n)));
+    for (const pair of r.pairs) pairs.push(pair);
+    const residual = BigInt(r.residual);
+    if (residual > 1n) {
+      const idx = this.indexOf(residual);
+      if (idx !== null) {
+        pairs.push([idx, 1]);
+        return [pairs, 1n];
+      }
+      return [pairs, residual];
+    }
+    return [pairs, 1n];
+  }
+  /** @param {bigint[]} values @returns {number[]} ascending prime indices touched by any value */
+  discoverBasis(values) {
+    if (!Array.isArray(values)) {
+      throw new TypeError(
+        `PrimeCache.discoverBasis: expected array of bigint, got ${typeof values}`
+      );
+    }
+    const seen = /* @__PURE__ */ new Set();
+    for (const v of values) {
+      const [pairs] = this.factor(v);
+      for (const [idx] of pairs) seen.add(idx);
+    }
+    return Array.from(seen).sort((a, b) => a - b);
+  }
+};
+
+// src/browser/codec/index.js
+var codec_exports = {};
+__export(codec_exports, {
+  AtomRootPolynomial: () => AtomRootPolynomial,
+  Codec: () => Codec,
+  EGPTRealBag: () => EGPTRealBag,
+  Encoding: () => Encoding,
+  EncodingTransform: () => EncodingTransform,
+  FFTSamples: () => FFTSamples,
+  FixtureWorkInRunError: () => FixtureWorkInRunError,
+  HostFloats: () => HostFloats,
+  IntegerN: () => IntegerN,
+  MatrixInput: () => MatrixInput,
+  MissingClaimError: () => MissingClaimError,
+  MonomialPolynomial: () => MonomialPolynomial,
+  OddPartIndex: () => OddPartIndex,
+  PolynomialCoefficients: () => PolynomialCoefficients,
+  PrimeAtomVector: () => PrimeAtomVector,
+  PrimeBasis: () => PrimeBasis,
+  RootProductPolynomial: () => RootProductPolynomial,
+  RunResult: () => RunResult,
+  TOLERANCE_THRESHOLDS: () => TOLERANCE_THRESHOLDS,
+  Trace: () => Trace,
+  TransformRegistry: () => TransformRegistry,
+  ValueRepresentation: () => ValueRepresentation,
+  buildCodecDsl: () => buildCodecDsl,
+  buildSdkCodec: () => buildSdkCodec,
+  registry: () => registry
+});
+
+// src/browser/codec/core.js
+function _referenceFields(v) {
+  const ppf = v.toPPF();
+  const fields = {
+    scalar_numerator: ppf.scalar.numerator,
+    scalar_denominator: ppf.scalar.denominator,
+    numerator_encodedAsLog2ppf: { N: ppf.numerator.N, offset: ppf.numerator.offset },
+    denominator_encodedAsLog2ppf: { N: ppf.denominator.N, offset: ppf.denominator.offset }
+  };
+  if (v instanceof EGPTPrimeComposite) {
+    fields.records = v.records;
+    fields.primes = v.primes;
+    fields.sign = v.sign;
+  }
+  return fields;
+}
+__name(_referenceFields, "_referenceFields");
+function _asReferenceObject(key, value) {
+  return value instanceof EGPTReal ? _referenceFields(value) : value;
+}
+__name(_asReferenceObject, "_asReferenceObject");
+var Encoding = class _Encoding {
+  static {
+    __name(this, "Encoding");
+  }
+  static kind = null;
+  static uiLabel = null;
+  constructor(payload, _opts = {}) {
+    if (new.target === _Encoding) {
+      throw new Error("Encoding is abstract; instantiate a subclass.");
+    }
+    if (this.constructor.kind === null) {
+      throw new Error(
+        `${this.constructor.name} must declare static kind (non-null string).`
+      );
+    }
+    this.payload = payload;
+  }
+  equals(other) {
+    if (!(other instanceof _Encoding)) return false;
+    if (other.constructor.kind !== this.constructor.kind) return false;
+    return this._equalsPayload(other);
+  }
+  _equalsPayload(other) {
+    try {
+      return JSON.stringify(this.payload, _asReferenceObject) === JSON.stringify(other.payload, _asReferenceObject);
+    } catch {
+      return this.payload === other.payload;
+    }
+  }
+  hostReadbackDelta(_other) {
+    return Number.NaN;
+  }
+  informationBits() {
+    return null;
+  }
+  byteSize() {
+    throw new Error(`${this.constructor.name} must implement byteSize()`);
+  }
+  describe() {
+    const size = this.payload == null ? "null" : typeof this.payload?.length === "number" ? `len=${this.payload.length}` : typeof this.payload;
+    return `${this.constructor.kind}(${size})`;
+  }
+};
+var EncodingTransform = class _EncodingTransform {
+  static {
+    __name(this, "EncodingTransform");
+  }
+  static inputKind = null;
+  static outputKind = null;
+  static invertible = false;
+  static uiLabel = null;
+  static letterCode = null;
+  static provenance = null;
+  constructor(params = {}) {
+    if (new.target === _EncodingTransform) {
+      throw new Error(
+        "EncodingTransform is abstract; instantiate a subclass."
+      );
+    }
+    const T = this.constructor;
+    if (T.inputKind === null) {
+      throw new Error(`${T.name} must declare static inputKind.`);
+    }
+    if (T.outputKind === null) {
+      throw new Error(`${T.name} must declare static outputKind.`);
+    }
+    this.params = params;
+  }
+  apply(_input, _opts = {}) {
+    throw new Error(
+      `${this.constructor.name}.apply() not implemented \u2014 subclass must override.`
+    );
+  }
+  inverse() {
+    if (!this.constructor.invertible) {
+      throw new Error(
+        `${this.constructor.name} is not invertible (static invertible === false).`
+      );
+    }
+    throw new Error(
+      `${this.constructor.name}.inverse() not implemented \u2014 subclass must override.`
+    );
+  }
+};
+var TransformRegistry = class {
+  static {
+    __name(this, "TransformRegistry");
+  }
+  constructor() {
+    this._byName = /* @__PURE__ */ new Map();
+    this._byInput = /* @__PURE__ */ new Map();
+    this._byOutput = /* @__PURE__ */ new Map();
+  }
+  register(TransformClass) {
+    if (typeof TransformClass !== "function" || typeof TransformClass.inputKind !== "string" || typeof TransformClass.outputKind !== "string") {
+      throw new TypeError(
+        "registry.register requires a class with static inputKind and outputKind strings."
+      );
+    }
+    const name = TransformClass.name;
+    if (this._byName.has(name)) {
+      if (this._byName.get(name) === TransformClass) return this;
+      throw new Error(
+        `TransformRegistry already has a different class registered as "${name}".`
+      );
+    }
+    this._byName.set(name, TransformClass);
+    pushInto(this._byInput, TransformClass.inputKind, TransformClass);
+    pushInto(this._byOutput, TransformClass.outputKind, TransformClass);
+    return this;
+  }
+  byName(name) {
+    return this._byName.get(name) ?? null;
+  }
+  outgoing(inputKind) {
+    return (this._byInput.get(inputKind) ?? []).slice();
+  }
+  incoming(outputKind) {
+    return (this._byOutput.get(outputKind) ?? []).slice();
+  }
+  allTransforms() {
+    return Array.from(this._byName.values());
+  }
+  findPath(fromKind, toKind) {
+    if (fromKind === toKind) return [];
+    const cameFromClass = /* @__PURE__ */ new Map();
+    const cameFromKind = /* @__PURE__ */ new Map();
+    const queue = [fromKind];
+    const visited = /* @__PURE__ */ new Set([fromKind]);
+    while (queue.length) {
+      const cur = queue.shift();
+      for (const T of this._byInput.get(cur) ?? []) {
+        const next = T.outputKind;
+        if (visited.has(next)) continue;
+        visited.add(next);
+        cameFromClass.set(next, T);
+        cameFromKind.set(next, cur);
+        if (next === toKind) return reconstructPath(cameFromClass, cameFromKind, fromKind, toKind);
+        queue.push(next);
+      }
+    }
+    return null;
+  }
+  _reset() {
+    this._byName.clear();
+    this._byInput.clear();
+    this._byOutput.clear();
+  }
+};
+function pushInto(map, key, value) {
+  const arr = map.get(key);
+  if (arr) arr.push(value);
+  else map.set(key, [value]);
+}
+__name(pushInto, "pushInto");
+function reconstructPath(cameFromClass, cameFromKind, fromKind, toKind) {
+  const path = [];
+  let cur = toKind;
+  while (cur !== fromKind) {
+    path.unshift(cameFromClass.get(cur));
+    cur = cameFromKind.get(cur);
+  }
+  return path;
+}
+__name(reconstructPath, "reconstructPath");
+var registry = new TransformRegistry();
+var OpTrace = class {
+  static {
+    __name(this, "OpTrace");
+  }
+  constructor(label = "trace") {
+    this.label = label;
+    this.reset();
+  }
+  reset() {
+    this.calls = /* @__PURE__ */ new Map();
+    this.bigintBits = 0;
+    this.startedAt = performance.now();
+    this.endedAt = null;
+  }
+  record(methodName, bits = 0) {
+    this.calls.set(methodName, (this.calls.get(methodName) ?? 0) + 1);
+    this.bigintBits += bits;
+  }
+  end() {
+    this.endedAt = performance.now();
+  }
+  get elapsedMs() {
+    const end = this.endedAt ?? performance.now();
+    return end - this.startedAt;
+  }
+  snapshot() {
+    return {
+      label: this.label,
+      calls: Object.fromEntries(this.calls.entries()),
+      totalCalls: Array.from(this.calls.values()).reduce((a, b) => a + b, 0),
+      bigintBits: this.bigintBits,
+      elapsedMs: this.elapsedMs
+    };
+  }
+};
+var Trace = class {
+  static {
+    __name(this, "Trace");
+  }
+  constructor(label = "codec") {
+    this.entries = [];
+    this.opTrace = new OpTrace(label);
+    this._lastEnterCount = 0;
+    this.lastOpCount = 0;
+  }
+  enter({ transform, input }) {
+    const snap = this.opTrace.snapshot();
+    this._lastEnterCount = snap.totalCalls;
+    this.entries.push({
+      transform,
+      inputKind: input?.constructor?.kind ?? "",
+      outputKind: "",
+      timestamp: performance.now(),
+      elapsedMs: 0,
+      opCount: 0,
+      summary: input?.describe?.() ?? null
+    });
+  }
+  leave({ output, opCount }) {
+    const entry = this.entries[this.entries.length - 1];
+    if (!entry) return;
+    const snap = this.opTrace.snapshot();
+    const delta = typeof opCount === "number" ? opCount : snap.totalCalls - this._lastEnterCount;
+    entry.outputKind = output?.constructor?.kind ?? "";
+    entry.elapsedMs = performance.now() - entry.timestamp;
+    entry.opCount = delta;
+    this.lastOpCount = delta;
+  }
+  snapshot() {
+    return {
+      label: this.opTrace.label,
+      entries: this.entries.slice(),
+      ops: this.opTrace.snapshot()
+    };
+  }
+  reset() {
+    this.entries = [];
+    this.opTrace.reset();
+    this._lastEnterCount = 0;
+    this.lastOpCount = 0;
+  }
+};
+var OpCounter = class _OpCounter {
+  static {
+    __name(this, "OpCounter");
+  }
+  constructor() {
+    this.counts = {
+      bigintShift: 0,
+      bigintAdd: 0,
+      bigintMul: 0,
+      bigintDiv: 0,
+      bigintGcd: 0,
+      bigintAlloc: 0,
+      fpAdd: 0,
+      fpMul: 0,
+      fp16Add: 0,
+      fp16Mul: 0,
+      fp16Decode: 0,
+      bf16Add: 0,
+      bf16Mul: 0,
+      intMul: 0,
+      intAdd: 0
+    };
+    this.widthCounts = null;
+  }
+  record(opType, n = 1, opts = void 0) {
+    if (opts && opts.width !== void 0) {
+      const w = opts.width;
+      if (!this.widthCounts) this.widthCounts = {};
+      if (!this.widthCounts[opType]) this.widthCounts[opType] = {};
+      this.widthCounts[opType][w] = (this.widthCounts[opType][w] ?? 0) + n;
+    }
+    this.counts[opType] = (this.counts[opType] ?? 0) + n;
+  }
+  merge(other) {
+    if (other == null || typeof other.counts !== "object") return this;
+    for (const [op, n] of Object.entries(other.counts)) {
+      this.counts[op] = (this.counts[op] ?? 0) + n;
+    }
+    return this;
+  }
+  totalOps() {
+    let total = 0;
+    for (const n of Object.values(this.counts)) total += n;
+    return total;
+  }
+  modeledCycles(costTable = _OpCounter.DEFAULT_COSTS) {
+    let cycles = 0;
+    for (const [op, n] of Object.entries(this.counts)) {
+      const entry = costTable[op];
+      if (entry == null) continue;
+      if (typeof entry === "number") {
+        cycles += n * entry;
+      } else if (typeof entry === "object") {
+        const widthBuckets = this.widthCounts?.[op];
+        if (widthBuckets) {
+          let widthTagged = 0;
+          for (const [w, wn] of Object.entries(widthBuckets)) {
+            const cyclesAtW = entry[w] ?? entry[Number(w)] ?? entry.default ?? 0;
+            cycles += wn * cyclesAtW;
+            widthTagged += wn;
+          }
+          const flatRemainder = n - widthTagged;
+          if (flatRemainder > 0) {
+            cycles += flatRemainder * (entry.default ?? entry[64] ?? 0);
+          }
+        } else {
+          cycles += n * (entry.default ?? entry[64] ?? 0);
+        }
+      }
+    }
+    return cycles;
+  }
+  snapshot() {
+    return { ...this.counts };
+  }
+  delta(prevSnapshot) {
+    const out = {};
+    const prev = prevSnapshot ?? {};
+    for (const [op, n] of Object.entries(this.counts)) {
+      const before = prev[op] ?? 0;
+      const d = n - before;
+      if (d !== 0) out[op] = d;
+    }
+    return out;
+  }
+  static M2_ULTRA_SCALAR = {
+    bigintShift: 1,
+    bigintAdd: 2,
+    bigintMul: 5,
+    bigintDiv: 30,
+    bigintGcd: 100,
+    bigintAlloc: 30,
+    fpAdd: 1,
+    fpMul: 1,
+    fp16Add: 3,
+    fp16Mul: 3,
+    fp16Decode: 8,
+    bf16Add: 3,
+    bf16Mul: 3,
+    intMul: 1,
+    intAdd: 1,
+    regAccess: 1,
+    l1Fetch: 5,
+    l2Fetch: 16,
+    l3Fetch: 80,
+    dramFetch: 500,
+    tierCapacityBytes: {
+      register: 4096,
+      l1: 196608,
+      l2: 16777216,
+      l3: 50331648,
+      dram: Infinity
+    }
+  };
+  static M2_ULTRA_GPU = {
+    bigintShift: 1,
+    bigintAdd: 2,
+    bigintMul: 5,
+    bigintDiv: 30,
+    bigintGcd: 100,
+    bigintAlloc: 30,
+    fpAdd: 1e-4,
+    fpMul: 1e-4,
+    fp16Add: 5e-5,
+    fp16Mul: 5e-5,
+    fp16Decode: 8,
+    bf16Add: 5e-5,
+    bf16Mul: 5e-5,
+    intMul: 26e-6,
+    intAdd: 26e-6,
+    regAccess: 1,
+    l1Fetch: 5,
+    l2Fetch: 16,
+    l3Fetch: 80,
+    dramFetch: 500,
+    tierCapacityBytes: {
+      register: 8192,
+      l1: 65536,
+      l2: 16777216,
+      l3: 50331648,
+      dram: Infinity
+    }
+  };
+  static DEFAULT_COSTS = _OpCounter.M2_ULTRA_SCALAR;
+  static H100 = {
+    bigintShift: 4,
+    bigintAdd: 8,
+    bigintMul: 20,
+    bigintDiv: 120,
+    bigintGcd: 400,
+    bigintAlloc: 60,
+    fpAdd: 1,
+    fpMul: 1,
+    fp16Add: 1e-3,
+    fp16Mul: 1e-3,
+    fp16Decode: 6,
+    bf16Add: 1e-3,
+    bf16Mul: 1e-3,
+    intMul: 4,
+    intAdd: 4,
+    regAccess: 1,
+    l1Fetch: 4,
+    l2Fetch: 30,
+    dramFetch: 600,
+    tierCapacityBytes: {
+      register: 65536,
+      l1: 262144,
+      l2: 52428800,
+      dram: Infinity
+    }
+  };
+  static AMX_SAPPHIRE = {
+    bigintShift: 1,
+    bigintAdd: 2,
+    bigintMul: 5,
+    bigintDiv: 30,
+    bigintGcd: 100,
+    bigintAlloc: 30,
+    fpAdd: 1,
+    fpMul: 1,
+    fp16Add: 4,
+    fp16Mul: 4,
+    fp16Decode: 10,
+    bf16Add: 1e-3,
+    bf16Mul: 1e-3,
+    intMul: 1e-3,
+    intAdd: 1e-3,
+    regAccess: 1,
+    l1Fetch: 4,
+    l2Fetch: 14,
+    l3Fetch: 50,
+    dramFetch: 280,
+    tierCapacityBytes: {
+      register: 4096,
+      l1: 49152,
+      l2: 2097152,
+      l3: 110100480,
+      dram: Infinity
+    }
+  };
+};
+var COMPUTE_CLOCKS_HZ = {
+  M2_ULTRA: 4e9,
+  M2_ULTRA_SCALAR: 4e9,
+  M2_ULTRA_GPU: 4e9,
+  H100: 141e7,
+  AMX_SAPPHIRE: 3e9
+};
+var CACHE_TIERS = {
+  M2_ULTRA: { L1: 64 * 1024, L2: 4 * 1024 * 1024, L3: 96 * 1024 * 1024 },
+  M2_ULTRA_SCALAR: { L1: 64 * 1024, L2: 4 * 1024 * 1024, L3: 96 * 1024 * 1024 },
+  M2_ULTRA_GPU: { L1: 64 * 1024, L2: 4 * 1024 * 1024, L3: 96 * 1024 * 1024 },
+  H100: { L1: 256 * 1024, L2: 50 * 1024 * 1024, L3: null },
+  AMX_SAPPHIRE: {
+    L1: 48 * 1024,
+    L2: 2 * 1024 * 1024,
+    L3: 105 * 1024 * 1024
+  }
+};
+function _fingerprint(chainLabel, inputPayload, codebookFingerprints) {
+  let h = 5381;
+  function mix(s) {
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h ^ s.charCodeAt(i)) >>> 0;
+    }
+  }
+  __name(mix, "mix");
+  mix(chainLabel);
+  mix(":");
+  function visit(v) {
+    if (v == null) {
+      mix("null");
+    } else if (typeof v === "bigint") {
+      mix("B");
+      mix(v.toString());
+    } else if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
+      mix(typeof v);
+      mix(String(v));
+    } else if (Array.isArray(v)) {
+      mix("A[");
+      for (const e of v) visit(e);
+      mix("]");
+    } else if (ArrayBuffer.isView(v)) {
+      mix(`T${v.constructor.name}[`);
+      for (let i = 0; i < v.length; i++) {
+        mix(String(v[i]));
+        mix(",");
+      }
+      mix("]");
+    } else if (v instanceof EGPTReal) {
+      visit(_referenceFields(v));
+    } else if (typeof v === "object") {
+      mix("O{");
+      const keys = Object.keys(v).sort();
+      for (const k of keys) {
+        mix(k);
+        mix(":");
+        visit(v[k]);
+        mix(",");
+      }
+      mix("}");
+    } else {
+      mix(typeof v);
+    }
+  }
+  __name(visit, "visit");
+  visit(inputPayload);
+  mix("|cb[");
+  for (const cb of codebookFingerprints) {
+    mix(cb.name);
+    mix("=");
+    mix(String(cb.fingerprint ?? "null"));
+    mix(",");
+  }
+  mix("]");
+  return ("00000000" + h.toString(16)).slice(-8);
+}
+__name(_fingerprint, "_fingerprint");
+var Fixture = class {
+  static {
+    __name(this, "Fixture");
+  }
+  constructor({
+    chainLabel,
+    inputs,
+    codebooks,
+    encodedInputs,
+    prepareOpCounter,
+    prepareLog
+  }) {
+    if (typeof chainLabel !== "string" || !chainLabel) {
+      throw new TypeError("Fixture: chainLabel must be a non-empty string.");
+    }
+    if (inputs == null) {
+      throw new TypeError("Fixture: inputs must be a non-null Encoding.");
+    }
+    if (!(codebooks instanceof Map)) {
+      throw new TypeError("Fixture: codebooks must be a Map.");
+    }
+    if (!(encodedInputs instanceof Map)) {
+      throw new TypeError("Fixture: encodedInputs must be a Map.");
+    }
+    if (prepareOpCounter == null) {
+      throw new TypeError("Fixture: prepareOpCounter must be an OpCounter (may be empty).");
+    }
+    if (!Array.isArray(prepareLog)) {
+      throw new TypeError("Fixture: prepareLog must be an array.");
+    }
+    this.chainLabel = chainLabel;
+    this.inputs = inputs;
+    this.codebooks = codebooks;
+    this.encodedInputs = encodedInputs;
+    this.prepareOpCounter = prepareOpCounter;
+    this.prepareOps = prepareOpCounter.snapshot();
+    this.prepareLog = prepareLog;
+    const cbFingerprints = [];
+    for (const [name, cb] of codebooks.entries()) {
+      cbFingerprints.push({
+        name,
+        fingerprint: cb?.built_from?.fingerprint ?? null
+      });
+    }
+    cbFingerprints.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    this.fingerprint = _fingerprint(chainLabel, inputs.payload ?? null, cbFingerprints);
+    Object.freeze(this);
+  }
+  prepareCyclesAt(costTable) {
+    return this.prepareOpCounter.modeledCycles(costTable);
+  }
+  describe() {
+    const cbList = [...this.codebooks.entries()].map(([name, cb]) => `${name}=${cb?.kind ?? "null"}`).join(",");
+    return `Fixture(chain=${this.chainLabel}, fp=${this.fingerprint}, codebooks=[${cbList}], prepareOps=${this.prepareOpCounter.totalOps()})`;
+  }
+};
+var HARDWARE_COST_TABLES = {
+  M2_ULTRA: OpCounter.M2_ULTRA_SCALAR,
+  M2_ULTRA_SCALAR: OpCounter.M2_ULTRA_SCALAR,
+  M2_ULTRA_GPU: OpCounter.M2_ULTRA_GPU,
+  H100: OpCounter.H100,
+  AMX_SAPPHIRE: OpCounter.AMX_SAPPHIRE
+};
+var TOLERANCE_THRESHOLDS = {
+  "exact": 0,
+  "fp16": 1e-3,
+  "fp32": 1e-6,
+  "fp64": 1e-12
+};
+var RunResult = class {
+  static {
+    __name(this, "RunResult");
+  }
+  constructor({
+    input,
+    snapshots,
+    output,
+    trace,
+    opCounter = null,
+    memTrace = null,
+    codebooksUsed = [],
+    claimMeta = null,
+    fixture = null,
+    optimized = false
+  }) {
+    if (!Array.isArray(snapshots) || snapshots.length === 0) {
+      throw new TypeError("RunResult requires non-empty snapshots array.");
+    }
+    this.input = input;
+    this.snapshots = snapshots;
+    this.output = output;
+    this.trace = trace;
+    this.opCounter = opCounter;
+    this.memTrace = memTrace;
+    this.codebooksUsed = codebooksUsed;
+    this.claimMeta = claimMeta;
+    this.fixture = fixture;
+    this.optimized = optimized === true;
+    this.claimVerdict = null;
+  }
+  attachClaimVerdict(verdict) {
+    if (this.claimMeta == null) {
+      throw new Error(
+        "RunResult.attachClaimVerdict: cannot attach a verdict to a chain without a claim. Call Codec.claim(name, opts) before run()."
+      );
+    }
+    const { passed, maxAbsErr, thresholdAbsErr } = verdict;
+    if (typeof passed !== "boolean") {
+      throw new TypeError("attachClaimVerdict: verdict.passed must be boolean.");
+    }
+    this.claimVerdict = {
+      reference: this.claimMeta.reference,
+      tolerance: this.claimMeta.tolerance,
+      passed,
+      maxAbsErr,
+      thresholdAbsErr
+    };
+  }
+  get stepCount() {
+    return Math.max(0, this.snapshots.length - 1);
+  }
+  snapshotAt(i) {
+    if (i < 0 || i >= this.snapshots.length) {
+      throw new RangeError(
+        `snapshotAt(${i}) out of range [0, ${this.snapshots.length}).`
+      );
+    }
+    return this.snapshots[i];
+  }
+  describe() {
+    const kinds = this.snapshots.map((e) => e?.constructor?.kind ?? "?").join(" -> ");
+    return `RunResult(${kinds})`;
+  }
+  summary({
+    scenario = "cold",
+    hardware = "M2_ULTRA",
+    costTable,
+    chainName
+  } = {}) {
+    const opCounts = this.opCounter ? this.opCounter.snapshot() : null;
+    const activeCostTable = costTable ?? HARDWARE_COST_TABLES[hardware] ?? OpCounter.DEFAULT_COSTS;
+    const modeledCycles = this.opCounter ? this.opCounter.modeledCycles(activeCostTable) : null;
+    const clockHz = COMPUTE_CLOCKS_HZ[hardware] ?? COMPUTE_CLOCKS_HZ.M2_ULTRA;
+    const computeNs = modeledCycles == null ? null : modeledCycles / clockHz * 1e9;
+    const memTraceSummary = this.memTrace ? this.memTrace.summary() : null;
+    const wallClock = this.memTrace ? this.memTrace.estimateWallClock({
+      scenario,
+      hardware,
+      totalComputeNs: computeNs
+    }) : null;
+    const estimatedWallClockNs = wallClock ? wallClock.totalNs : null;
+    const totalMemoryNs = wallClock ? wallClock.totalMemoryNs : null;
+    let perStepEntries = wallClock?.perStep ?? null;
+    if (perStepEntries && this.memTrace?.entries) {
+      perStepEntries = perStepEntries.map((step, i) => {
+        const entry = this.memTrace.entries[i];
+        const ops = entry?.ops ?? null;
+        let cycles = null;
+        if (ops) {
+          cycles = 0;
+          for (const [op, n] of Object.entries(ops)) {
+            cycles += n * (activeCostTable[op] ?? 0);
+          }
+        }
+        return {
+          ...step,
+          ops,
+          cycles,
+          cycleNs: cycles == null ? null : cycles / clockHz * 1e9
+        };
+      });
+    }
+    let bottleneck = "unknown";
+    let verdict = "";
+    if (computeNs != null && totalMemoryNs != null) {
+      const ratio = computeNs / Math.max(totalMemoryNs, 1e-12);
+      if (ratio > 1.2) {
+        bottleneck = "compute-bound";
+        verdict = `Compute-bound at ${formatNs(computeNs)}; memory traffic ${formatNs(totalMemoryNs)} (${scenario})`;
+      } else if (ratio < 1 / 1.2) {
+        bottleneck = "memory-bound";
+        verdict = `Memory-bound at ${formatNs(totalMemoryNs)} (${scenario}); compute would finish in ${formatNs(computeNs)}`;
+      } else {
+        bottleneck = "balanced";
+        verdict = `Balanced: compute ${formatNs(computeNs)}, memory ${formatNs(totalMemoryNs)} (${scenario})`;
+      }
+    } else if (computeNs != null) {
+      verdict = `Compute-only telemetry: ${formatNs(computeNs)} (no memTrace)`;
+    } else if (estimatedWallClockNs != null) {
+      verdict = `Memory-only telemetry: ${formatNs(estimatedWallClockNs)} (${scenario}; no opCounter)`;
+    } else {
+      verdict = `No telemetry recorded for this run`;
+    }
+    let bound = "unknown";
+    if (computeNs != null && totalMemoryNs != null) {
+      if (computeNs > 1.5 * totalMemoryNs) {
+        bound = "compute";
+      } else if (totalMemoryNs > 1.5 * computeNs) {
+        bound = "memory";
+      } else {
+        bound = "balanced";
+      }
+    }
+    const wellFormed = (() => {
+      if (this.claimMeta == null) {
+        return {
+          claim: null,
+          reference: null,
+          tolerance: null,
+          passed: null,
+          maxAbsErr: null,
+          thresholdAbsErr: null
+        };
+      }
+      if (this.claimVerdict == null) {
+        return {
+          claim: this.claimMeta.name,
+          reference: this.claimMeta.reference,
+          tolerance: this.claimMeta.tolerance,
+          passed: null,
+          maxAbsErr: null,
+          thresholdAbsErr: TOLERANCE_THRESHOLDS[this.claimMeta.tolerance] ?? null
+        };
+      }
+      return {
+        claim: this.claimMeta.name,
+        reference: this.claimVerdict.reference,
+        tolerance: this.claimVerdict.tolerance,
+        passed: this.claimVerdict.passed,
+        maxAbsErr: this.claimVerdict.maxAbsErr,
+        thresholdAbsErr: this.claimVerdict.thresholdAbsErr
+      };
+    })();
+    const codebooks = this.codebooksUsed.map((entry) => ({
+      name: entry.name,
+      lifecycle: entry.lifecycle,
+      kind: entry.codebook?.kind ?? null,
+      byteSize: entry.codebook?.byteSize?.() ?? 0,
+      fingerprint: entry.codebook?.built_from?.fingerprint ?? null,
+      builtThisRun: entry.builtThisRun,
+      constructionOps: entry.codebookConstructionOps ?? null
+    }));
+    const prepareCycles = this.fixture ? this.fixture.prepareCyclesAt(activeCostTable) : 0;
+    const runCycles = modeledCycles ?? 0;
+    return {
+      chainName: chainName ?? null,
+      scenario,
+      hardware,
+      opCounts,
+      modeledCycles,
+      prepareCycles,
+      runCycles,
+      optimized: this.optimized === true,
+      computeNs,
+      memTraceSummary,
+      estimatedWallClockNs,
+      totalMemoryNs,
+      wallClockPerStep: perStepEntries ?? wallClock?.perStep ?? null,
+      bottleneck,
+      bound,
+      verdict,
+      wellFormed,
+      codebooks
+    };
+  }
+};
+function formatNs(ns) {
+  if (!Number.isFinite(ns)) return "NaN ns";
+  if (ns < 1e3) return `${ns.toFixed(1)} ns`;
+  if (ns < 1e6) return `${(ns / 1e3).toFixed(2)} \xB5s`;
+  if (ns < 1e9) return `${(ns / 1e6).toFixed(2)} ms`;
+  return `${(ns / 1e9).toFixed(2)} s`;
+}
+__name(formatNs, "formatNs");
+function _opCountUnported(what) {
+  return `${what} \u2014 op-count telemetry is not available in the WASM-only EGPT Math SDK: an OpCounter records the JS core's BigInt operations, and this build's arithmetic runs in Rust, which records none, so every count would read 0.`;
+}
+__name(_opCountUnported, "_opCountUnported");
+var FixtureWorkInRunError = class extends Error {
+  static {
+    __name(this, "FixtureWorkInRunError");
+  }
+  constructor(message) {
+    super(message);
+    this.name = "FixtureWorkInRunError";
+  }
+};
+var MissingClaimError = class extends Error {
+  static {
+    __name(this, "MissingClaimError");
+  }
+  constructor(message) {
+    super(message);
+    this.name = "MissingClaimError";
+  }
+};
+var Codec = class _Codec {
+  static {
+    __name(this, "Codec");
+  }
+  constructor(initialInputKind, { label = "codec" } = {}) {
+    if (typeof initialInputKind !== "string" || !initialInputKind) {
+      throw new TypeError(
+        "Codec constructor requires a non-empty initialInputKind."
+      );
+    }
+    this.headKind = initialInputKind;
+    this.tailKind = initialInputKind;
+    this.steps = [];
+    this.label = label;
+    this.codebookDependencies = [];
+    this.claimMeta = null;
+    this.optimizedFlag = false;
+  }
+  useCodebook(name, codebookClass, opts = {}) {
+    if (typeof name !== "string" || !name) {
+      throw new TypeError("Codec.useCodebook requires a non-empty name.");
+    }
+    const { lifecycle } = opts;
+    if (!["each-decode", "load-time", "offline"].includes(lifecycle)) {
+      throw new RangeError(
+        `Codec.useCodebook: lifecycle must be one of 'each-decode' | 'load-time' | 'offline'; got ${lifecycle}.`
+      );
+    }
+    if (codebookClass == null || typeof codebookClass.fromPopulation !== "function") {
+      throw new TypeError(
+        "Codec.useCodebook: codebookClass must be a Codebook subclass with a static fromPopulation method."
+      );
+    }
+    if (this.codebookDependencies.some((d) => d.name === name)) {
+      throw new RangeError(
+        `Codec.useCodebook: dependency '${name}' is already declared on this codec.`
+      );
+    }
+    this.codebookDependencies.push({ name, codebookClass, lifecycle });
+    return this;
+  }
+  claim(name, opts = {}) {
+    if (typeof name !== "string" || !name) {
+      throw new TypeError("Codec.claim requires a non-empty name.");
+    }
+    const { reference, tolerance } = opts;
+    if (typeof reference !== "string" || !reference) {
+      throw new TypeError(
+        "Codec.claim: opts.reference must be a non-empty string identifier."
+      );
+    }
+    if (!["fp16", "fp32", "fp64", "exact"].includes(tolerance)) {
+      throw new RangeError(
+        `Codec.claim: opts.tolerance must be one of 'fp16'|'fp32'|'fp64'|'exact'; got ${tolerance}.`
+      );
+    }
+    this.claimMeta = { name, reference, tolerance };
+    return this;
+  }
+  optimized(value) {
+    if (typeof value !== "boolean") {
+      throw new TypeError(
+        `Codec.optimized: value must be a boolean; got ${typeof value}.`
+      );
+    }
+    this.optimizedFlag = value;
+    return this;
+  }
+  isOptimized() {
+    return this.optimizedFlag === true;
+  }
+  push(transformInstance) {
+    const T = transformInstance?.constructor;
+    if (!T || typeof transformInstance.apply !== "function") {
+      throw new TypeError(
+        "Codec.push requires an EncodingTransform instance."
+      );
+    }
+    if (T.inputKind !== this.tailKind) {
+      throw new TypeError(
+        `cannot push ${T.name}: inputKind "${T.inputKind}" !== codec tail "${this.tailKind}"`
+      );
+    }
+    this.steps.push(transformInstance);
+    this.tailKind = T.outputKind;
+    return this;
+  }
+  prepare(input, { counter = null } = {}) {
+    this._requireMatchingInput(input);
+    const prepareCounter = counter ?? new OpCounter();
+    const codebooks = /* @__PURE__ */ new Map();
+    const encodedInputs = /* @__PURE__ */ new Map();
+    const prepareLog = [];
+    for (const dep of this.codebookDependencies) {
+      const { name, codebookClass, lifecycle } = dep;
+      if (lifecycle === "each-decode") {
+        prepareLog.push({
+          name,
+          lifecycle,
+          codebook: null,
+          builtAtPrepare: false
+        });
+        continue;
+      }
+      if (lifecycle === "offline") {
+        const cb = codebookClass.fromPopulation(
+          this._codebookPopulation(input),
+          { source: "offline" }
+        );
+        codebooks.set(name, cb);
+        prepareLog.push({
+          name,
+          lifecycle,
+          codebook: cb,
+          builtAtPrepare: true
+        });
+        continue;
+      }
+      if (lifecycle === "load-time") {
+        throw new Error(_opCountUnported(
+          `Codec.prepare: codebook '${name}' has lifecycle 'load-time', whose construction the reference charges to an active OpCounter`
+        ));
+      }
+      throw new RangeError(
+        `Codec.prepare: unknown lifecycle '${lifecycle}' on dependency '${name}'.`
+      );
+    }
+    return new Fixture({
+      chainLabel: this.label,
+      inputs: input,
+      codebooks,
+      encodedInputs,
+      prepareOpCounter: prepareCounter,
+      prepareLog
+    });
+  }
+  run(fixtureOrInput, opts = {}) {
+    if (this.claimMeta == null) {
+      throw new MissingClaimError(
+        `Codec ${this.label} has no claim \u2014 call codec.claim(name, {reference, tolerance}) before run().`
+      );
+    }
+    const {
+      runtimeInputs = null,
+      counter = null,
+      memTrace = null,
+      codebookCache = null
+    } = opts;
+    let fixture;
+    if (fixtureOrInput instanceof Fixture) {
+      if (fixtureOrInput.chainLabel !== this.label) {
+        throw new TypeError(
+          `Codec.run: fixture was prepared for chain '${fixtureOrInput.chainLabel}' but this codec is '${this.label}'.`
+        );
+      }
+      this._requireMatchingInput(fixtureOrInput.inputs);
+      fixture = fixtureOrInput;
+    } else if (fixtureOrInput instanceof Encoding) {
+      fixture = this.prepare(fixtureOrInput);
+    } else {
+      throw new TypeError(
+        "Codec.run: first argument must be a Fixture or an Encoding."
+      );
+    }
+    const input = runtimeInputs != null ? runtimeInputs : fixture.inputs;
+    this._requireMatchingInput(input);
+    const trace = new Trace(this.label);
+    const snapshots = [input];
+    let current = input;
+    if (counter) {
+      throw new Error(_opCountUnported("Codec.run: opts.counter is set"));
+    }
+    const codebooksUsed = [];
+    for (const dep of this.codebookDependencies) {
+      const { name, codebookClass, lifecycle } = dep;
+      const cacheKey = `${this.label}::${name}::${codebookClass.kind}`;
+      let codebook = null;
+      let builtThisRun = false;
+      if (lifecycle === "offline" || lifecycle === "load-time") {
+        codebook = fixture.codebooks.get(name) ?? null;
+        if (codebook == null) {
+          throw new FixtureWorkInRunError(
+            `Codec.run: codebook '${name}' (lifecycle '${lifecycle}') is missing from the fixture. Build it via Codec.prepare() before calling run(); never inside run() \u2014 that would re-roll fixture-stage work into every decode.`
+          );
+        }
+        builtThisRun = false;
+        if (codebookCache) codebookCache.set(cacheKey, codebook);
+      } else {
+        const opsBefore = counter ? counter.snapshot() : null;
+        codebook = codebookClass.fromPopulation(this._codebookPopulation(input), {
+          source: "each-decode"
+        });
+        builtThisRun = true;
+        if (counter && opsBefore) {
+          codebooksUsed.push({
+            name,
+            lifecycle,
+            codebook,
+            builtThisRun,
+            codebookConstructionOps: counter.delta(opsBefore)
+          });
+          continue;
+        }
+      }
+      codebooksUsed.push({ name, lifecycle, codebook, builtThisRun });
+    }
+    {
+      for (const step of this.steps) {
+        const opsBefore = counter ? counter.snapshot() : null;
+        trace.enter({
+          transform: step.constructor.name,
+          input: current
+        });
+        const stepInput = current;
+        current = step.apply(current, { trace, counter, memTrace });
+        trace.leave({ output: current, opCount: trace.lastOpCount });
+        snapshots.push(current);
+        const stepOps = counter && opsBefore ? counter.delta(opsBefore) : null;
+        if (memTrace) {
+          let inputBytes = 0;
+          let outputBytes = 0;
+          try {
+            inputBytes = stepInput.byteSize?.() ?? 0;
+          } catch {
+            inputBytes = 0;
+          }
+          try {
+            outputBytes = current.byteSize?.() ?? 0;
+          } catch {
+            outputBytes = 0;
+          }
+          memTrace.record({
+            stepName: step.constructor.name,
+            inputBytes,
+            outputBytes,
+            scratchBytes: 0,
+            ops: stepOps
+          });
+        }
+      }
+    }
+    return new RunResult({
+      input,
+      snapshots,
+      output: current,
+      trace,
+      opCounter: counter,
+      memTrace,
+      codebooksUsed,
+      claimMeta: this.claimMeta,
+      fixture,
+      optimized: this.optimizedFlag === true
+    });
+  }
+  _codebookPopulation(input) {
+    if (input == null) return [];
+    const payload = input.payload;
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.matrix) || Array.isArray(payload?.[0])) {
+      const matrix = Array.isArray(payload?.matrix) ? payload.matrix : payload;
+      const flat = [];
+      for (const row of matrix) {
+        if (Array.isArray(row)) for (const v of row) flat.push(v);
+      }
+      return flat;
+    }
+    return [];
+  }
+  roundTripCheck(input) {
+    const fwdHadClaim = this.claimMeta != null;
+    if (!fwdHadClaim) {
+      this.claim("_roundtrip", { reference: "_roundtrip", tolerance: "exact" });
+    }
+    const forward = this.run(input);
+    const inv = this.inverse();
+    if (inv.claimMeta == null) {
+      inv.claim("_roundtrip", { reference: "_roundtrip", tolerance: "exact" });
+    }
+    const back = inv.run(forward.output);
+    const ok = input.equals?.(back.output) ?? false;
+    const hostReadbackDelta = input.hostReadbackDelta?.(back.output) ?? Number.NaN;
+    return {
+      ok,
+      chip: ok ? "green" : "red",
+      hostReadbackDelta,
+      forward,
+      back
+    };
+  }
+  inverse() {
+    const out = new _Codec(this.tailKind, { label: `${this.label}:inv` });
+    for (const step of [...this.steps].reverse()) {
+      out.push(step.inverse());
+    }
+    return out;
+  }
+  _requireMatchingInput(input) {
+    if (!(input instanceof Encoding)) {
+      throw new TypeError(
+        `Codec.run expects an Encoding instance, got ${typeof input}.`
+      );
+    }
+    if (input.constructor.kind !== this.headKind) {
+      throw new TypeError(
+        `Codec.run: input kind "${input.constructor.kind}" !== codec head "${this.headKind}"`
+      );
+    }
+  }
+};
+function buildCodecDsl(registry2, CodecClass, EncodingClasses) {
+  const _encodingByKind = /* @__PURE__ */ new Map();
+  if (Array.isArray(EncodingClasses)) {
+    for (const E of EncodingClasses) {
+      if (E && typeof E.kind === "string") {
+        _encodingByKind.set(E.kind, E);
+      }
+    }
+  }
+  let _headKind = null;
+  let _headPayload = null;
+  let _codec = null;
+  let _inputEncoding = null;
+  const _claims = [];
+  const dsl = {
+    input(kind, payload) {
+      if (typeof kind !== "string" || !kind) {
+        throw new Error("[buildCodecDsl] input() requires a non-empty kind string");
+      }
+      if (_headKind !== null) {
+        throw new Error("[buildCodecDsl] input() may only be called once");
+      }
+      _headKind = kind;
+      _headPayload = payload ?? {};
+      _codec = new CodecClass(_headKind);
+      const EncodingClass = _encodingByKind.get(kind);
+      if (EncodingClass) {
+        let data = _headPayload;
+        if (_headPayload && typeof _headPayload === "object" && !Array.isArray(_headPayload)) {
+          data = _headPayload.payload ?? _headPayload.samples ?? _headPayload.values ?? _headPayload;
+        }
+        _inputEncoding = new EncodingClass(data, _headPayload);
+      } else {
+        _inputEncoding = { constructor: { kind }, value: _headPayload };
+      }
+      return dsl;
+    },
+    push(name, opts) {
+      if (_codec === null) {
+        throw new Error("[buildCodecDsl] push() called before input() \u2014 call cdc.input() first");
+      }
+      if (typeof name !== "string" || !name) {
+        throw new Error("[buildCodecDsl] push() requires a non-empty transform name");
+      }
+      const TransformClass = registry2.byName(name);
+      if (!TransformClass) {
+        throw new Error(
+          `[buildCodecDsl] push('${name}') \u2014 no transform named '${name}' is registered. Did you import the transforms barrel (codec/index.js)?`
+        );
+      }
+      const instance = new TransformClass(opts ?? {});
+      _codec.push(instance);
+      return dsl;
+    },
+    claim(name, opts) {
+      if (_codec === null) {
+        throw new Error("[buildCodecDsl] claim() called before input()");
+      }
+      if (typeof name !== "string" || !name) {
+        throw new Error("[buildCodecDsl] claim() requires a non-empty name");
+      }
+      const o = opts ?? {};
+      _codec.claim(name, {
+        reference: o.reference ?? name,
+        tolerance: o.tolerance ?? "exact"
+      });
+      _claims.push({ name, config: o });
+      _codec._claims = _claims;
+      return dsl;
+    },
+    build() {
+      if (_codec === null) {
+        throw new Error("[buildCodecDsl] build() called before input() \u2014 recipe must call cdc.input()");
+      }
+      return { codec: _codec, headEncoding: _inputEncoding, headKind: _headKind, headPayload: _headPayload };
+    }
+  };
+  return { dsl, build: dsl.build };
+}
+__name(buildCodecDsl, "buildCodecDsl");
+function makeBagEncoding({
+  name,
+  uiLabel,
+  elementKind,
+  validateElement,
+  elementEquals = defaultElementEquals
+}) {
+  if (typeof name !== "string" || name.length === 0) {
+    throw new TypeError("makeBagEncoding: name must be a non-empty string.");
+  }
+  if (typeof elementKind !== "string" || elementKind.length === 0) {
+    throw new TypeError("makeBagEncoding: elementKind must be a non-empty string.");
+  }
+  if (typeof validateElement !== "function") {
+    throw new TypeError("makeBagEncoding: validateElement must be a function.");
+  }
+  class BagEncoding extends Encoding {
+    static {
+      __name(this, "BagEncoding");
+    }
+    static kind = name;
+    static uiLabel = uiLabel;
+    static elementKind = elementKind;
+    static isBag = true;
+    constructor(payload, opts = {}) {
+      if (!Array.isArray(payload)) {
+        throw new TypeError(`${name} payload must be an array of ${elementKind}.`);
+      }
+      for (let i = 0; i < payload.length; i++) {
+        if (!validateElement(payload[i])) {
+          throw new TypeError(
+            `${name} element ${i} failed ${elementKind} validation.`
+          );
+        }
+      }
+      super(payload, opts);
+    }
+    get size() {
+      return this.payload.length;
+    }
+    mapElements(fn) {
+      return this.payload.map(fn);
+    }
+    _equalsPayload(other) {
+      if (this.payload.length !== other.payload.length) return false;
+      for (let i = 0; i < this.payload.length; i++) {
+        if (!elementEquals(this.payload[i], other.payload[i])) return false;
+      }
+      return true;
+    }
+    describe() {
+      return `${name}(size=${this.size})`;
+    }
+    byteSize() {
+      let total = 0;
+      for (const el of this.payload) {
+        if (el != null && typeof el.byteSize === "function") {
+          total += el.byteSize();
+        } else {
+          total += 24;
+        }
+      }
+      return total;
+    }
+  }
+  Object.defineProperty(BagEncoding, "name", { value: name });
+  return BagEncoding;
+}
+__name(makeBagEncoding, "makeBagEncoding");
+function defaultElementEquals(a, b) {
+  if (a != null && typeof a.equals === "function") return a.equals(b);
+  return a === b;
+}
+__name(defaultElementEquals, "defaultElementEquals");
+
+// src/browser/codec/dispatch.js
+var dispatchFromBigInt = /* @__PURE__ */ __name((n) => EGPTReal.fromBigInt(n), "dispatchFromBigInt");
+var dispatchFromRational = /* @__PURE__ */ __name((num, den) => EGPTReal.fromRational(num, den), "dispatchFromRational");
+var dispatchToCanonicalStr = /* @__PURE__ */ __name((h) => EGPTReal.toCanonicalStr(h), "dispatchToCanonicalStr");
+var dispatchBreakToBigInt = /* @__PURE__ */ __name((h) => h.breakSymbolicToApproximateBigInt(), "dispatchBreakToBigInt");
+var dispatchBreakToJSNumber = /* @__PURE__ */ __name((h) => h.breakSymbolicToApproximateJSNumber(), "dispatchBreakToJSNumber");
+var dispatchToPrimeAtoms = /* @__PURE__ */ __name((h) => h.toPrimeAtoms(), "dispatchToPrimeAtoms");
+var dispatchFromAtomVec = /* @__PURE__ */ __name((atomVec) => EGPTReal.fromAtomVec(atomVec), "dispatchFromAtomVec");
+var dispatchToAtomRoot = /* @__PURE__ */ __name((h) => h.toAtomRoot(), "dispatchToAtomRoot");
+var dispatchFromAtomRoot = /* @__PURE__ */ __name((term) => EGPTReal.fromAtomRoot(term), "dispatchFromAtomRoot");
+function dispatchRationalParts(h) {
+  const str = EGPTReal.toCanonicalStr(h);
+  const slash = str.indexOf("/");
+  if (slash < 0) {
+    return { numerator: BigInt(str), denominator: 1n };
+  }
+  return {
+    numerator: BigInt(str.slice(0, slash)),
+    denominator: BigInt(str.slice(slash + 1))
+  };
+}
+__name(dispatchRationalParts, "dispatchRationalParts");
+function isValidMathHandle(v) {
+  return v == null ? false : v instanceof EGPTReal;
+}
+__name(isValidMathHandle, "isValidMathHandle");
+function mathHandleEquals(a, b) {
+  return EGPTMath.equals(a, b);
+}
+__name(mathHandleEquals, "mathHandleEquals");
+
+// src/browser/codec/encodings.js
+var SUPPORTED_FORMATS = Object.freeze([
+  "fp16",
+  "bfloat16",
+  "fp32",
+  "fp64",
+  "int32",
+  "int64"
+]);
+var HostFloats = class extends Encoding {
+  static {
+    __name(this, "HostFloats");
+  }
+  static kind = "HostFloats";
+  static uiLabel = "Host floats";
+  constructor(payload, opts = {}) {
+    if (!isArrayLike(payload)) {
+      throw new TypeError(
+        "HostFloats payload must be an array-like (number[], bigint[], or a typed array)."
+      );
+    }
+    const format = opts.format;
+    if (!SUPPORTED_FORMATS.includes(format)) {
+      throw new TypeError(
+        `HostFloats requires opts.format \u2208 {${SUPPORTED_FORMATS.join(", ")}}; got ${JSON.stringify(format)}.`
+      );
+    }
+    validateElementTypes(payload, format);
+    super(Array.from(payload), opts);
+    this.format = format;
+    this.asBitPatterns = opts.asBitPatterns ?? payload instanceof Uint16Array;
+  }
+  _equalsPayload(other) {
+    if (other.format !== this.format) return false;
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      if (this.payload[i] !== other.payload[i]) return false;
+    }
+    return true;
+  }
+  hostReadbackDelta(other) {
+    if (!other || other.format !== this.format) return Number.NaN;
+    const a = this.payload;
+    const b = other.payload;
+    if (a.length !== b.length) return Number.NaN;
+    if (this.format === "int64") {
+      let max = 0n;
+      for (let i = 0; i < a.length; i++) {
+        const d = a[i] > b[i] ? a[i] - b[i] : b[i] - a[i];
+        if (d > max) max = d;
+      }
+      return Number(max);
+    }
+    let sq = 0;
+    for (let i = 0; i < a.length; i++) {
+      const d = a[i] - b[i];
+      sq += d * d;
+    }
+    return Math.sqrt(sq);
+  }
+  describe() {
+    return `HostFloats(len=${this.payload.length}, format=${this.format})`;
+  }
+  byteSize() {
+    const bytesPerElement = this.format === "fp64" || this.format === "int64" ? 8 : this.format === "fp32" || this.format === "int32" ? 4 : 2;
+    return this.payload.length * bytesPerElement;
+  }
+};
+function isArrayLike(x) {
+  if (x == null) return false;
+  if (Array.isArray(x)) return true;
+  return x instanceof Float32Array || x instanceof Float64Array || x instanceof Int32Array || x instanceof BigInt64Array || x instanceof Uint16Array;
+}
+__name(isArrayLike, "isArrayLike");
+function validateElementTypes(payload, format) {
+  if (payload.length === 0) return;
+  const first = payload[0];
+  if (format === "int64") {
+    if (!(payload instanceof BigInt64Array) && typeof first !== "bigint") {
+      throw new TypeError(
+        `HostFloats format='int64' requires bigint[] or BigInt64Array payload.`
+      );
+    }
+  } else if (format === "int32") {
+    if (typeof first === "bigint") {
+      throw new TypeError(
+        `HostFloats format='int32' must not receive bigint payload; use int64 instead.`
+      );
+    }
+  } else if (typeof first === "bigint") {
+    throw new TypeError(
+      `HostFloats format='${format}' expects numeric payload, not bigint.`
+    );
+  }
+}
+__name(validateElementTypes, "validateElementTypes");
+var Base = makeBagEncoding({
+  name: "EGPTRealBag",
+  uiLabel: "EGPTReal bag",
+  elementKind: "EGPTReal",
+  validateElement: isValidMathHandle,
+  elementEquals: mathHandleEquals
+});
+var EGPTRealBag = class extends Base {
+  static {
+    __name(this, "EGPTRealBag");
+  }
+  describe() {
+    return `EGPTRealBag(len=${this.payload.length})`;
+  }
+  byteSize() {
+    return this.payload.length * 24;
+  }
+};
+var PolynomialCoefficients = class extends Encoding {
+  static {
+    __name(this, "PolynomialCoefficients");
+  }
+  static kind = "PolynomialCoefficients";
+  static uiLabel = "Polynomial coefficients";
+  constructor(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("PolynomialCoefficients payload must be EGPTReal[]");
+    }
+    super(payload, opts);
+  }
+  _equalsPayload(other) {
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      const a = this.payload[i];
+      const b = other.payload[i];
+      if (typeof a?.equals === "function") {
+        if (!a.equals(b)) return false;
+      } else if (a !== b) {
+        return false;
+      }
+    }
+    return true;
+  }
+  describe() {
+    return `PolynomialCoefficients(degree=${Math.max(0, this.payload.length - 1)})`;
+  }
+  byteSize() {
+    return this.payload.length * 24;
+  }
+};
+var FFTSamples = class extends Encoding {
+  static {
+    __name(this, "FFTSamples");
+  }
+  static kind = "FFTSamples";
+  static uiLabel = "FFT samples";
+  constructor(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("FFTSamples payload must be EGPTReal[] (values at k/N)");
+    }
+    super(payload, opts);
+  }
+  _equalsPayload(other) {
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      const a = this.payload[i];
+      const b = other.payload[i];
+      if (typeof a?.equals === "function") {
+        if (!a.equals(b)) return false;
+      } else if (a !== b) {
+        return false;
+      }
+    }
+    return true;
+  }
+  describe() {
+    return `FFTSamples(N=${this.payload.length})`;
+  }
+  byteSize() {
+    return this.payload.length * 24;
+  }
+};
+var PrimeAtomVector = class extends Encoding {
+  static {
+    __name(this, "PrimeAtomVector");
+  }
+  static kind = "PrimeAtomVector";
+  static uiLabel = "Prime atoms (log space)";
+  constructor(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("PrimeAtomVector payload must be AtomVec[]");
+    }
+    super(payload, opts);
+  }
+  _equalsPayload(other) {
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      if (!atomVecEquals(this.payload[i], other.payload[i])) return false;
+    }
+    return true;
+  }
+  informationBits() {
+    let totalAtoms = 0n;
+    for (const a of this.payload) {
+      for (const { exponent } of a.factors) {
+        totalAtoms += exponent < 0n ? -exponent : exponent;
+      }
+    }
+    return Number(totalAtoms);
+  }
+  describe() {
+    const totalPrimes = /* @__PURE__ */ new Set();
+    for (const a of this.payload) {
+      for (const { prime } of a.factors) totalPrimes.add(prime);
+    }
+    return `PrimeAtomVector(N=${this.payload.length}, distinct_primes=${totalPrimes.size})`;
+  }
+  byteSize() {
+    let total = 0;
+    for (const a of this.payload) {
+      total += (a.factors?.length ?? 0) * 8;
+    }
+    return total;
+  }
+};
+function atomVecEquals(a, b) {
+  if (!a || !b) return a === b;
+  if (a.sign !== b.sign) return false;
+  if ((a.factors?.length ?? 0) !== (b.factors?.length ?? 0)) return false;
+  for (let i = 0; i < a.factors.length; i++) {
+    if (a.factors[i].prime !== b.factors[i].prime) return false;
+    if (a.factors[i].exponent !== b.factors[i].exponent) return false;
+  }
+  return true;
+}
+__name(atomVecEquals, "atomVecEquals");
+var RootProductPolynomial = class extends Encoding {
+  static {
+    __name(this, "RootProductPolynomial");
+  }
+  static kind = "RootProductPolynomial";
+  static uiLabel = "Root-product polynomial (primes as roots)";
+  constructor(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("RootProductPolynomial payload must be RootProductTerm[]");
+    }
+    super(payload, opts);
+  }
+  _equalsPayload(other) {
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      if (!termEquals(this.payload[i], other.payload[i])) return false;
+    }
+    return true;
+  }
+  informationBits() {
+    let total = 0n;
+    for (const term of this.payload) {
+      for (const r of term.roots ?? []) {
+        total += r.multiplicity;
+      }
+    }
+    return Number(total);
+  }
+  describe() {
+    const distinctRoots = /* @__PURE__ */ new Set();
+    for (const term of this.payload) {
+      for (const r of term.roots ?? []) distinctRoots.add(r.value?.breakSymbolicToString?.() ?? "?");
+    }
+    return `RootProductPolynomial(N=${this.payload.length}, distinct_roots=${distinctRoots.size})`;
+  }
+  byteSize() {
+    let total = 0;
+    for (const term of this.payload) {
+      total += 24;
+      total += (term.roots?.length ?? 0) * 32;
+    }
+    return total;
+  }
+};
+function termEquals(a, b) {
+  if (!a || !b) return a === b;
+  if (typeof a.leadingCoeff?.equals === "function") {
+    if (!a.leadingCoeff.equals(b.leadingCoeff)) return false;
+  } else if (a.leadingCoeff !== b.leadingCoeff) {
+    return false;
+  }
+  const aRoots = a.roots ?? [];
+  const bRoots = b.roots ?? [];
+  if (aRoots.length !== bRoots.length) return false;
+  for (let i = 0; i < aRoots.length; i++) {
+    if (aRoots[i].multiplicity !== bRoots[i].multiplicity) return false;
+    const av = aRoots[i].value;
+    const bv = bRoots[i].value;
+    if (typeof av?.equals === "function") {
+      if (!av.equals(bv)) return false;
+    } else if (av !== bv) {
+      return false;
+    }
+  }
+  return true;
+}
+__name(termEquals, "termEquals");
+var MonomialPolynomial = class extends Encoding {
+  static {
+    __name(this, "MonomialPolynomial");
+  }
+  static kind = "MonomialPolynomial";
+  static uiLabel = "Monomial polynomial P(x) = \u03A3 c\u1D62x\u2071";
+  constructor(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("MonomialPolynomial payload must be EGPTReal[]");
+    }
+    super(payload, opts);
+  }
+  get degree() {
+    return Math.max(0, this.payload.length - 1);
+  }
+  _equalsPayload(other) {
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      const a = this.payload[i];
+      const b = other.payload[i];
+      if (typeof a?.equals === "function") {
+        if (!a.equals(b)) return false;
+      } else if (a !== b) {
+        return false;
+      }
+    }
+    return true;
+  }
+  describe() {
+    return `MonomialPolynomial(degree=${this.degree})`;
+  }
+  byteSize() {
+    return this.payload.length * 24;
+  }
+};
+var CANONICAL_TOKEN = Symbol("ValueRepresentation.canonical");
+var ValueRepresentation = class _ValueRepresentation extends Encoding {
+  static {
+    __name(this, "ValueRepresentation");
+  }
+  static kind = "ValueRepresentation";
+  static uiLabel = "Value rep \u2014 P at powers of 2";
+  constructor(payload, opts = {}) {
+    if (opts.witness !== CANONICAL_TOKEN) {
+      throw new Error(
+        "ValueRepresentation cannot be constructed directly. The encoding represents a polynomial sampled at the canonical EGPT base (integer powers of 2); constructing one with arbitrary values would silently break round-trip bijectivity. Use ValueRepresentation.fromMonomial(monomial) or invoke MonomialToValues through a Codec instead."
+      );
+    }
+    if (!Array.isArray(payload)) {
+      throw new TypeError("ValueRepresentation payload must be EGPTReal[]");
+    }
+    if (payload.length === 0) {
+      throw new RangeError("ValueRepresentation requires \u22651 sample");
+    }
+    for (let i = 0; i < payload.length; i++) {
+      const v = payload[i];
+      if (typeof v?.equals !== "function" || typeof v?.breakSymbolicToApproximateBigInt !== "function") {
+        throw new TypeError(
+          `ValueRepresentation payload[${i}] is not an EGPTReal-like value (missing .equals or .breakSymbolicToApproximateBigInt). Did you forget to lift via EGPTReal.fromBigInt(...)?`
+        );
+      }
+    }
+    super(payload, opts);
+  }
+  static fromMonomial(monomial) {
+    if (!monomial || monomial.constructor?.kind !== "MonomialPolynomial") {
+      throw new TypeError(
+        `ValueRepresentation.fromMonomial expects a MonomialPolynomial instance. Got ${monomial?.constructor?.name ?? typeof monomial}.`
+      );
+    }
+    const samples = EGPTPolynomial.toValueRepresentation(monomial.payload ?? []);
+    return new _ValueRepresentation(samples, { witness: CANONICAL_TOKEN });
+  }
+  get degree() {
+    return this.payload.length - 1;
+  }
+  get sampleBase() {
+    return 2n;
+  }
+  _equalsPayload(other) {
+    if (this.payload.length !== other.payload.length) return false;
+    for (let i = 0; i < this.payload.length; i++) {
+      const a = this.payload[i];
+      const b = other.payload[i];
+      if (typeof a?.equals === "function") {
+        if (!a.equals(b)) return false;
+      } else if (a !== b) {
+        return false;
+      }
+    }
+    return true;
+  }
+  describe() {
+    return `ValueRepresentation(degree=${this.degree}, base=2)`;
+  }
+  byteSize() {
+    return this.payload.length * 24;
+  }
+};
+var IntegerN = class extends Encoding {
+  static {
+    __name(this, "IntegerN");
+  }
+  static kind = "IntegerN";
+  static uiLabel = "Integer N";
+  constructor(payload, opts = {}) {
+    if (payload == null) {
+      throw new TypeError("IntegerN payload must be a single EGPTReal.");
+    }
+    if (typeof payload?.isInteger !== "function") {
+      throw new TypeError("IntegerN payload must be an EGPTReal instance.");
+    }
+    if (!payload.isInteger()) {
+      throw new RangeError("IntegerN payload must represent an integer (denominator divides numerator).");
+    }
+    super(payload, opts);
+  }
+  toBigInt() {
+    return this.payload.breakSymbolicToApproximateBigInt();
+  }
+  get sign() {
+    const n = this.toBigInt();
+    if (n === 0n) return 0;
+    return n < 0n ? -1 : 1;
+  }
+  _equalsPayload(other) {
+    if (typeof this.payload?.equals === "function") {
+      return this.payload.equals(other.payload);
+    }
+    return this.payload === other.payload;
+  }
+  describe() {
+    try {
+      const n = this.toBigInt();
+      const s = n.toString();
+      return s.length > 24 ? `IntegerN(${s.slice(0, 24)}\u2026)` : `IntegerN(${s})`;
+    } catch {
+      return "IntegerN(?)";
+    }
+  }
+  byteSize() {
+    return 24;
+  }
+};
+var AtomRootPolynomial = class extends Encoding {
+  static {
+    __name(this, "AtomRootPolynomial");
+  }
+  static kind = "AtomRootPolynomial";
+  static uiLabel = "Atom-root polynomial of N";
+  constructor(payload, opts = {}) {
+    if (payload == null || typeof payload !== "object" || Array.isArray(payload)) {
+      throw new TypeError("AtomRootPolynomial payload must be a single {leadingCoeff, roots} object.");
+    }
+    if (typeof payload.leadingCoeff?.equals !== "function") {
+      throw new TypeError("AtomRootPolynomial.payload.leadingCoeff must be an EGPTReal.");
+    }
+    if (!Array.isArray(payload.roots)) {
+      throw new TypeError("AtomRootPolynomial.payload.roots must be an array.");
+    }
+    for (const r of payload.roots) {
+      if (typeof r?.value?.equals !== "function") {
+        throw new TypeError("AtomRootPolynomial root.value must be an EGPTReal.");
+      }
+      if (typeof r.multiplicity !== "bigint" || r.multiplicity < 0n) {
+        throw new RangeError("AtomRootPolynomial root.multiplicity must be a non-negative bigint.");
+      }
+    }
+    super(payload, opts);
+  }
+  get totalMultiplicity() {
+    let total = 0n;
+    for (const r of this.payload.roots ?? []) total += r.multiplicity;
+    return total;
+  }
+  get distinctRootCount() {
+    return (this.payload.roots ?? []).length;
+  }
+  get degree() {
+    return Number(this.totalMultiplicity);
+  }
+  _equalsPayload(other) {
+    if (!this.payload.leadingCoeff.equals(other.payload.leadingCoeff)) return false;
+    const a = this.payload.roots ?? [];
+    const b = other.payload.roots ?? [];
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i].multiplicity !== b[i].multiplicity) return false;
+      if (!a[i].value.equals(b[i].value)) return false;
+    }
+    return true;
+  }
+  describe() {
+    return `AtomRootPolynomial(degree=${this.degree}, \u03C9=${this.distinctRootCount})`;
+  }
+  byteSize() {
+    const roots = this.payload.roots ?? [];
+    return roots.length * 16 + 16;
+  }
+};
+var MatrixInput = class _MatrixInput extends Encoding {
+  static {
+    __name(this, "MatrixInput");
+  }
+  static kind = "MatrixInput";
+  static uiLabel = "Matrix input (boundary layout)";
+  static fromRow(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("MatrixInput.fromRow expects an EGPTReal[].");
+    }
+    return new _MatrixInput([payload.slice()], { axis: "rows", ...opts });
+  }
+  static fromColumn(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("MatrixInput.fromColumn expects an EGPTReal[].");
+    }
+    return new _MatrixInput(payload.map((v) => [v]), { axis: "cols", ...opts });
+  }
+  constructor(payload, opts = {}) {
+    if (!Array.isArray(payload)) {
+      throw new TypeError("MatrixInput payload must be EGPTReal[][]");
+    }
+    const cols = payload.length === 0 ? 0 : payload[0]?.length ?? 0;
+    for (let i = 0; i < payload.length; i++) {
+      if (!Array.isArray(payload[i])) {
+        throw new TypeError(
+          `MatrixInput row ${i} is not an array (matrix must be EGPTReal[][]).`
+        );
+      }
+      if (payload[i].length !== cols) {
+        throw new TypeError(
+          `MatrixInput is not rectangular: row 0 has length ${cols}, row ${i} has length ${payload[i].length}.`
+        );
+      }
+    }
+    super(payload, opts);
+    const axis = opts.axis ?? "rows";
+    if (axis !== "rows" && axis !== "cols") {
+      throw new TypeError(`MatrixInput axis must be 'rows' or 'cols' (got ${axis}).`);
+    }
+    this.axis = axis;
+  }
+  get rows() {
+    return this.payload.length;
+  }
+  get cols() {
+    return this.payload.length === 0 ? 0 : this.payload[0].length;
+  }
+  _equalsPayload(other) {
+    if (this.axis !== other.axis) return false;
+    if (this.rows !== other.rows || this.cols !== other.cols) return false;
+    for (let i = 0; i < this.rows; i++) {
+      for (let j = 0; j < this.cols; j++) {
+        const a = this.payload[i][j];
+        const b = other.payload[i][j];
+        if (typeof a?.equals === "function") {
+          if (!a.equals(b)) return false;
+        } else if (a !== b) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  describe() {
+    return `MatrixInput(${this.rows}\xD7${this.cols}, axis=${this.axis})`;
+  }
+  byteSize() {
+    return this.rows * this.cols * 24;
+  }
+};
+var MonomialPolynomialBag = makeBagEncoding({
+  name: "MonomialPolynomialBag",
+  uiLabel: "Polynomial bag",
+  elementKind: "MonomialPolynomial",
+  validateElement: /* @__PURE__ */ __name((v) => v instanceof MonomialPolynomial, "validateElement"),
+  elementEquals: /* @__PURE__ */ __name((a, b) => a.equals(b), "elementEquals")
+});
+var ValueRepresentationBag = makeBagEncoding({
+  name: "ValueRepresentationBag",
+  uiLabel: "Value-rep bag",
+  elementKind: "ValueRepresentation",
+  validateElement: /* @__PURE__ */ __name((v) => v instanceof ValueRepresentation, "validateElement"),
+  elementEquals: /* @__PURE__ */ __name((a, b) => a.equals(b), "elementEquals")
+});
+var PrimeBasis = class extends Encoding {
+  static {
+    __name(this, "PrimeBasis");
+  }
+  static kind = "PrimeBasis";
+  static uiLabel = "Prime basis (pre-factored bag)";
+  constructor(payload, opts = {}) {
+    if (payload == null || typeof payload !== "object") {
+      throw new TypeError("PrimeBasis payload must be an object.");
+    }
+    const { basis, primeCache, exponents, signs, cofactors } = payload;
+    if (!Array.isArray(basis)) {
+      throw new TypeError("PrimeBasis: payload.basis must be a number[].");
+    }
+    for (let j = 0; j < basis.length; j++) {
+      if (!Number.isInteger(basis[j]) || basis[j] < 0) {
+        throw new TypeError(
+          `PrimeBasis: basis[${j}] must be a non-negative integer index, got ${basis[j]}.`
+        );
+      }
+      if (j > 0 && basis[j] <= basis[j - 1]) {
+        throw new RangeError(
+          "PrimeBasis: payload.basis must be sorted strictly ascending with no duplicates."
+        );
+      }
+    }
+    if (basis.length > 0 && primeCache == null) {
+      throw new TypeError(
+        "PrimeBasis: payload.primeCache is required when basis is non-empty."
+      );
+    }
+    if (!Array.isArray(exponents)) {
+      throw new TypeError("PrimeBasis: payload.exponents must be an Int32Array[].");
+    }
+    for (let i = 0; i < exponents.length; i++) {
+      if (!(exponents[i] instanceof Int32Array)) {
+        throw new TypeError(
+          `PrimeBasis: exponents[${i}] must be an Int32Array.`
+        );
+      }
+      if (exponents[i].length !== basis.length) {
+        throw new RangeError(
+          `PrimeBasis: exponents[${i}].length (${exponents[i].length}) does not match basis.length (${basis.length}).`
+        );
+      }
+    }
+    if (!(signs instanceof Int8Array)) {
+      throw new TypeError("PrimeBasis: payload.signs must be an Int8Array.");
+    }
+    if (signs.length !== exponents.length) {
+      throw new RangeError(
+        `PrimeBasis: signs.length (${signs.length}) does not match exponents.length (${exponents.length}).`
+      );
+    }
+    for (let i = 0; i < signs.length; i++) {
+      if (signs[i] !== 1 && signs[i] !== -1) {
+        throw new RangeError(
+          `PrimeBasis: signs[${i}] must be +1 or -1 (PPF-no-zero); got ${signs[i]}.`
+        );
+      }
+    }
+    if (!Array.isArray(cofactors)) {
+      throw new TypeError("PrimeBasis: payload.cofactors must be a bigint[].");
+    }
+    if (cofactors.length !== exponents.length) {
+      throw new RangeError(
+        `PrimeBasis: cofactors.length (${cofactors.length}) does not match exponents.length (${exponents.length}).`
+      );
+    }
+    for (let i = 0; i < cofactors.length; i++) {
+      if (typeof cofactors[i] !== "bigint") {
+        throw new TypeError(
+          `PrimeBasis: cofactors[${i}] must be a bigint, got ${typeof cofactors[i]}.`
+        );
+      }
+      if (cofactors[i] <= 0n) {
+        throw new RangeError(
+          `PrimeBasis: cofactors[${i}] must be strictly positive (PPF-no-zero); got ${cofactors[i]}.`
+        );
+      }
+    }
+    super(payload, opts);
+  }
+  get size() {
+    return this.payload.exponents.length;
+  }
+  _equalsPayload(other) {
+    const a = this.payload;
+    const b = other.payload;
+    if (a.basis.length !== b.basis.length) return false;
+    for (let j = 0; j < a.basis.length; j++) {
+      if (a.basis[j] !== b.basis[j]) return false;
+    }
+    if (a.basis.length > 0 && a.primeCache != null && b.primeCache != null) {
+      const pa = a.primeCache.primes();
+      const pb = b.primeCache.primes();
+      for (let j = 0; j < a.basis.length; j++) {
+        const idx = a.basis[j];
+        if (pa[idx] !== pb[idx]) return false;
+      }
+    }
+    if (a.exponents.length !== b.exponents.length) return false;
+    for (let i = 0; i < a.exponents.length; i++) {
+      const ea = a.exponents[i];
+      const eb = b.exponents[i];
+      if (ea.length !== eb.length) return false;
+      for (let j = 0; j < ea.length; j++) {
+        if (ea[j] !== eb[j]) return false;
+      }
+    }
+    if (a.signs.length !== b.signs.length) return false;
+    for (let i = 0; i < a.signs.length; i++) {
+      if (a.signs[i] !== b.signs[i]) return false;
+    }
+    if (a.cofactors.length !== b.cofactors.length) return false;
+    for (let i = 0; i < a.cofactors.length; i++) {
+      if (a.cofactors[i] !== b.cofactors[i]) return false;
+    }
+    return true;
+  }
+  describe() {
+    return `PrimeBasis(size=${this.size}, basis=${this.payload.basis.length})`;
+  }
+  byteSize() {
+    const p = this.payload;
+    let total = 0;
+    total += p.basis.length * 4;
+    const SPARSE_PAIR_BYTES = 3;
+    for (const row of p.exponents) {
+      let nonzero = 0;
+      for (let j = 0; j < row.length; j++) {
+        if (row[j] !== 0) nonzero++;
+      }
+      total += nonzero * SPARSE_PAIR_BYTES;
+    }
+    total += p.signs.byteLength;
+    total += p.cofactors.length * 24;
+    return total;
+  }
+};
+var OddPartIndex = class extends Encoding {
+  static {
+    __name(this, "OddPartIndex");
+  }
+  static kind = "OddPartIndex";
+  static uiLabel = "Odd-part redundancy index";
+  constructor(payload, opts = {}) {
+    if (payload == null || typeof payload !== "object") {
+      throw new TypeError("OddPartIndex payload must be an object.");
+    }
+    const { totalElements, uniqueOddParts, compressionRatio, groups, denominators } = payload;
+    if (!Number.isInteger(totalElements) || totalElements < 0) {
+      throw new TypeError(
+        `OddPartIndex: payload.totalElements must be a non-negative integer, got ${totalElements}.`
+      );
+    }
+    if (!Number.isInteger(uniqueOddParts) || uniqueOddParts < 0) {
+      throw new TypeError(
+        `OddPartIndex: payload.uniqueOddParts must be a non-negative integer, got ${uniqueOddParts}.`
+      );
+    }
+    if (typeof compressionRatio !== "number" || !Number.isFinite(compressionRatio) || compressionRatio < 0) {
+      throw new TypeError(
+        `OddPartIndex: payload.compressionRatio must be a non-negative finite number, got ${compressionRatio}.`
+      );
+    }
+    if (!Array.isArray(groups)) {
+      throw new TypeError("OddPartIndex: payload.groups must be an array.");
+    }
+    if (groups.length !== uniqueOddParts) {
+      throw new RangeError(
+        `OddPartIndex: groups.length (${groups.length}) does not match uniqueOddParts (${uniqueOddParts}).`
+      );
+    }
+    let prevOdd = null;
+    for (let g = 0; g < groups.length; g++) {
+      const grp = groups[g];
+      if (grp == null || typeof grp !== "object") {
+        throw new TypeError(`OddPartIndex: groups[${g}] must be an object.`);
+      }
+      if (typeof grp.odd !== "bigint") {
+        throw new TypeError(
+          `OddPartIndex: groups[${g}].odd must be a bigint, got ${typeof grp.odd}.`
+        );
+      }
+      if (grp.odd <= 0n || (grp.odd & 1n) === 0n) {
+        throw new RangeError(
+          `OddPartIndex: groups[${g}].odd must be a strictly positive odd bigint, got ${grp.odd}.`
+        );
+      }
+      if (prevOdd !== null && grp.odd <= prevOdd) {
+        throw new RangeError(
+          `OddPartIndex: groups must be strictly ascending by odd; groups[${g}].odd=${grp.odd} is not > groups[${g - 1}].odd=${prevOdd}.`
+        );
+      }
+      prevOdd = grp.odd;
+      if (!Array.isArray(grp.members) || grp.members.length === 0) {
+        throw new RangeError(
+          `OddPartIndex: groups[${g}].members must be a non-empty array.`
+        );
+      }
+      for (let m = 0; m < grp.members.length; m++) {
+        const mem = grp.members[m];
+        if (mem == null || typeof mem !== "object") {
+          throw new TypeError(
+            `OddPartIndex: groups[${g}].members[${m}] must be an object.`
+          );
+        }
+        if (!Number.isInteger(mem.position) || mem.position < 0) {
+          throw new TypeError(
+            `OddPartIndex: groups[${g}].members[${m}].position must be a non-negative integer.`
+          );
+        }
+        if (!Number.isInteger(mem.shift) || mem.shift < 0) {
+          throw new TypeError(
+            `OddPartIndex: groups[${g}].members[${m}].shift must be a non-negative integer.`
+          );
+        }
+        if (mem.sign !== 1 && mem.sign !== -1) {
+          throw new RangeError(
+            `OddPartIndex: groups[${g}].members[${m}].sign must be +1 or -1, got ${mem.sign}.`
+          );
+        }
+      }
+    }
+    if (denominators !== void 0) {
+      if (!Array.isArray(denominators)) {
+        throw new TypeError(
+          "OddPartIndex: payload.denominators must be a bigint[] when present."
+        );
+      }
+      if (denominators.length !== totalElements) {
+        throw new RangeError(
+          `OddPartIndex: denominators.length (${denominators.length}) does not match totalElements (${totalElements}).`
+        );
+      }
+      for (let i = 0; i < denominators.length; i++) {
+        if (typeof denominators[i] !== "bigint") {
+          throw new TypeError(
+            `OddPartIndex: denominators[${i}] must be a bigint, got ${typeof denominators[i]}.`
+          );
+        }
+        if (denominators[i] <= 0n) {
+          throw new RangeError(
+            `OddPartIndex: denominators[${i}] must be strictly positive (PPF-no-zero); got ${denominators[i]}.`
+          );
+        }
+      }
+    }
+    super(payload, opts);
+  }
+  get isBijective() {
+    return Array.isArray(this.payload.denominators);
+  }
+  _equalsPayload(other) {
+    const a = this.payload;
+    const b = other.payload;
+    if (a.totalElements !== b.totalElements) return false;
+    if (a.uniqueOddParts !== b.uniqueOddParts) return false;
+    if (a.compressionRatio !== b.compressionRatio) return false;
+    if (a.groups.length !== b.groups.length) return false;
+    for (let g = 0; g < a.groups.length; g++) {
+      const ga = a.groups[g];
+      const gb = b.groups[g];
+      if (ga.odd !== gb.odd) return false;
+      if (ga.members.length !== gb.members.length) return false;
+      for (let m = 0; m < ga.members.length; m++) {
+        const ma = ga.members[m];
+        const mb = gb.members[m];
+        if (ma.position !== mb.position) return false;
+        if (ma.shift !== mb.shift) return false;
+        if (ma.sign !== mb.sign) return false;
+      }
+    }
+    const aHasDen = Array.isArray(a.denominators);
+    const bHasDen = Array.isArray(b.denominators);
+    if (aHasDen !== bHasDen) return false;
+    if (aHasDen) {
+      if (a.denominators.length !== b.denominators.length) return false;
+      for (let i = 0; i < a.denominators.length; i++) {
+        if (a.denominators[i] !== b.denominators[i]) return false;
+      }
+    }
+    return true;
+  }
+  describe() {
+    const p = this.payload;
+    return `OddPartIndex(total=${p.totalElements}, unique=${p.uniqueOddParts}, ratio=${p.compressionRatio.toFixed(2)})`;
+  }
+  byteSize() {
+    return 64;
+  }
+};
+
+// src/browser/codec/transforms.js
+function _fromLift(json) {
+  const l = JSON.parse(json);
+  return l.zero ? dispatchFromBigInt(0n) : dispatchFromRational(BigInt(l.n), BigInt(l.d));
+}
+__name(_fromLift, "_fromLift");
+function unpackIEEEBitsToEGPTReal(bits, format) {
+  return _fromLift(callWasm("codecIeeeUnpack", String(BigInt(bits)), `${format}`));
+}
+__name(unpackIEEEBitsToEGPTReal, "unpackIEEEBitsToEGPTReal");
+function egptRealToIEEEBits(egpt, format, options = {}) {
+  const policy = options.policy ?? "exact";
+  callWasm("codecIeeeEncodeCheck", `${format}`, `${policy}`, JSON.stringify(policy));
+  const { numerator, denominator } = dispatchRationalParts(egpt);
+  return callWasm(
+    "codecIeeeEncode",
+    String(numerator),
+    String(denominator),
+    `${format}`,
+    `${policy}`,
+    JSON.stringify(policy)
+  );
+}
+__name(egptRealToIEEEBits, "egptRealToIEEEBits");
+function quantizeF64ToIEEEBits(x, format, options = {}) {
+  const policy = options.policy ?? "round-nearest-ties-even";
+  const isFinite = Number.isFinite(x);
+  return callWasm(
+    "codecIeeeQuantize",
+    isFinite ? x : 0,
+    Number.isNaN(x),
+    isFinite,
+    isFinite ? `${x}` : "",
+    `${format}`,
+    `${policy}`,
+    JSON.stringify(policy)
+  );
+}
+__name(quantizeF64ToIEEEBits, "quantizeF64ToIEEEBits");
+function bitsToF64(bits, format) {
+  const egpt = unpackIEEEBitsToEGPTReal(bits, format);
+  return dispatchBreakToJSNumber(egpt);
+}
+__name(bitsToF64, "bitsToF64");
+function floatRationalParts(f) {
+  if (!Number.isFinite(f)) throw new Error(`floatToEGPT: non-finite ${f}`);
+  const l = JSON.parse(callWasm("codecF64Lift", f));
+  return l.zero ? { numerator: 0n, denominator: 1n } : { numerator: BigInt(l.n), denominator: BigInt(l.d) };
+}
+__name(floatRationalParts, "floatRationalParts");
+var fp32Scratch = new Float32Array(1);
+function captureHostValue(value, format, { asBitPatterns = false, policy = "round-nearest-ties-even" } = {}) {
+  switch (format) {
+    case "fp16":
+    case "bfloat16": {
+      const bits = asBitPatterns ? value : quantizeF64ToIEEEBits(value, format, { policy });
+      return unpackIEEEBitsToEGPTReal(bits, format);
+    }
+    case "fp32": {
+      fp32Scratch[0] = value;
+      const { numerator, denominator } = floatRationalParts(fp32Scratch[0]);
+      return dispatchFromRational(numerator, denominator);
+    }
+    case "fp64": {
+      const { numerator, denominator } = floatRationalParts(value);
+      return dispatchFromRational(numerator, denominator);
+    }
+    case "int32":
+      if (!Number.isInteger(value)) {
+        throw new Error(`int32 payload element must be integer; got ${value}`);
+      }
+      return dispatchFromBigInt(BigInt(value));
+    case "int64":
+      if (typeof value !== "bigint") {
+        throw new Error(`int64 payload element must be bigint; got ${typeof value}`);
+      }
+      return dispatchFromBigInt(value);
+    default:
+      throw new Error(`captureHostValue: unsupported format ${format}`);
+  }
+}
+__name(captureHostValue, "captureHostValue");
+var fp32OutScratch = new Float32Array(1);
+function decodeToHostValue(egpt, format, { asBitPatterns = false, policy = "exact" } = {}) {
+  switch (format) {
+    case "fp16":
+    case "bfloat16": {
+      const bits = egptRealToIEEEBits(egpt, format, { policy });
+      if (asBitPatterns) return bits;
+      return bitsToF64(bits, format);
+    }
+    case "fp32": {
+      fp32OutScratch[0] = dispatchBreakToJSNumber(egpt);
+      return fp32OutScratch[0];
+    }
+    case "fp64":
+      return dispatchBreakToJSNumber(egpt);
+    case "int32": {
+      const n = dispatchBreakToBigInt(egpt);
+      const asNum = Number(n);
+      if (!Number.isSafeInteger(asNum) || asNum < -2147483648 || asNum > 2147483647) {
+        throw new Error(`int32 decode: value ${n} out of range`);
+      }
+      return asNum;
+    }
+    case "int64":
+      return dispatchBreakToBigInt(egpt);
+    default:
+      throw new Error(`decodeToHostValue: unsupported format ${format}`);
+  }
+}
+__name(decodeToHostValue, "decodeToHostValue");
+var HostFloatsToEGPTReal = class extends EncodingTransform {
+  static {
+    __name(this, "HostFloatsToEGPTReal");
+  }
+  static inputKind = "HostFloats";
+  static outputKind = "EGPTRealBag";
+  static invertible = true;
+  static uiLabel = "Lift to PPF";
+  static letterCode = "boundary";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Every finite IEEE-754 float is a dyadic rational; the lift transports bits rather than approximating a value.",
+    leanCitation: "PPF boundary \u2014 boundary/README.md claims 1\u20133; EGPT IN40/41/42, F12."
+  };
+  constructor(params = {}) {
+    super(params);
+    this._lastObservedFormat = null;
+    this._policy = params.policy ?? "round-nearest-ties-even";
+  }
+  apply(input, { trace } = {}) {
+    if (!(input instanceof HostFloats)) {
+      throw new TypeError("HostFloatsToEGPTReal expects a HostFloats input.");
+    }
+    const format = input.format;
+    this._lastObservedFormat = format;
+    this._lastAsBitPatterns = input.asBitPatterns;
+    const asBitPatterns = input.asBitPatterns;
+    const policy = this._policy;
+    const out = new Array(input.payload.length);
+    for (let i = 0; i < input.payload.length; i++) {
+      out[i] = captureHostValue(input.payload[i], format, { asBitPatterns, policy });
+      trace?.opTrace?.record?.(`captureHostValue:${format}`, 0);
+    }
+    return new EGPTRealBag(out);
+  }
+  inverse() {
+    return new EGPTRealToHostFloats({
+      format: this._lastObservedFormat ?? "fp64",
+      asBitPatterns: this._lastAsBitPatterns ?? false
+    });
+  }
+};
+var EGPTRealToHostFloats = class extends EncodingTransform {
+  static {
+    __name(this, "EGPTRealToHostFloats");
+  }
+  static inputKind = "EGPTRealBag";
+  static outputKind = "HostFloats";
+  static invertible = true;
+  static uiLabel = "Decode to host floats";
+  static letterCode = "boundary";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Round-tripping a finite host value through PPF is bit-exact within the finite prime basis.",
+    leanCitation: "PPF boundary \u2014 boundary/README.md claim 2 (source-indifferent lift)."
+  };
+  constructor(params = {}) {
+    super(params);
+    const format = params.format ?? "fp64";
+    if (!SUPPORTED_FORMATS.includes(format)) {
+      throw new TypeError(
+        `EGPTRealToHostFloats: params.format must be \u2208 {${SUPPORTED_FORMATS.join(", ")}}; got ${JSON.stringify(format)}.`
+      );
+    }
+    this.format = format;
+    const policy = params.policy ?? "exact";
+    if (policy !== "exact" && policy !== "truncate") {
+      throw new TypeError(
+        `EGPTRealToHostFloats: params.policy must be \u2208 {'exact', 'truncate'}; got ${JSON.stringify(policy)}.`
+      );
+    }
+    this.policy = policy;
+    this.asBitPatterns = params.asBitPatterns ?? false;
+  }
+  apply(input, { trace } = {}) {
+    if (!(input instanceof EGPTRealBag)) {
+      throw new TypeError("EGPTRealToHostFloats expects an EGPTRealBag input.");
+    }
+    const format = this.format;
+    const asBitPatterns = this.asBitPatterns;
+    const policy = this.policy;
+    const out = new Array(input.payload.length);
+    for (let i = 0; i < input.payload.length; i++) {
+      out[i] = decodeToHostValue(input.payload[i], format, { asBitPatterns, policy });
+      trace?.opTrace?.record?.(`decodeToHostValue:${format}`, 0);
+    }
+    return new HostFloats(out, { format, asBitPatterns });
+  }
+  inverse() {
+    return new HostFloatsToEGPTReal();
+  }
+};
+var EGPTRealToPolynomial = class extends EncodingTransform {
+  static {
+    __name(this, "EGPTRealToPolynomial");
+  }
+  static inputKind = "EGPTRealBag";
+  static outputKind = "PolynomialCoefficients";
+  static invertible = true;
+  static uiLabel = "Pack as coefficients";
+  static letterCode = "E";
+  static provenance = {
+    tier: "structural",
+    claim: "A list of EGPTReals is a polynomial in ascending powers by construction."
+  };
+  apply(input) {
+    if (!(input instanceof EGPTRealBag)) {
+      throw new TypeError("EGPTRealToPolynomial expects an EGPTRealBag input.");
+    }
+    return new PolynomialCoefficients(input.payload, { L: input.L });
+  }
+  inverse() {
+    return new PolynomialToEGPTReal();
+  }
+};
+var PolynomialToEGPTReal = class extends EncodingTransform {
+  static {
+    __name(this, "PolynomialToEGPTReal");
+  }
+  static inputKind = "PolynomialCoefficients";
+  static outputKind = "EGPTRealBag";
+  static invertible = true;
+  static uiLabel = "Unpack coefficients";
+  static letterCode = "E";
+  static provenance = {
+    tier: "structural",
+    claim: "Inverse of EGPTRealToPolynomial \u2014 a polynomial in ascending powers is a list of its EGPTReal coefficients."
+  };
+  apply(input) {
+    if (!(input instanceof PolynomialCoefficients)) {
+      throw new TypeError("PolynomialToEGPTReal expects a PolynomialCoefficients input.");
+    }
+    return new EGPTRealBag(input.payload, { L: input.L });
+  }
+  inverse() {
+    return new EGPTRealToPolynomial();
+  }
+};
+var PolynomialToFFT = class extends EncodingTransform {
+  static {
+    __name(this, "PolynomialToFFT");
+  }
+  static inputKind = "PolynomialCoefficients";
+  static outputKind = "FFTSamples";
+  static invertible = true;
+  static uiLabel = "Polynomial \u2192 signal";
+  static letterCode = "W";
+  static provenance = {
+    tier: "structural",
+    claim: "Horner evaluation of a polynomial at the uniform rational nodes x_k = k/N is a bijection onto the values lane.",
+    leanCitation: "W1 in theorems/W_FFTPolynomialMatrixIsomorphism.js"
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof PolynomialCoefficients)) {
+      throw new TypeError("PolynomialToFFT expects a PolynomialCoefficients input.");
+    }
+    const values = EGPTFFT.forward(input.payload, input.payload.length);
+    trace?.opTrace?.record?.("EGPTFFT.forward", input.payload.length);
+    return new FFTSamples(values, { L: input.L });
+  }
+  inverse() {
+    return new FFTToPolynomial();
+  }
+};
+var FFTToPolynomial = class extends EncodingTransform {
+  static {
+    __name(this, "FFTToPolynomial");
+  }
+  static inputKind = "FFTSamples";
+  static outputKind = "PolynomialCoefficients";
+  static invertible = true;
+  static uiLabel = "Signal \u2192 polynomial";
+  static letterCode = "W";
+  static provenance = {
+    tier: "structural",
+    claim: "Newton divided differences in canonical space reconstruct coefficients from uniform-node values bit-exactly.",
+    leanCitation: "W2 in theorems/W_FFTPolynomialMatrixIsomorphism.js"
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof FFTSamples)) {
+      throw new TypeError("FFTToPolynomial expects an FFTSamples input.");
+    }
+    const coeffs = EGPTFFT.inverse(input.payload, input.payload.length);
+    trace?.opTrace?.record?.("EGPTFFT.inverse", input.payload.length);
+    return new PolynomialCoefficients(coeffs, { L: input.L });
+  }
+  inverse() {
+    return new PolynomialToFFT();
+  }
+};
+var EGPTRealToPrimeAtoms = class extends EncodingTransform {
+  static {
+    __name(this, "EGPTRealToPrimeAtoms");
+  }
+  static inputKind = "EGPTRealBag";
+  static outputKind = "PrimeAtomVector";
+  static invertible = true;
+  static uiLabel = "Factor into prime atoms";
+  static letterCode = "N";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Every EGPTReal factors uniquely into v\u20D7(n) = (v_2, v_3, v_5, \u2026) with sign and signed exponents. Multiplication in normal space is per-prime addition in this log space (LFTA, EGPT IN40/IN41/IN42, F12).",
+    leanCitation: "EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (Analysis.lean); F12 in PeqNP_QED.md; spaces/log/PrimeAtomPolynomial.js is the canonical witness."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof EGPTRealBag)) {
+      throw new TypeError("EGPTRealToPrimeAtoms expects an EGPTRealBag input.");
+    }
+    const out = new Array(input.payload.length);
+    for (let i = 0; i < input.payload.length; i++) {
+      out[i] = dispatchToPrimeAtoms(input.payload[i]);
+      trace?.opTrace?.record?.("EGPTReal.toPrimeAtoms", 0);
+    }
+    return new PrimeAtomVector(out);
+  }
+  inverse() {
+    return new PrimeAtomsToEGPTReal();
+  }
+};
+var PrimeAtomsToEGPTReal = class extends EncodingTransform {
+  static {
+    __name(this, "PrimeAtomsToEGPTReal");
+  }
+  static inputKind = "PrimeAtomVector";
+  static outputKind = "EGPTRealBag";
+  static invertible = true;
+  static uiLabel = "Compose from atoms";
+  static letterCode = "N";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Inverse of EGPTRealToPrimeAtoms \u2014 reconstruct n = sign \xB7 \u03A0 prime^exponent. LFTA guarantees this is a bijection; round-trip is bit-exact (EGPT IN40/IN41/IN42, F12).",
+    leanCitation: "EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (Analysis.lean)."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof PrimeAtomVector)) {
+      throw new TypeError("PrimeAtomsToEGPTReal expects a PrimeAtomVector input.");
+    }
+    const out = new Array(input.payload.length);
+    for (let i = 0; i < input.payload.length; i++) {
+      out[i] = dispatchFromAtomVec(input.payload[i]);
+      trace?.opTrace?.record?.("EGPTReal.fromAtomVec", 0);
+    }
+    return new EGPTRealBag(out);
+  }
+  inverse() {
+    return new EGPTRealToPrimeAtoms();
+  }
+};
+var PrimeAtomsToRootProduct = class extends EncodingTransform {
+  static {
+    __name(this, "PrimeAtomsToRootProduct");
+  }
+  static inputKind = "PrimeAtomVector";
+  static outputKind = "RootProductPolynomial";
+  static invertible = true;
+  static uiLabel = "Primes as roots";
+  static letterCode = "N";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "N2: every positive integer N has the algebraic representation P_N(x) = \u220F_p (x \u2212 p)^{v_p(N)} where the primes ARE the roots. FTA + LFTA make this a bijection with PrimeAtomVector.",
+    leanCitation: "EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (Analysis.lean); N2 in lib/egpt/js/model/theorems/N_NumberTheoryFourViews.js."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof PrimeAtomVector)) {
+      throw new TypeError("PrimeAtomsToRootProduct expects a PrimeAtomVector input.");
+    }
+    const out = new Array(input.payload.length);
+    for (let i = 0; i < input.payload.length; i++) {
+      out[i] = atomVecToRootProduct(input.payload[i]);
+      trace?.opTrace?.record?.("PrimeAtomsToRootProduct.project", 0);
+    }
+    return new RootProductPolynomial(out);
+  }
+  inverse() {
+    return new RootProductToPrimeAtoms();
+  }
+};
+function atomVecToRootProduct(atom) {
+  if (!atom || atom.sign === 0) {
+    return { leadingCoeff: dispatchFromBigInt(0n), roots: [] };
+  }
+  const roots = [];
+  for (const { prime, exponent } of atom.factors ?? []) {
+    if (exponent < 0n) {
+      throw new Error(
+        `PrimeAtomsToRootProduct: negative exponent on prime ${prime} (got ${exponent}). Root-product polynomials are integer-only; rationals require a separate encoding.`
+      );
+    }
+    if (exponent === 0n) continue;
+    roots.push({
+      value: dispatchFromBigInt(prime),
+      multiplicity: exponent
+    });
+  }
+  const leadingCoeff = atom.sign === -1 ? dispatchFromBigInt(-1n) : dispatchFromBigInt(1n);
+  return { leadingCoeff, roots };
+}
+__name(atomVecToRootProduct, "atomVecToRootProduct");
+var RootProductToPrimeAtoms = class extends EncodingTransform {
+  static {
+    __name(this, "RootProductToPrimeAtoms");
+  }
+  static inputKind = "RootProductPolynomial";
+  static outputKind = "PrimeAtomVector";
+  static invertible = true;
+  static uiLabel = "Roots as primes";
+  static letterCode = "N";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Inverse of N2: reconstruct the LFTA prime-exponent vector by reading the leadingCoeff sign and treating each root as a prime atom with multiplicity as its exponent. FTA bijection guarantees the round-trip is exact.",
+    leanCitation: "EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (Analysis.lean)."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof RootProductPolynomial)) {
+      throw new TypeError("RootProductToPrimeAtoms expects a RootProductPolynomial input.");
+    }
+    const out = new Array(input.payload.length);
+    for (let i = 0; i < input.payload.length; i++) {
+      out[i] = rootProductToAtomVec(input.payload[i]);
+      trace?.opTrace?.record?.("RootProductToPrimeAtoms.lift", 0);
+    }
+    return new PrimeAtomVector(out);
+  }
+  inverse() {
+    return new PrimeAtomsToRootProduct();
+  }
+};
+function rootProductToAtomVec(term) {
+  if (!term) return { sign: 0, factors: [] };
+  const lc = term.leadingCoeff;
+  if (lc == null) return { sign: 0, factors: [] };
+  let sign;
+  try {
+    const { numerator } = dispatchRationalParts(lc);
+    if (numerator === 0n) return { sign: 0, factors: [] };
+    sign = numerator < 0n ? -1 : 1;
+  } catch {
+    return { sign: 0, factors: [] };
+  }
+  const factors = [];
+  for (const r of term.roots ?? []) {
+    const { numerator, denominator } = dispatchRationalParts(r.value);
+    if (denominator !== 1n) {
+      throw new Error(
+        `RootProductToPrimeAtoms: non-integer root ${numerator}/${denominator}; this RootProductPolynomial is outside the integer-prime image of the bijection.`
+      );
+    }
+    if (numerator < 2n) {
+      throw new Error(
+        `RootProductToPrimeAtoms: root ${numerator} is not a prime (\u2265 2 required).`
+      );
+    }
+    if (r.multiplicity <= 0n) {
+      throw new Error(
+        `RootProductToPrimeAtoms: non-positive multiplicity ${r.multiplicity}; expected a positive integer.`
+      );
+    }
+    factors.push({
+      prime: numerator,
+      exponent: r.multiplicity
+    });
+  }
+  return { sign, factors };
+}
+__name(rootProductToAtomVec, "rootProductToAtomVec");
+var CoefficientsToMonomial = class extends EncodingTransform {
+  static {
+    __name(this, "CoefficientsToMonomial");
+  }
+  static inputKind = "PolynomialCoefficients";
+  static outputKind = "MonomialPolynomial";
+  static invertible = true;
+  static uiLabel = "View as monomial polynomial";
+  static letterCode = "T";
+  static provenance = {
+    tier: "structural",
+    claim: "A coefficient list c\u2080, c\u2081, \u2026, c\u2099 in ascending powers IS a polynomial in monomial basis: P(x) = \u03A3 c\u1D62x\u2071. The bijection is identity on the payload \u2014 no math, only basis labelling.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T1: polynomial evaluation \u2261 Vandermonde dot product)."
+  };
+  apply(input) {
+    if (!(input instanceof PolynomialCoefficients)) {
+      throw new TypeError("CoefficientsToMonomial expects a PolynomialCoefficients input.");
+    }
+    return new MonomialPolynomial(input.payload);
+  }
+  inverse() {
+    return new MonomialToCoefficients();
+  }
+};
+var MonomialToCoefficients = class extends EncodingTransform {
+  static {
+    __name(this, "MonomialToCoefficients");
+  }
+  static inputKind = "MonomialPolynomial";
+  static outputKind = "PolynomialCoefficients";
+  static invertible = true;
+  static uiLabel = "View as coefficient list";
+  static letterCode = "T";
+  static provenance = {
+    tier: "structural",
+    claim: "Inverse of CoefficientsToMonomial \u2014 extract the coefficient list from the monomial-basis polynomial. Identity on payload.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T1)."
+  };
+  apply(input) {
+    if (!(input instanceof MonomialPolynomial)) {
+      throw new TypeError("MonomialToCoefficients expects a MonomialPolynomial input.");
+    }
+    return new PolynomialCoefficients(input.payload);
+  }
+  inverse() {
+    return new CoefficientsToMonomial();
+  }
+};
+var MonomialToValues = class extends EncodingTransform {
+  static {
+    __name(this, "MonomialToValues");
+  }
+  static inputKind = "MonomialPolynomial";
+  static outputKind = "ValueRepresentation";
+  static invertible = true;
+  static uiLabel = "Sample at powers of 2";
+  static letterCode = "V";
+  static provenance = {
+    tier: "structural",
+    claim: "Horner evaluation of P(x) at x = 2^k for k=0..D produces the canonical EGPT value representation. Integer powers of 2 are the IOP-aligned sample base (Address-is-the-Map).",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T1: polynomial evaluation \u2261 Vandermonde dot product); EGPT corpus EGPT_FTA \xA78."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof MonomialPolynomial)) {
+      throw new TypeError("MonomialToValues expects a MonomialPolynomial input.");
+    }
+    const sampleCount = Math.max(1, input.payload?.length ?? 0);
+    trace?.opTrace?.record?.("EGPTPolynomial.evaluateAt", sampleCount * sampleCount);
+    return ValueRepresentation.fromMonomial(input);
+  }
+  inverse() {
+    return new ValuesToMonomial();
+  }
+};
+var ValuesToMonomial = class extends EncodingTransform {
+  static {
+    __name(this, "ValuesToMonomial");
+  }
+  static inputKind = "ValueRepresentation";
+  static outputKind = "MonomialPolynomial";
+  static invertible = true;
+  static uiLabel = "Recover coefficients (Newton DD)";
+  static letterCode = "V";
+  static provenance = {
+    tier: "structural",
+    claim: "Newton divided differences at distinct integer nodes recovers the unique polynomial of degree \u2264 D from its D+1 values. Bit-exact and O(N\xB2) over rationals.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T2: Vandermonde inverse \u2014 analytical warrant for uniqueness of the recovered polynomial)."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof ValueRepresentation)) {
+      throw new TypeError("ValuesToMonomial expects a ValueRepresentation input.");
+    }
+    const monomialCoeffs = EGPTPolynomial.fromValueRepresentation(input.payload);
+    trace?.opTrace?.record?.("EGPTPolynomial.fromValueRepresentation", input.payload.length * input.payload.length);
+    return new MonomialPolynomial(monomialCoeffs);
+  }
+  inverse() {
+    return new MonomialToValues();
+  }
+};
+var HostFloatsToIntegerN = class extends EncodingTransform {
+  static {
+    __name(this, "HostFloatsToIntegerN");
+  }
+  static inputKind = "HostFloats";
+  static outputKind = "IntegerN";
+  static invertible = true;
+  static uiLabel = "Lift to integer N";
+  static letterCode = "T";
+  static provenance = {
+    tier: "structural",
+    claim: "A length-1 HostFloats with an integer-valued sample lifts to an IntegerN. Identity-on-value; cardinality reshape from per-element bag to scalar.",
+    leanCitation: "EGPT/NumberTheory/Core.lean (equivParticlePathToNat) \u2014 IntegerN is the codec-graph surface of the ParticlePath primitive."
+  };
+  apply(input) {
+    if (!(input instanceof HostFloats)) {
+      throw new TypeError("HostFloatsToIntegerN expects a HostFloats input.");
+    }
+    if (input.payload.length !== 1) {
+      throw new RangeError(
+        `HostFloatsToIntegerN expects exactly one sample, got ${input.payload.length}.`
+      );
+    }
+    const v = input.payload[0];
+    const big = coerceToInteger(v, input.format);
+    return new IntegerN(dispatchFromBigInt(big));
+  }
+  inverse() {
+    return new IntegerNToHostFloats();
+  }
+};
+function coerceToInteger(value, format) {
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new RangeError(`HostFloatsToIntegerN: non-finite sample ${value}.`);
+    }
+    if (!Number.isInteger(value)) {
+      throw new RangeError(
+        `HostFloatsToIntegerN: sample ${value} is not integer-valued (format=${format}). Use HostFloatsToEGPTReal for fractional inputs.`
+      );
+    }
+    return BigInt(value);
+  }
+  throw new TypeError(`HostFloatsToIntegerN: unsupported sample type ${typeof value}.`);
+}
+__name(coerceToInteger, "coerceToInteger");
+var IntegerNToHostFloats = class extends EncodingTransform {
+  static {
+    __name(this, "IntegerNToHostFloats");
+  }
+  static inputKind = "IntegerN";
+  static outputKind = "HostFloats";
+  static invertible = true;
+  static uiLabel = "Decode to host integer";
+  static letterCode = "T";
+  static provenance = {
+    tier: "structural",
+    claim: "IntegerN \u21A6 HostFloats with single int sample. Identity-on-value cardinality reshape.",
+    leanCitation: "EGPT/NumberTheory/Core.lean (equivParticlePathToNat)."
+  };
+  constructor(opts = {}) {
+    super();
+    this.format = opts.format ?? "int64";
+  }
+  apply(input) {
+    if (!(input instanceof IntegerN)) {
+      throw new TypeError("IntegerNToHostFloats expects an IntegerN input.");
+    }
+    const n = input.toBigInt();
+    if (this.format === "int64") {
+      return new HostFloats([n], { format: "int64" });
+    }
+    if (this.format === "int32") {
+      const num = Number(n);
+      return new HostFloats([num], { format: "int32" });
+    }
+    if (this.format === "fp64" || this.format === "fp32" || this.format === "fp16" || this.format === "bfloat16") {
+      return new HostFloats([Number(n)], { format: this.format });
+    }
+    throw new RangeError(`IntegerNToHostFloats: unsupported format ${this.format}.`);
+  }
+  inverse() {
+    return new HostFloatsToIntegerN();
+  }
+};
+var IntegerNToAtomRoot = class extends EncodingTransform {
+  static {
+    __name(this, "IntegerNToAtomRoot");
+  }
+  static inputKind = "IntegerN";
+  static outputKind = "AtomRootPolynomial";
+  static invertible = true;
+  static uiLabel = "Factor N \u2192 atom-root polynomial";
+  static letterCode = "N";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "FTA + N2: every integer N \u2260 0 has a unique factored polynomial P_N(x) = sign(N) \xB7 \u220F(x \u2212 p)^v_p(N). AtomRootPolynomial is the canonical polynomial encoding of N (egpt KB).",
+    leanCitation: "EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (Analysis.lean); N2 in N_NumberTheoryFourViews.js."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof IntegerN)) {
+      throw new TypeError("IntegerNToAtomRoot expects an IntegerN input.");
+    }
+    const term = dispatchToAtomRoot(input.payload);
+    trace?.opTrace?.record?.("EGPTReal.toAtomRoot", 0);
+    return new AtomRootPolynomial(term);
+  }
+  inverse() {
+    return new AtomRootToIntegerN();
+  }
+};
+var AtomRootToIntegerN = class extends EncodingTransform {
+  static {
+    __name(this, "AtomRootToIntegerN");
+  }
+  static inputKind = "AtomRootPolynomial";
+  static outputKind = "IntegerN";
+  static invertible = true;
+  static uiLabel = "Reconstruct N from atoms";
+  static letterCode = "N";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "FTA inverse: N = leadingCoeff \xB7 \u220F p\u1D62^v\u1D62. Pure multiplication; no root-finding.",
+    leanCitation: "EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (Analysis.lean)."
+  };
+  apply(input) {
+    if (!(input instanceof AtomRootPolynomial)) {
+      throw new TypeError("AtomRootToIntegerN expects an AtomRootPolynomial input.");
+    }
+    return new IntegerN(dispatchFromAtomRoot(input.payload));
+  }
+  inverse() {
+    return new IntegerNToAtomRoot();
+  }
+};
+var AtomRootToMonomial = class extends EncodingTransform {
+  static {
+    __name(this, "AtomRootToMonomial");
+  }
+  static inputKind = "AtomRootPolynomial";
+  static outputKind = "MonomialPolynomial";
+  static invertible = true;
+  static uiLabel = "Expand to monomial form";
+  static letterCode = "T";
+  static provenance = {
+    tier: "structural",
+    claim: "Polynomial multiplication of factored \u220F(x \u2212 r\u1D62)^v\u1D62 produces the unique monomial-basis polynomial of the same shape. O(D\xB2) integer-clean operation.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T1: polynomial-multiplication \u2261 Toeplitz GEMV)."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof AtomRootPolynomial)) {
+      throw new TypeError("AtomRootToMonomial expects an AtomRootPolynomial input.");
+    }
+    const lc = input.payload.leadingCoeff;
+    if (dispatchBreakToBigInt(lc) === 0n) {
+      return new MonomialPolynomial([dispatchFromBigInt(0n)]);
+    }
+    let coeffs = [lc];
+    for (const { value, multiplicity } of input.payload.roots) {
+      for (let m = 0n; m < multiplicity; m++) {
+        coeffs = multiplyByLinearTerm(coeffs, value);
+        trace?.opTrace?.record?.("AtomRootToMonomial.multiplyByLinearTerm", coeffs.length);
+      }
+    }
+    return new MonomialPolynomial(coeffs);
+  }
+  inverse() {
+    return new MonomialToAtomRoot();
+  }
+};
+function multiplyByLinearTerm(coeffs, root) {
+  const tags = JSON.parse(callWasm(
+    "codecMulLinear",
+    _handlesJson(coeffs, "multiplyByLinearTerm"),
+    _handlesJson([root], "multiplyByLinearTerm")
+  ));
+  return _fromTags(tags, [coeffs, [root]]);
+}
+__name(multiplyByLinearTerm, "multiplyByLinearTerm");
+var MonomialToAtomRoot = class extends EncodingTransform {
+  static {
+    __name(this, "MonomialToAtomRoot");
+  }
+  static inputKind = "MonomialPolynomial";
+  static outputKind = "AtomRootPolynomial";
+  static invertible = true;
+  static uiLabel = "Factor to atom-root form";
+  static letterCode = "T";
+  static provenance = {
+    tier: "structural",
+    claim: "Inverse of AtomRootToMonomial: rational-root-theorem trial division recovers the prime roots of an atom-root polynomial in O(\u03C9(N) \xB7 D) integer operations. Restricted domain \u2014 requires the input to actually be an atom-root polynomial of some integer N.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T2 inverse, restricted to atom-root domain)."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof MonomialPolynomial)) {
+      throw new TypeError("MonomialToAtomRoot expects a MonomialPolynomial input.");
+    }
+    const coeffs = coeffsToBigInt(input.payload);
+    if (coeffs.length === 1 && coeffs[0] === 0n) {
+      return new AtomRootPolynomial({
+        leadingCoeff: dispatchFromBigInt(0n),
+        roots: []
+      });
+    }
+    const D = coeffs.length - 1;
+    const leading = coeffs[D];
+    if (leading !== 1n && leading !== -1n) {
+      throw new RangeError(
+        `MonomialToAtomRoot: leading coefficient must be \xB11 (got ${leading}). Input is not an atom-root polynomial of integer N.`
+      );
+    }
+    if (D === 0) {
+      return new AtomRootPolynomial({
+        leadingCoeff: dispatchFromBigInt(leading),
+        roots: []
+      });
+    }
+    const c0 = coeffs[0];
+    if (c0 === 0n) {
+      throw new RangeError(
+        "MonomialToAtomRoot: constant term is 0; atom-root polynomials of integer N \u2260 0 never have 0 as a root (0 is not prime)."
+      );
+    }
+    const absN = c0 < 0n ? -c0 : c0;
+    const candidatePrimes = PrimeAtomPolynomial.factorize(absN);
+    trace?.opTrace?.record?.("PrimeAtomPolynomial.factorize", 0);
+    let working = coeffs.slice();
+    const recoveredRoots = [];
+    for (const { prime, exponent: maxMultiplicity } of candidatePrimes) {
+      let observed = 0n;
+      while (observed < maxMultiplicity && working.length > 1 && evalAtBigInt(working, prime) === 0n) {
+        working = syntheticDivide(working, prime);
+        observed += 1n;
+        trace?.opTrace?.record?.("MonomialToAtomRoot.syntheticDivide", working.length);
+      }
+      if (observed > 0n) {
+        recoveredRoots.push({
+          value: dispatchFromBigInt(prime),
+          multiplicity: observed
+        });
+      }
+    }
+    if (working.length !== 1 || working[0] !== leading) {
+      throw new RangeError(
+        `MonomialToAtomRoot: residual polynomial is not the unit constant. Working = [${working.join(",")}]. Input was not an atom-root polynomial.`
+      );
+    }
+    return new AtomRootPolynomial({
+      leadingCoeff: dispatchFromBigInt(leading),
+      roots: recoveredRoots
+    });
+  }
+  inverse() {
+    return new AtomRootToMonomial();
+  }
+};
+function coeffsToBigInt(payload) {
+  const out = new Array(payload.length);
+  for (let i = 0; i < payload.length; i++) {
+    const en = payload[i];
+    if (en == null || dispatchToCanonicalStr(en).includes("/")) {
+      throw new RangeError(
+        `MonomialToAtomRoot: coefficient at index ${i} is not an integer handle.`
+      );
+    }
+    out[i] = dispatchBreakToBigInt(en);
+  }
+  return out;
+}
+__name(coeffsToBigInt, "coeffsToBigInt");
+var _bigsJson = /* @__PURE__ */ __name((xs) => JSON.stringify(xs.map(String)), "_bigsJson");
+function evalAtBigInt(coeffs, x) {
+  return BigInt(callWasm("codecPolyEvalAt", _bigsJson(coeffs), String(x)));
+}
+__name(evalAtBigInt, "evalAtBigInt");
+function syntheticDivide(coeffs, r) {
+  return JSON.parse(callWasm("codecSyntheticDivide", _bigsJson(coeffs), String(r))).map(BigInt);
+}
+__name(syntheticDivide, "syntheticDivide");
+var MatrixInputToPolynomialBag = class extends EncodingTransform {
+  static {
+    __name(this, "MatrixInputToPolynomialBag");
+  }
+  static inputKind = "MatrixInput";
+  static outputKind = "MonomialPolynomialBag";
+  static invertible = false;
+  static uiLabel = "Decompose matrix into polynomial bag";
+  static letterCode = "boundary";
+  static provenance = {
+    tier: "structural",
+    claim: "Reading each row (or column) of a matrix layout as a polynomial in ascending powers unpacks the matrix into a polynomial bag. Input-only boundary primitive \u2014 no inverse, by design.",
+    leanCitation: "EGPT IN40 (One-Way Information Ingestion); F12 (Hybrid Representation Trap); C37 (Syntactic Cipher). The bijection of each polynomial back to its row/column is by construction; the catalog deliberately ships no outbound packager."
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof MatrixInput)) {
+      throw new TypeError("MatrixInputToPolynomialBag expects a MatrixInput input.");
+    }
+    const polys = [];
+    if (input.axis === "rows") {
+      for (let i = 0; i < input.rows; i++) {
+        polys.push(new MonomialPolynomial(input.payload[i].slice()));
+        trace?.opTrace?.record?.("MatrixInputToPolynomialBag.row", input.cols);
+      }
+    } else {
+      for (let j = 0; j < input.cols; j++) {
+        const col = new Array(input.rows);
+        for (let i = 0; i < input.rows; i++) col[i] = input.payload[i][j];
+        polys.push(new MonomialPolynomial(col));
+        trace?.opTrace?.record?.("MatrixInputToPolynomialBag.col", input.rows);
+      }
+    }
+    return new MonomialPolynomialBag(polys);
+  }
+  inverse() {
+    throw new Error(
+      "MatrixInputToPolynomialBag has no inverse, by design. Matrices are an input boundary layout only; the polynomial bag is the canonical post-boundary form. See EGPT IN40 / F12 / C37 in the transform comment."
+    );
+  }
+};
+var MonomialBagToValuesBag = class extends EncodingTransform {
+  static {
+    __name(this, "MonomialBagToValuesBag");
+  }
+  static inputKind = "MonomialPolynomialBag";
+  static outputKind = "ValueRepresentationBag";
+  static invertible = true;
+  static uiLabel = "Sample each polynomial at powers of 2";
+  static letterCode = "V";
+  static provenance = {
+    tier: "structural",
+    claim: "Folds the per-polynomial Horner-at-powers-of-2 Codec across a polynomial bag. Each element round-trips via the V-family bijection; the bag round-trips by construction.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T1: per-element evaluation warrant); EGPT corpus EGPT_FTA \xA78.",
+    disciplineRefs: ["EGPT IN40/IN41/IN42", "F12"]
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof MonomialPolynomialBag)) {
+      throw new TypeError(
+        "MonomialBagToValuesBag expects a MonomialPolynomialBag input."
+      );
+    }
+    const elementCodec = new MonomialToValues();
+    const out = input.mapElements((monomial) => {
+      trace?.opTrace?.record?.(
+        "MonomialBagToValuesBag.element",
+        Math.max(1, monomial.payload?.length ?? 0)
+      );
+      return elementCodec.apply(monomial, { trace });
+    });
+    return new ValueRepresentationBag(out);
+  }
+  inverse() {
+    return new ValuesBagToMonomialBag();
+  }
+};
+var ValuesBagToMonomialBag = class extends EncodingTransform {
+  static {
+    __name(this, "ValuesBagToMonomialBag");
+  }
+  static inputKind = "ValueRepresentationBag";
+  static outputKind = "MonomialPolynomialBag";
+  static invertible = true;
+  static uiLabel = "Recover each polynomial (Newton DD)";
+  static letterCode = "V";
+  static provenance = {
+    tier: "structural",
+    claim: "Folds the per-polynomial Newton-divided-differences Codec across a values bag. Each element recovers its unique polynomial of degree \u2264 D from D+1 samples; the bag round-trips by construction.",
+    leanCitation: "theorems/T_PolynomialMatrixIsomorphism.js (T2: per-element interpolation warrant \u2014 uniqueness of the recovered polynomial).",
+    disciplineRefs: ["EGPT IN40/IN41/IN42", "F12"]
+  };
+  apply(input, { trace } = {}) {
+    if (!(input instanceof ValueRepresentationBag)) {
+      throw new TypeError(
+        "ValuesBagToMonomialBag expects a ValueRepresentationBag input."
+      );
+    }
+    const elementCodec = new ValuesToMonomial();
+    const out = input.mapElements((values) => {
+      trace?.opTrace?.record?.(
+        "ValuesBagToMonomialBag.element",
+        Math.max(1, values.payload?.length ?? 0)
+      );
+      return elementCodec.apply(values, { trace });
+    });
+    return new MonomialPolynomialBag(out);
+  }
+  inverse() {
+    return new MonomialBagToValuesBag();
+  }
+};
+var _bagToBasisDefaultCache = null;
+function getBagToBasisDefaultCache() {
+  if (_bagToBasisDefaultCache === null) {
+    _bagToBasisDefaultCache = new PrimeCache();
+  }
+  return _bagToBasisDefaultCache;
+}
+__name(getBagToBasisDefaultCache, "getBagToBasisDefaultCache");
+var EGPTRealBagToPrimeBasis = class extends EncodingTransform {
+  static {
+    __name(this, "EGPTRealBagToPrimeBasis");
+  }
+  static inputKind = "EGPTRealBag";
+  static outputKind = "PrimeBasis";
+  static invertible = true;
+  static uiLabel = "Pre-factor bag into prime basis";
+  static letterCode = "P";
+  static provenance = {
+    tier: "structural",
+    claim: "Pre-factors each element of the input bag via the prime cache and presents the result as a shared prime basis with per-element signed exponent vectors. Bijection: every input reconstructs as cofactor \xD7 \u03A0 basis[i]^exponents[i] \xD7 sign.",
+    disciplineRefs: [
+      "fat/crates/egpt_gemm/src/primes.rs (PrimeCache algorithmic reference)",
+      "fat/crates/egpt_gemm/src/prepare.rs (load-time pre-factor pattern)",
+      "fat/crates/egpt_gemm/src/legacy/prime_indexed.rs (sparse exponent layout)",
+      "EGPT IN40/IN41/IN42",
+      "F12"
+    ]
+  };
+  constructor(params = {}) {
+    super(params);
+    this._cache = params.cache ?? null;
+  }
+  _getCache() {
+    return this._cache ?? getBagToBasisDefaultCache();
+  }
+  apply(input, { trace } = {}) {
+    if (!(input instanceof EGPTRealBag)) {
+      throw new TypeError(
+        "EGPTRealBagToPrimeBasis expects an EGPTRealBag input."
+      );
+    }
+    const cache = this._getCache();
+    const N = input.payload.length;
+    const numExpMaps = new Array(N);
+    const denExpMaps = new Array(N);
+    const signsArr = new Int8Array(N);
+    const cofactorsArr = new Array(N);
+    const seenIndices = /* @__PURE__ */ new Set();
+    for (let i = 0; i < N; i++) {
+      const e = input.payload[i];
+      const { numerator, denominator } = dispatchRationalParts(e);
+      if (numerator === 0n) {
+        throw new RangeError(
+          `EGPTRealBagToPrimeBasis: input[${i}] is zero, but PrimeBasis is PPF-no-zero (the prime-factored representation has no zero element).`
+        );
+      }
+      const sign = numerator < 0n ? -1 : 1;
+      const absNum = sign === -1 ? -numerator : numerator;
+      if (denominator <= 0n) {
+        throw new RangeError(
+          `EGPTRealBagToPrimeBasis: input[${i}] has non-positive denominator ${denominator}; expected normalized EGPTReal.`
+        );
+      }
+      const [numPairs, numCofactor] = cache.factor(absNum);
+      const [denPairs, denCofactor] = cache.factor(denominator);
+      if (denCofactor !== 1n) {
+        throw new RangeError(
+          `EGPTRealBagToPrimeBasis: input[${i}] denominator (${denominator}) has a prime factor outside the cache (residue ${denCofactor}). PrimeBasis with denominator cofactor not yet supported; widen PrimeCache limit or factor denominator separately. (v1 limitation; not a permanent constraint.)`
+        );
+      }
+      const nMap = /* @__PURE__ */ new Map();
+      for (const [idx, exp] of numPairs) {
+        nMap.set(idx, exp);
+        seenIndices.add(idx);
+      }
+      const dMap = /* @__PURE__ */ new Map();
+      for (const [idx, exp] of denPairs) {
+        dMap.set(idx, exp);
+        seenIndices.add(idx);
+      }
+      numExpMaps[i] = nMap;
+      denExpMaps[i] = dMap;
+      signsArr[i] = sign;
+      cofactorsArr[i] = numCofactor;
+      trace?.opTrace?.record?.("EGPTRealBagToPrimeBasis.factor", 0);
+    }
+    const basis = Array.from(seenIndices).sort((a, b) => a - b);
+    const exponents = new Array(N);
+    for (let i = 0; i < N; i++) {
+      const dense = new Int32Array(basis.length);
+      const nMap = numExpMaps[i];
+      const dMap = denExpMaps[i];
+      for (let j = 0; j < basis.length; j++) {
+        const idx = basis[j];
+        const ne = nMap.get(idx) ?? 0;
+        const de = dMap.get(idx) ?? 0;
+        dense[j] = ne - de;
+      }
+      exponents[i] = dense;
+    }
+    return new PrimeBasis({
+      basis,
+      primeCache: cache,
+      exponents,
+      signs: signsArr,
+      cofactors: cofactorsArr
+    });
+  }
+  inverse() {
+    return new PrimeBasisToEGPTRealBag({ cache: this._cache });
+  }
+};
+function recompose(cofactor, terms) {
+  const r = JSON.parse(callWasm("codecRecompose", String(cofactor), JSON.stringify(terms)));
+  return { num: BigInt(r.num), den: BigInt(r.den) };
+}
+__name(recompose, "recompose");
+var PrimeBasisToEGPTRealBag = class extends EncodingTransform {
+  static {
+    __name(this, "PrimeBasisToEGPTRealBag");
+  }
+  static inputKind = "PrimeBasis";
+  static outputKind = "EGPTRealBag";
+  static invertible = true;
+  static uiLabel = "Recompose bag from prime basis";
+  static letterCode = "P";
+  static provenance = {
+    tier: "structural",
+    claim: "Inverse of EGPTRealBagToPrimeBasis \u2014 reconstruct each value as cofactor \xD7 \u03A0 basis[i]^exponents[i] \xD7 sign. Bijection is exact by construction.",
+    disciplineRefs: [
+      "fat/crates/egpt_gemm/src/primes.rs (PrimeCache algorithmic reference)",
+      "fat/crates/egpt_gemm/src/prepare.rs (load-time pre-factor pattern)",
+      "fat/crates/egpt_gemm/src/legacy/prime_indexed.rs (sparse exponent layout)",
+      "EGPT IN40/IN41/IN42",
+      "F12"
+    ]
+  };
+  constructor(params = {}) {
+    super(params);
+    this._cache = params.cache ?? null;
+  }
+  apply(input, { trace } = {}) {
+    if (!(input instanceof PrimeBasis)) {
+      throw new TypeError(
+        "PrimeBasisToEGPTRealBag expects a PrimeBasis input."
+      );
+    }
+    const { basis, primeCache, exponents, signs, cofactors } = input.payload;
+    const primes = basis.length > 0 ? primeCache.primes() : null;
+    const out = new Array(exponents.length);
+    for (let i = 0; i < exponents.length; i++) {
+      const exp = exponents[i];
+      const terms = [];
+      for (let j = 0; j < basis.length; j++) {
+        const e = exp[j];
+        if (e === 0) continue;
+        terms.push([String(BigInt(primes[basis[j]])), e]);
+      }
+      const { num, den } = recompose(cofactors[i], terms);
+      const signedNum = signs[i] === -1 ? -num : num;
+      out[i] = dispatchFromRational(signedNum, den);
+      trace?.opTrace?.record?.("PrimeBasisToEGPTRealBag.recompose", basis.length);
+    }
+    return new EGPTRealBag(out);
+  }
+  inverse() {
+    return new EGPTRealBagToPrimeBasis({ cache: this._cache });
+  }
+};
+function decomposeOdd(n) {
+  const r = JSON.parse(callWasm("codecDecomposeOdd", String(n)));
+  return { shift: r.shift, odd: BigInt(r.odd) };
+}
+__name(decomposeOdd, "decomposeOdd");
+var PrimeBasisToOddPartIndex = class extends EncodingTransform {
+  static {
+    __name(this, "PrimeBasisToOddPartIndex");
+  }
+  static inputKind = "PrimeBasis";
+  static outputKind = "OddPartIndex";
+  static invertible = true;
+  static uiLabel = "Index pre-factored bag by odd part";
+  static letterCode = "O";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Bijective Codec: pre-factored PrimeBasis bag \u2192 unique-odd-parts dictionary with per-position denominator preserved. The numerator-side bijection n = 2^shift \xD7 odd is the PPF_Bijection (constructive extraction of the Lean equivParticlePathToNat proof). Dictionary of unique odd parts is the codebook the bucket-dispatch matVec (AbadirSloaneDispatch) consults.",
+    leanCitation: "EGPT/NumberTheory/Core.lean \u2014 equivParticlePathToNat (PPF_Bijection)",
+    disciplineRefs: [
+      "EGPT IN40/IN41/IN42 (multiplication = exponent-vector add)",
+      "IN42 (sorted-merge over signed prime composites \u2014 AbadirSloaneDispatch)",
+      "F12 (Hybrid Representation Trap \u2014 stay in compressed space)",
+      "cloud-brain ruling 2026-04-28: PPF_Bijection / PathTransform / AS-Dispatch"
+    ]
+  };
+  constructor(params = {}) {
+    super(params);
+  }
+  apply(input, { trace } = {}) {
+    if (!(input instanceof PrimeBasis)) {
+      throw new TypeError(
+        "PrimeBasisToOddPartIndex expects a PrimeBasis input."
+      );
+    }
+    const p = input.payload;
+    const N = p.exponents.length;
+    const primes = p.basis.length > 0 ? p.primeCache.primes() : null;
+    const denominators = new Array(N);
+    const groupMap = /* @__PURE__ */ new Map();
+    for (let i = 0; i < N; i++) {
+      const exp = p.exponents[i];
+      const terms = [];
+      for (let j = 0; j < p.basis.length; j++) {
+        const e = exp[j];
+        if (e === 0) continue;
+        terms.push([String(BigInt(primes[p.basis[j]])), e]);
+      }
+      const { num, den } = recompose(p.cofactors[i], terms);
+      const { shift, odd } = decomposeOdd(num);
+      const sign = p.signs[i];
+      const member = { position: i, shift, sign };
+      const existing = groupMap.get(odd);
+      if (existing === void 0) {
+        groupMap.set(odd, [member]);
+      } else {
+        existing.push(member);
+      }
+      denominators[i] = den;
+      trace?.opTrace?.record?.("PrimeBasisToOddPartIndex.bucket", p.basis.length);
+    }
+    const groups = [];
+    for (const [odd, members] of groupMap.entries()) {
+      groups.push({ odd, members });
+    }
+    groups.sort((a, b) => a.odd < b.odd ? -1 : a.odd > b.odd ? 1 : 0);
+    const uniqueOddParts = groups.length;
+    const compressionRatio = uniqueOddParts === 0 ? 0 : N / uniqueOddParts;
+    return new OddPartIndex({
+      totalElements: N,
+      uniqueOddParts,
+      compressionRatio,
+      groups,
+      denominators
+    });
+  }
+  inverse() {
+    return new OddPartIndexToPrimeBasis();
+  }
+};
+var _oddToBasisDefaultCache = null;
+function getOddToBasisDefaultCache() {
+  if (_oddToBasisDefaultCache === null) {
+    _oddToBasisDefaultCache = new PrimeCache();
+  }
+  return _oddToBasisDefaultCache;
+}
+__name(getOddToBasisDefaultCache, "getOddToBasisDefaultCache");
+var OddPartIndexToPrimeBasis = class extends EncodingTransform {
+  static {
+    __name(this, "OddPartIndexToPrimeBasis");
+  }
+  static inputKind = "OddPartIndex";
+  static outputKind = "PrimeBasis";
+  static invertible = true;
+  static uiLabel = "Re-factor odd-part index into prime basis";
+  static letterCode = "O";
+  static provenance = {
+    tier: "lean-backed",
+    claim: "Bijective Codec inverse: OddPartIndex (with denominators) \u2192 PrimeBasis. Recomposes |num_i| = 2^shift \xD7 odd_for_position, re-factors via PrimeCache. PPF_Bijection / equivParticlePathToNat constructive extraction.",
+    leanCitation: "EGPT/NumberTheory/Core.lean \u2014 equivParticlePathToNat (PPF_Bijection)",
+    disciplineRefs: [
+      "EGPT IN40/IN41/IN42",
+      "F12",
+      "cloud-brain ruling 2026-04-28: PPF_Bijection / PathTransform"
+    ]
+  };
+  constructor(params = {}) {
+    super(params);
+    this._cache = params.cache ?? null;
+  }
+  _getCache() {
+    return this._cache ?? getOddToBasisDefaultCache();
+  }
+  apply(input, { trace } = {}) {
+    if (!(input instanceof OddPartIndex)) {
+      throw new TypeError(
+        "OddPartIndexToPrimeBasis expects an OddPartIndex input."
+      );
+    }
+    if (!input.isBijective) {
+      throw new RangeError(
+        "OddPartIndexToPrimeBasis: input OddPartIndex is not bijective (missing the optional `denominators` field). Reducer-built indices (BagToOddPartIndex) discard denominators and cannot be inverted; only Codec-built indices (PrimeBasisToOddPartIndex) can. See OddPartIndex.isBijective."
+      );
+    }
+    const p = input.payload;
+    const N = p.totalElements;
+    const cache = this._getCache();
+    const numExpMaps = new Array(N);
+    const denExpMaps = new Array(N);
+    const signsArr = new Int8Array(N);
+    const cofactorsArr = new Array(N);
+    const seenIndices = /* @__PURE__ */ new Set();
+    const filled = new Array(N).fill(false);
+    for (let g = 0; g < p.groups.length; g++) {
+      const grp = p.groups[g];
+      const odd = grp.odd;
+      for (let m = 0; m < grp.members.length; m++) {
+        const mem = grp.members[m];
+        const i = mem.position;
+        if (filled[i]) {
+          throw new RangeError(
+            `OddPartIndexToPrimeBasis: position ${i} appears in more than one group (index is malformed; positions must be unique across groups).`
+          );
+        }
+        const absNum = BigInt(callWasm("codecShiftOdd", mem.shift, String(odd)));
+        const den = p.denominators[i];
+        const [numPairs, numCofactor] = cache.factor(absNum);
+        const [denPairs, denCofactor] = cache.factor(den);
+        if (denCofactor !== 1n) {
+          throw new RangeError(
+            `OddPartIndexToPrimeBasis: position ${i} denominator (${den}) has a prime factor outside the cache (residue ${denCofactor}). PrimeBasis with denominator cofactor not yet supported; widen the active PrimeCache.`
+          );
+        }
+        const nMap = /* @__PURE__ */ new Map();
+        for (const [idx, exp] of numPairs) {
+          nMap.set(idx, exp);
+          seenIndices.add(idx);
+        }
+        const dMap = /* @__PURE__ */ new Map();
+        for (const [idx, exp] of denPairs) {
+          dMap.set(idx, exp);
+          seenIndices.add(idx);
+        }
+        numExpMaps[i] = nMap;
+        denExpMaps[i] = dMap;
+        signsArr[i] = mem.sign;
+        cofactorsArr[i] = numCofactor;
+        filled[i] = true;
+        trace?.opTrace?.record?.("OddPartIndexToPrimeBasis.refactor", 0);
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      if (!filled[i]) {
+        throw new RangeError(
+          `OddPartIndexToPrimeBasis: position ${i} was not represented in any group. The OddPartIndex must contain a member for every position in [0, totalElements).`
+        );
+      }
+    }
+    const basis = Array.from(seenIndices).sort((a, b) => a - b);
+    const exponents = new Array(N);
+    for (let i = 0; i < N; i++) {
+      const dense = new Int32Array(basis.length);
+      const nMap = numExpMaps[i];
+      const dMap = denExpMaps[i];
+      for (let j = 0; j < basis.length; j++) {
+        const idx = basis[j];
+        const ne = nMap.get(idx) ?? 0;
+        const de = dMap.get(idx) ?? 0;
+        dense[j] = ne - de;
+      }
+      exponents[i] = dense;
+    }
+    return new PrimeBasis({
+      basis,
+      primeCache: cache,
+      exponents,
+      signs: signsArr,
+      cofactors: cofactorsArr
+    });
+  }
+  inverse() {
+    return new PrimeBasisToOddPartIndex();
+  }
+};
+function _lcmOfDenominators(denoms) {
+  return BigInt(callWasm("codecLcmOfDenominators", _bigsJson(denoms)));
+}
+__name(_lcmOfDenominators, "_lcmOfDenominators");
+function _collectDenominators(bag) {
+  const elements = bag.payload;
+  const N = elements.length;
+  const denoms = new Array(N);
+  for (let i = 0; i < N; i++) {
+    denoms[i] = dispatchRationalParts(elements[i]).denominator;
+  }
+  return denoms;
+}
+__name(_collectDenominators, "_collectDenominators");
+function _projectBagToNat(bag, scale) {
+  if (scale === 1n) return bag;
+  const elements = bag.payload;
+  const N = elements.length;
+  const projected = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const { numerator, denominator } = dispatchRationalParts(elements[i]);
+    if (denominator === 0n) {
+      throw new RangeError(
+        `EGPTRealBagRatToNat: position ${i} has zero denominator.`
+      );
+    }
+    const scaled = BigInt(callWasm("codecScaleToNat", String(numerator), String(denominator), String(scale)));
+    projected[i] = dispatchFromBigInt(scaled);
+  }
+  return new EGPTRealBag(projected);
+}
+__name(_projectBagToNat, "_projectBagToNat");
+var EGPTRealBagRatToNat = class extends EncodingTransform {
+  static {
+    __name(this, "EGPTRealBagRatToNat");
+  }
+  static inputKind = "EGPTRealBag";
+  static outputKind = "EGPTRealBag";
+  static invertible = true;
+  static uiLabel = "Rat \u2192 Nat (lcm scale)";
+  static letterCode = "N";
+  static provenance = {
+    tier: "derivative",
+    claim: "Project an EGPTRealBag of rationals to Nat form by multiplying every value by the LCM of all denominators in the population. Scale S is information-preserving (FTA: S contains every prime factor of every denominator with the same multiplicity). Bijective with stored scale: original = (nat / S).",
+    leanCitation: "equivParticlePathToNat (EGPT/NumberTheory/Core.lean); EGPT_Fundamental_Theorem_of_Arithmetic_via_Information (EGPT/PrimeAtoms.lean).",
+    disciplineRefs: [
+      "feedback_kernel_vs_boundary_projection.md",
+      "EGPT IN40/IN41/IN42",
+      "F12"
+    ]
+  };
+  constructor({ scale = null } = {}) {
+    super({ scale });
+    if (scale != null && typeof scale !== "bigint") {
+      throw new TypeError(
+        `EGPTRealBagRatToNat: params.scale must be a bigint or null; got ${typeof scale}.`
+      );
+    }
+    if (scale != null && scale <= 0n) {
+      throw new RangeError(
+        `EGPTRealBagRatToNat: params.scale must be strictly positive; got ${scale}.`
+      );
+    }
+    this._scaleParam = scale;
+    this._lastScale = scale;
+  }
+  apply(input) {
+    if (!(input instanceof EGPTRealBag)) {
+      throw new TypeError(
+        "EGPTRealBagRatToNat.apply: input must be an EGPTRealBag."
+      );
+    }
+    let scale;
+    if (this._scaleParam == null) {
+      const denoms = _collectDenominators(input);
+      let pure = true;
+      for (let i = 0; i < denoms.length; i++) {
+        if (denoms[i] !== 1n) {
+          pure = false;
+          break;
+        }
+      }
+      scale = pure ? 1n : _lcmOfDenominators(denoms);
+    } else {
+      scale = this._scaleParam;
+    }
+    const bag = _projectBagToNat(input, scale);
+    this._lastScale = scale;
+    return { bag, scale };
+  }
+  inverse() {
+    const scale = this._scaleParam ?? this._lastScale;
+    if (scale == null) {
+      throw new RangeError(
+        "EGPTRealBagRatToNat.inverse: cannot construct inverse without a scale. Either pass `{ scale: <bigint> }` to the constructor, or call apply() first so the LCM scale is discovered and stashed."
+      );
+    }
+    return new EGPTRealBagNatToRat({ scale });
+  }
+};
+var EGPTRealBagNatToRat = class extends EncodingTransform {
+  static {
+    __name(this, "EGPTRealBagNatToRat");
+  }
+  static inputKind = "EGPTRealBag";
+  static outputKind = "EGPTRealBag";
+  static invertible = true;
+  static uiLabel = "Nat \u2192 Rat (divide by scale)";
+  static letterCode = "N\u207B\xB9";
+  static provenance = {
+    tier: "derivative",
+    claim: "Inverse of EGPTRealBagRatToNat: divide every value by the supplied scale. Recovers the original rational bag bit-exactly (provided the scale was the LCM that produced it).",
+    leanCitation: "equivParticlePathToNat (EGPT/NumberTheory/Core.lean).",
+    disciplineRefs: ["feedback_kernel_vs_boundary_projection.md"]
+  };
+  constructor({ scale } = {}) {
+    super({ scale });
+    if (typeof scale !== "bigint") {
+      throw new TypeError(
+        `EGPTRealBagNatToRat: params.scale must be a bigint; got ${typeof scale}.`
+      );
+    }
+    if (scale <= 0n) {
+      throw new RangeError(
+        `EGPTRealBagNatToRat: params.scale must be strictly positive; got ${scale}.`
+      );
+    }
+    this._scale = scale;
+  }
+  apply(input) {
+    if (!(input instanceof EGPTRealBag)) {
+      throw new TypeError(
+        "EGPTRealBagNatToRat.apply: input must be an EGPTRealBag."
+      );
+    }
+    const scale = this._scale;
+    if (scale === 1n) return input;
+    const elements = input.payload;
+    const N = elements.length;
+    const out = new Array(N);
+    for (let i = 0; i < N; i++) {
+      const { numerator, denominator } = dispatchRationalParts(elements[i]);
+      if (denominator === 1n) {
+        out[i] = dispatchFromRational(numerator, scale);
+      } else {
+        out[i] = dispatchFromRational(
+          numerator,
+          BigInt(callWasm("codecScaleDenominator", String(denominator), String(scale)))
+        );
+      }
+    }
+    return new EGPTRealBag(out);
+  }
+  inverse() {
+    return new EGPTRealBagRatToNat({ scale: this._scale });
+  }
+};
+
+// src/browser/codec/index.js
+registry.register(HostFloatsToEGPTReal);
+registry.register(EGPTRealToHostFloats);
+registry.register(EGPTRealToPolynomial);
+registry.register(PolynomialToEGPTReal);
+registry.register(PolynomialToFFT);
+registry.register(FFTToPolynomial);
+registry.register(EGPTRealToPrimeAtoms);
+registry.register(PrimeAtomsToEGPTReal);
+registry.register(PrimeAtomsToRootProduct);
+registry.register(RootProductToPrimeAtoms);
+registry.register(CoefficientsToMonomial);
+registry.register(MonomialToCoefficients);
+registry.register(MonomialToValues);
+registry.register(ValuesToMonomial);
+registry.register(HostFloatsToIntegerN);
+registry.register(IntegerNToHostFloats);
+registry.register(IntegerNToAtomRoot);
+registry.register(AtomRootToIntegerN);
+registry.register(AtomRootToMonomial);
+registry.register(MonomialToAtomRoot);
+registry.register(MatrixInputToPolynomialBag);
+registry.register(MonomialBagToValuesBag);
+registry.register(ValuesBagToMonomialBag);
+registry.register(EGPTRealBagToPrimeBasis);
+registry.register(PrimeBasisToEGPTRealBag);
+registry.register(PrimeBasisToOddPartIndex);
+registry.register(OddPartIndexToPrimeBasis);
+registry.register(EGPTRealBagRatToNat);
+var ENCODING_CLASSES = Object.freeze([
+  HostFloats,
+  EGPTRealBag,
+  PolynomialCoefficients,
+  FFTSamples,
+  PrimeAtomVector,
+  RootProductPolynomial,
+  MonomialPolynomial,
+  ValueRepresentation,
+  IntegerN,
+  AtomRootPolynomial,
+  MatrixInput,
+  PrimeBasis,
+  OddPartIndex
+]);
+function buildSdkCodec() {
+  return {
+    registry,
+    Codec,
+    buildCodecDsl,
+    EncodingClasses: ENCODING_CLASSES.slice(),
+    TransformRegistry
+  };
+}
+__name(buildSdkCodec, "buildSdkCodec");
 
 // src/browser/log-root-order-finding.js
 function _p2() {
@@ -3163,6 +7068,7 @@ var QFT_BENCHMARK_BASELINE = Object.freeze({
 }), "assertBaselineComplete"))(QFT_BENCHMARK_BASELINE);
 
 // src/browser/dist-entry.js
+var { buildSdkCodec: buildSdkCodec2, ...codecBarrel } = codec_exports;
 function buildWasmFacade(wasmMetadata) {
   return buildWasmCallFacade(wasmMetadata?.module ?? null, wasmMetadata?.mode);
 }
@@ -3208,6 +7114,12 @@ async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
     factMultiply,
     reconstruct,
     refactorize,
+    PrimeCache,
+    sieveOfEratosthenes,
+    // The codec barrel's names, top-level as the JS reference barrel exports them …
+    ...codecBarrel,
+    // … and the `sdk.codec` sub-object CodecView acquires through Runtime.ensureMath().
+    codec: buildSdkCodec2(),
     createFraqtlSession: /* @__PURE__ */ __name((options) => createFraqtlSession(sdk, options), "createFraqtlSession"),
     FraqtlSession: {
       auto: /* @__PURE__ */ __name((options) => createFraqtlSession(sdk, options), "auto")

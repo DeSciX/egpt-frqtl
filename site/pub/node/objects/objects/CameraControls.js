@@ -142,8 +142,8 @@
         opts = opts || {};
 
         // ── CAPABILITY CHECK (FAIL-SOFT) ─────────────────────────────────────
-        // The presence of runner.cameraControl IS the check — never a renderer
-        // sniff. Null in 2D/p5 (getCameraControl returns null) ⇒ mount nothing.
+        // Method presence on runner.cameraControl IS the check — never a renderer
+        // sniff. No handle, or one without setOrbit/getOrbit ⇒ mount nothing.
         var cam = (runner && runner.cameraControl) ? runner.cameraControl : null;
         if (!cam || typeof cam.setOrbit !== 'function' || typeof cam.getOrbit !== 'function') {
             return noopHandle();
@@ -254,6 +254,14 @@
         var cAF = (typeof cancelAnimationFrame === 'function')
             ? cancelAnimationFrame : clearTimeout;
 
+        // A stick/key/wheel step changes what the frame SHOWS — the camera pose, or a
+        // driven object and its crosshair. A running loop paints every frame; a STOPPED one
+        // (STUDIO Design) paints only when asked, so ask the runner for one repaint of the
+        // CURRENT state. repaint() never advances the tick clock — no physics.
+        function paintIfStopped() {
+            if (runner && !runner.isRunning && typeof runner.repaint === 'function') { runner.repaint(); }
+        }
+
         function frame(t) {
             rafId = null;
             var dt = (t - lastT) / 1000;
@@ -303,6 +311,7 @@
                         // longer duplicates a lateral slide when an object exposes an orientation.
                         rotate:  lookX * ROT_DRIVE_SPEED * dt
                     });
+                    paintIfStopped();
                 }
                 publishState();   // camera pose unchanged; keep the realm hook fresh
                 if (anyInputActive()) { scheduleFrame(); }
@@ -345,6 +354,7 @@
                     }
                 }
             }
+            if (lookX || lookY || moveX || moveY) { paintIfStopped(); }
             publishState();
 
             if (anyInputActive()) { scheduleFrame(); }
@@ -536,6 +546,7 @@
                     var o = cam.getOrbit();
                     var di = clamp(o.distance + (e.deltaY > 0 ? 1 : -1) * wheelStep, minDist, maxDist);
                     cam.setOrbit({ distance: di });
+                    paintIfStopped();
                     publishState();
                     if (e.preventDefault) { e.preventDefault(); }
                 };

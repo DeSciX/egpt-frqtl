@@ -24,7 +24,15 @@ export function arenaDiv(a: bigint, b: bigint): bigint;
 
 export function arenaExp2(a: bigint): bigint;
 
-export function arenaFromAtomRoot(json: string): bigint;
+/**
+ * PORT of `EGPTReal.fromAtomRoot(term)`: `lc = leadingCoeff.breakSymbolicToApproximateBigInt()`
+ * (0 → 0), then `lc · Π p^m` with each root `p = value.breakSymbolicToApproximateBigInt()` — so a
+ * non-integer coefficient or root truncates with the reference's own warning lines — and a
+ * negative root is the reference's RangeError. `json` = `{"leadingCoeff":"<packed>","roots":
+ * [{"value":"<packed>","multiplicity":"<decimal>"}]}` (the JS already applied `BigInt(multiplicity)`).
+ * Returns the `{"v": "<packed>", "w": [...]}` warnings envelope.
+ */
+export function arenaFromAtomRoot(json: string): string;
 
 export function arenaFromAtomVec(json: string): bigint;
 
@@ -94,6 +102,49 @@ export function arenaToPpfFull(h: bigint): string;
 export function arenaToPrimeAtoms(n: bigint): string;
 
 export function bridge_version(): string;
+
+/**
+ * → `{"shift":k,"odd":"…"}`.
+ */
+export function codecDecomposeOdd(n: string): string;
+
+export function codecF64Lift(f: number): string;
+
+export function codecIeeeEncode(num: string, den: string, format: string, policy: string, policy_json: string): number;
+
+export function codecIeeeEncodeCheck(format: string, policy: string, policy_json: string): void;
+
+export function codecIeeeQuantize(x: number, is_nan: boolean, is_finite: boolean, x_disp: string, format: string, policy: string, policy_json: string): number;
+
+export function codecIeeeUnpack(bits: string, format: string): string;
+
+export function codecLcmOfDenominators(denoms_json: string): string;
+
+export function codecMulLinear(coeffs_json: string, root_json: string): string;
+
+export function codecPolyEvalAt(coeffs_json: string, x: string): string;
+
+/**
+ * `terms_json` = `[["p", e], …]` → `{"num":"…","den":"…"}`.
+ */
+export function codecRecompose(cofactor: string, terms_json: string): string;
+
+/**
+ * `EGPTRealBagNatToRat.apply`'s `denominator * scale`.
+ */
+export function codecScaleDenominator(den: string, scale: string): string;
+
+/**
+ * `_projectBagToNat`'s per-element `(numerator * scale) / denominator` (truncating, as JS BigInt `/`).
+ */
+export function codecScaleToNat(num: string, den: string, scale: string): string;
+
+/**
+ * `(1n << BigInt(shift)) * odd`.
+ */
+export function codecShiftOdd(shift: number, odd: string): string;
+
+export function codecSyntheticDivide(coeffs_json: string, r: string): string;
 
 /**
  * Intern a canonical string ("num" or "num/den") into the arena.
@@ -183,6 +234,15 @@ export function primeAtomReconstruct(v_json: string): string;
 export function primeAtomTotient(n: string): string;
 
 /**
+ * → `{"pairs":[[idx,exp],…],"residual":"…"}`.
+ */
+export function primeCacheFactor(limit: number, n: string): string;
+
+export function primeCacheIndexOf(limit: number, p: number): number;
+
+export function primeCacheSieve(limit: number, limit_disp: string): string;
+
+/**
  * `RULE_OR_RATIONAL_CANCEL` over `[[signIsOne, primeToken, locationToken], …]` → surviving indices.
  */
 export function primeCompositeCancelRule(recs_json: string): string;
@@ -242,7 +302,7 @@ export interface InitOutput {
     readonly arenaCmp: (a: bigint, b: bigint) => [number, number, number];
     readonly arenaDiv: (a: bigint, b: bigint) => [bigint, number, number];
     readonly arenaExp2: (a: bigint) => [bigint, number, number];
-    readonly arenaFromAtomRoot: (a: number, b: number) => [bigint, number, number];
+    readonly arenaFromAtomRoot: (a: number, b: number) => [number, number, number, number];
     readonly arenaFromAtomVec: (a: number, b: number) => [bigint, number, number];
     readonly arenaFromPpfJson: (a: number, b: number) => [number, number, number, number];
     readonly arenaFromRational: (a: number, b: number, c: number, d: number) => [bigint, number, number];
@@ -276,6 +336,23 @@ export interface InitOutput {
     readonly releaseHandle: (a: bigint) => [number, number];
     readonly resetScope: () => void;
     readonly arenaToMathString: (a: bigint) => [number, number, number, number];
+    readonly codecDecomposeOdd: (a: number, b: number) => [number, number, number, number];
+    readonly codecF64Lift: (a: number) => [number, number];
+    readonly codecIeeeEncode: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
+    readonly codecIeeeEncodeCheck: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly codecIeeeQuantize: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number];
+    readonly codecIeeeUnpack: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly codecLcmOfDenominators: (a: number, b: number) => [number, number, number, number];
+    readonly codecMulLinear: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly codecPolyEvalAt: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly codecRecompose: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly codecScaleDenominator: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly codecScaleToNat: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly codecShiftOdd: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly codecSyntheticDivide: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly primeCacheFactor: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly primeCacheIndexOf: (a: number, b: number) => number;
+    readonly primeCacheSieve: (a: number, b: number, c: number) => [number, number, number, number];
     readonly polyPort: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly polyPortMatMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly polyPortTransform: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
@@ -293,15 +370,6 @@ export interface InitOutput {
     readonly primeAtomReconstruct: (a: number, b: number) => [number, number, number, number];
     readonly primeAtomTotient: (a: number, b: number) => [number, number, number, number];
     readonly bridge_version: () => [number, number];
-    readonly primeCompositeCancelRule: (a: number, b: number) => [number, number, number, number];
-    readonly primeCompositeCongruent: (a: bigint, b: bigint) => [number, number, number];
-    readonly primeCompositeDivide: (a: bigint, b: bigint) => [bigint, number, number];
-    readonly primeCompositeFromReal: (a: bigint) => [bigint, number, number];
-    readonly primeCompositeIsComposite: (a: bigint) => [number, number, number];
-    readonly primeCompositeMultiply: (a: bigint, b: bigint) => [bigint, number, number];
-    readonly primeCompositeNew: (a: number, b: number) => [bigint, number, number];
-    readonly primeCompositeRecordsKey: (a: number, b: number) => [number, number, number, number];
-    readonly primeCompositeState: (a: bigint) => [number, number, number, number];
     readonly poly_add_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly poly_div_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly poly_evaluate_at_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
@@ -312,6 +380,15 @@ export interface InitOutput {
     readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
     readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
     readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
+    readonly primeCompositeCancelRule: (a: number, b: number) => [number, number, number, number];
+    readonly primeCompositeCongruent: (a: bigint, b: bigint) => [number, number, number];
+    readonly primeCompositeDivide: (a: bigint, b: bigint) => [bigint, number, number];
+    readonly primeCompositeFromReal: (a: bigint) => [bigint, number, number];
+    readonly primeCompositeIsComposite: (a: bigint) => [number, number, number];
+    readonly primeCompositeMultiply: (a: bigint, b: bigint) => [bigint, number, number];
+    readonly primeCompositeNew: (a: number, b: number) => [bigint, number, number];
+    readonly primeCompositeRecordsKey: (a: number, b: number) => [number, number, number, number];
+    readonly primeCompositeState: (a: bigint) => [number, number, number, number];
     readonly egpt_add: (a: number, b: number) => number;
     readonly egpt_cmp: (a: number, b: number) => number;
     readonly egpt_div: (a: number, b: number) => number;
