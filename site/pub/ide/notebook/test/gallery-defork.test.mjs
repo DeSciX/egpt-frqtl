@@ -36,10 +36,12 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { createRequire } from 'node:module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot  = path.resolve(__dirname, '../../../..');
 const NB_DIR    = path.join(repoRoot, 'lib/notebooks');
+const { FrqtlApp } = createRequire(import.meta.url)(path.join(repoRoot, 'lib/frqtl/objects/FrqtlApp.js'));
 
 const { parse } = await import(path.join(repoRoot, 'lib/shim/notebook/format.js'));
 const { buildModuleClosure } = await import(path.join(repoRoot, 'lib/shim/notebook/module-resolver.js'));
@@ -177,8 +179,28 @@ describe('gallery-defork — notebook physics-logic-fork remediation (Bite 0)', 
                 // of them being invoked is observable).
                 const importedNames = Array.from(body.matchAll(/(\w+)\s+as\s+(_\w+)/g)).map((m) => m[2]);
                 for (const n of importedNames) { sandbox[n] = spyFactory; }
+                // An adapter that carries its factory's statics uses the REAL helper the
+                // transformed module re-exports (FrqtlApp.carryFactoryStatics).
+                const carries = /\bcarryFactoryStatics\s*\(/.test(stripComments(body));
+                // An adapter over a factory that declares statics (FrqtlApp.FACTORY_STATICS)
+                // MUST carry them, or its canvas boots a different scene than the page.
+                const canonical = createRequire(import.meta.url)(path.join(repoRoot,
+                    'lib/frqtl/objects/setup', FRQTL_SETUPS_MANIFEST[site.spec].file));
+                const canonicalFn = canonical[FRQTL_SETUPS_MANIFEST[site.spec].primary];
+                const declared = FrqtlApp.FACTORY_STATICS.filter((k) => canonicalFn[k] !== undefined);
+                assert.ok(declared.length === 0 || carries,
+                    site.moduleName + ' wraps a factory declaring ' + declared.join(', ') +
+                    ' but never calls carryFactoryStatics — the canvas would drop them');
+                if (carries) {
+                    spyFactory.RATE_LIMITS = Object.freeze({ tpsLimit: 1 });
+                    sandbox.carryFactoryStatics = FrqtlApp.carryFactoryStatics;
+                }
                 vm.createContext(sandbox);
                 vm.runInContext(asScript + '\nexports.fn = ' + site.exportName + ';', sandbox);
+                if (carries) {
+                    assert.strictEqual(sandbox.exports.fn.RATE_LIMITS, spyFactory.RATE_LIMITS,
+                        'the adapter carries the canonical factory\'s statics');
+                }
 
                 const fakeUniverse = { universe_rect: { w: 480, h: 480 }, marker: 'FAKE_UNIVERSE' };
                 const fakeOptions = { marker: 'FAKE_OPTIONS' };

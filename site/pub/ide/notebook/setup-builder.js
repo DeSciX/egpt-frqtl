@@ -23,7 +23,7 @@
  *   const { <export> } = await import('<module>');
  *   const opts = frqtl.knob('<export>', <opts>);
  *   const runner = frqtl.FrqtlApp({ canvasW:<W>, canvasH:<H>, seed:<seed> });
- *   runner.setup((u, o) => <export>(frqtl, u, o), opts);
+ *   runner.setup(frqtl.carryFactoryStatics((u, o) => <export>(frqtl, u, o), <export>), opts);
  *   runner.setRenderOption('<k>', <v>);            // one line per renderOptions key (fix-loop #6)
  *   if (runner.cameraControl && …setPreset) { … }  // ONLY when cameraPreset is declared (fix-loop #6)
  *   return { <outName>: runner };
@@ -275,8 +275,9 @@ export function parseSeed(seed) {
  *       const { <export> } = await import('<module>');
  *       const opts = frqtl.knob('<export>', <opts>);
  *       const runner = frqtl.FrqtlApp(<cfg>);
- *       runner.setup((universe, o) => <export>(frqtl, universe, o), opts);
- *     (the pre-existing gallery form — byte-identical for every existing canvas).
+ *       runner.setup(frqtl.carryFactoryStatics((universe, o) => <export>(frqtl, universe, o), <export>), opts);
+ *     The arrow carries the export's factory statics (FrqtlApp.FACTORY_STATICS), so the
+ *     canvas boots the same scene as every other surface.
  *
  *   shape='recipe': the module installs a `buildExperiment(exp)` RECIPE — a SINGLE
  *     RecipeContext arg (the dual-mode `window.buildExperiment` tail codegen /
@@ -474,7 +475,8 @@ export function synthesizeBuilderSource(decl) {
             "const { " + exportName + " } = await import('" + parsed.moduleName + "');\n" +
             "const opts = frqtl.knob('" + exportName + "', " + optsLiteral + ");\n" +
             "const runner = frqtl.FrqtlApp(" + cfgLiteral + ");\n" +
-            "runner.setup((universe, o) => " + exportName + "(frqtl, universe, o), opts);\n" +
+            "runner.setup(frqtl.carryFactoryStatics((universe, o) => " + exportName + "(frqtl, universe, o), " +
+                exportName + "), opts);\n" +
             renderOptionLines +
             cameraPresetLine +
             "return { " + outName + ": runner };\n";

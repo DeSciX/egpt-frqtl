@@ -84,7 +84,7 @@ describe('setup-builder — synthesizeBuilderSource (shape)', function () {
         assert.match(builderCode, /const opts = frqtl\.knob\('setupWave', \{"quanta":800\}\);/);
         // runner config from stage/seed (NOT folded into opts — C4)
         assert.match(builderCode, /const runner = frqtl\.FrqtlApp\(\{ canvasW: 480, canvasH: 480, seed: 42 \}\);/);
-        assert.match(builderCode, /runner\.setup\(\(universe, o\) => setupWave\(frqtl, universe, o\), opts\);/);
+        assert.match(builderCode, /runner\.setup\(frqtl\.carryFactoryStatics\(\(universe, o\) => setupWave\(frqtl, universe, o\), setupWave\), opts\);/);
         assert.match(builderCode, /return \{ c_x_run: runner \};/);
     });
 
@@ -272,7 +272,7 @@ describe('setup-builder — shape discriminator (Bite 5c)', function () {
             setup: './setups/wave.js#setupWave', modules: SINGLE, shape: 'factory'
         });
         assert.equal(shape, 'factory');
-        assert.match(builderCode, /runner\.setup\(\(universe, o\) => setupWave\(frqtl, universe, o\), opts\);/);
+        assert.match(builderCode, /runner\.setup\(frqtl\.carryFactoryStatics\(\(universe, o\) => setupWave\(frqtl, universe, o\), setupWave\), opts\);/);
         assert.match(builderCode, /frqtl\.FrqtlApp\(/);
     });
 

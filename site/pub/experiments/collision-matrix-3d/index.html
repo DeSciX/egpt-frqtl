@@ -36,7 +36,7 @@
     The 2D collision-matrix uses:
       (a) window._egptDefaultRenderer = 'three'   — explicit default (no _egpt3D)
       (b) activeAxes: { x:true, y:true, z:false } — in universe.init() inside setup factory
-      Result: three.js ORTHOGRAPHIC camera (top-down 1:1), cubes rendered flat in XY plane.
+      Result: three.js ORTHOGRAPHIC camera (top-down 1:1), bodies rendered flat in XY plane.
 
     This 3D version changes EXACTLY TWO flags:
 
@@ -50,15 +50,15 @@
     FLAG 2 — Setup factory (setupCollisionMatrix3D.js):
       activeAxes: { x:true, y:true, z:true }   (vs z:false in the 2D version)
       Effect in engine: the transverse yo-yo also fires on Z each tick, and setFrameProperty('z')
-      moves bodies in depth. TickData.frameData[*].z is non-zero → three-provider places cubes
+      moves bodies in depth. TickData.frameData[*].z is non-zero → three-provider places bodies
       at their true depth. Bench C5 proves z-axis bounce is identical to x-axis bounce.
-      Without z:true: z stays 0, all cubes render at depth 0 (flat slice, camera depth is wasted).
+      Without z:true: z stays 0, all bodies render at depth 0 (flat slice, camera depth is wasted).
 
     RENDER PATH:
       _egpt3D → render-boot.js → three-provider.makeProvider() → PerspectiveCamera + orbit
             → renderTick(): f.z is read from TickData and placed at _posArr[w*3+2]
-            → cubes at different laneZ positions appear at true depth in the perspective view
-      setRenderOption('shape','cube') → RenderShape.resolve → isCubeMesh=true → InstancedMesh BoxGeometry path (true shaded cubes)
+            → bodies at different laneZ positions appear at true depth in the perspective view
+      setRenderOption('shape','sphere') → RenderShape.resolve → isSphereMesh=true → InstancedMesh SphereGeometry path (lit spheres)
       setRenderOption('colorScheme','roygbiv') → LightColor.getRgbBySchemeName → fullness-to-spectrum
 
     CAMERA CONTROL (sugar, not renderer-sniffing):
@@ -75,10 +75,11 @@
     ─────────────────────────────────────────────────────────────────────────── -->
     <script>window._egpt3D = true;</script>
 
-    <!-- COLLISION MATRIX 3D: 7 Dim-6 CUBES arranged in a 3D grid (3 rows Y × 3 cols Z),
+    <!-- COLLISION MATRIX 3D: 7 lanes of Dim-6 bodies arranged in a 3D grid (3 rows Y × 3 cols Z),
          launched head-on along X at speed_prob=1. Same log-scale density sweep as the 2D
          version (ρ ≈ 0.0002 … 1.0 across the 7 lanes). The orbit PerspectiveCamera
-         (auto-engaged by _egpt3D) shows cubes receding in depth. ROYGBIV colours by fullness.
+         (auto-engaged by _egpt3D) shows the bodies, drawn as lit spheres, receding in depth.
+         ROYGBIV colours by fullness.
          The two-bucket momentum exchange runs per-axis; z-axis propagation is "free"
          (engine bench C5: z-bounce ≡ x-bounce). No engine changes — pure sugar + routing. -->
     <script src="../_shared/stack-boot.js"
@@ -126,7 +127,7 @@
                     <button type="button" id="cam-preset-rooftop"     class="cam-preset">rooftop</button>
                 </span>
             </span>
-            <span class="legend"><b class="a">&#9632;</b> A (&rarr;) &nbsp; <b class="b">&#9632;</b> B (&larr;) &nbsp; Dim-6 shaded cube meshes (64 px), 7 lanes, 3D grid</span>
+            <span class="legend"><b class="a">&#9632;</b> A (&rarr;) &nbsp; <b class="b">&#9632;</b> B (&larr;) &nbsp; Dim-6 bodies as lit spheres (64 px), 7 lanes, 3D grid</span>
         </div>
         <div id="metrics-panel"></div>
     </div>
@@ -139,7 +140,7 @@
      *
      * The 2D collision-matrix has 7 lanes in a column (Y only).
      * This version distributes them in a 3×3 grid (Y rows, Z cols) so the
-     * orbit camera reveals TRUE DEPTH — cubes at different Z positions
+     * orbit camera reveals TRUE DEPTH — bodies at different Z positions
      * recede/approach as you orbit.
      *
      * Physics is identical to the 2D version: the two-bucket momentum exchange
@@ -185,13 +186,14 @@
         });
 
         runner.createCanvas();
-        // CUBE shape → true shaded 3D cube meshes (THREE.InstancedMesh + BoxGeometry +
-        // MeshLambertMaterial + scene lights). Only takes effect when _is3D is true (which
-        // this experiment always sets). In 2D or p5 the cube shape resolves to 'ball' (the
-        // default else branch in p5-provider). The cube path completely replaces the
-        // point-sprite GLSL shader with a real retained-mode mesh for true face-depth shading.
+        // SPHERE shape → lit 3D sphere meshes (THREE.InstancedMesh + SphereGeometry +
+        // MeshLambertMaterial + scene lights), one per body at its voxel diameter. Only takes
+        // effect when _is3D is true (which this experiment always sets); in 2D or p5 the
+        // sphere shape draws as the filled 'ball' disc (RenderShape.js). The sphere path
+        // replaces the point-sprite GLSL shader with a real retained-mode mesh.
         // ROYGBIV colour scheme: fullness→spectrum (sparse=red, dense=violet), bodies COLORLESS.
-        runner.setRenderOption('shape', 'cube');
+        // Tick rate: setupCollisionMatrix3D.RATE_LIMITS, applied by runner.setup().
+        runner.setRenderOption('shape', 'sphere');
         runner.setRenderOption('colorScheme', 'roygbiv');
 
         runner.setup(setupCollisionMatrix3D, { level: 6, canvasW: 700, canvasH: 700 });
@@ -283,9 +285,6 @@
                 var btn = document.getElementById('cam-preset-' + name);
                 if (btn) { btn.addEventListener('click', function () { cam.setPreset(name); _syncSliders(); }); }
             });
-
-            // 3D experiments: cap TPS for smooth viewing (same as Particle Walk 3D).
-            runner.setRateLimits({ fpsLimit: 0, tpsLimit: 120 });
         }
 
         // ── Metrics ────────────────────────────────────────────────────────────

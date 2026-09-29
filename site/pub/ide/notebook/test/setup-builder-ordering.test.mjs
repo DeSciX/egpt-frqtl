@@ -76,6 +76,7 @@ function makeCaps(readyDelayMs) {
                 });
             },
             knob(_name, opts) { return opts || {}; },
+            carryFactoryStatics(wrapper) { return wrapper; },
             FrqtlApp(cfg) {
                 return { cfg, setup(fn, opts) { this._fn = fn; this._opts = opts; } };
             }

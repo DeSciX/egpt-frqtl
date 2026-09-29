@@ -29,7 +29,7 @@
  *
  * The 2D collision-matrix arranges these 7 lanes in a COLUMN (varying Y only).
  * This 3D version distributes them in a 3×3 GRID face: rows in Y, columns in Z,
- * so the perspective orbit camera reveals TRUE DEPTH — cubes recede into the Z axis.
+ * so the perspective orbit camera reveals TRUE DEPTH — bodies recede into the Z axis.
  *
  * activeAxes {x,y,z}: x carries the head-on approach; y and z carry the 3D scene
  * distribution. Engine bench C5 (z-axis bounce ≡ x-axis bounce) is free — the
@@ -219,6 +219,15 @@
     }
 
     setupCollisionMatrix3D.OPTIONS = OPTIONS;
+
+    /**
+     * RATE_LIMITS — this scene's PACING, a factory static FrqtlApp.setup() applies through
+     * setRateLimits (FrqtlApp.FACTORY_STATICS). Wall-clock presentation only: the physics
+     * this factory builds, and every tick of it, is unchanged. 240 tps plays the head-on
+     * approach (64 ticks) and the last lane's separation (~730 ticks) in about 3 s, at
+     * 4 ticks per frame on a 60 Hz display — inside the runner's per-frame tick budget.
+     */
+    setupCollisionMatrix3D.RATE_LIMITS = Object.freeze({ tpsLimit: 240 });
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { setupCollisionMatrix3D: setupCollisionMatrix3D };

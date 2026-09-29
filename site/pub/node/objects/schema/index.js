@@ -2547,6 +2547,13 @@
         delay: 1
         },
         Wall: {
+        // The bare palette drop's behavior authority: preset 'wall' -> collisionBehavior
+        // 'block' (WallBehaviors.WALL_PRESETS), making the catalog's "vertical blocking
+        // wall" true. A recipe's own `preset` replaces this one in _mergeProps's
+        // Object.assign; a recipe's explicit `collisionBehavior` wins because Wall.js
+        // preset-expansion fills ONLY undefined fields. Never a concrete
+        // collisionBehavior here — that clobbered presets (K6).
+        preset: 'wall',
         w: 12,
         h: 120,
         color: [150, 150, 160]
@@ -2699,8 +2706,10 @@
             // value in the props bag and Wall.js's preset-expansion (`if (merged[k]===undefined)`)
             // can no longer override it — silently dropping a preset's collisionBehavior
             // (K6: addObject('Wall',{preset:'detector-screen'}) yielded 'nothing' not 'destroy').
-            // Behavior is owned by ONE authority: the preset (when given) or Wall.js's own default
-            // ('block' for a bare drop — matching this "blocking wall" description).
+            // Behavior is owned by ONE authority: the PRESET — the defaults' `preset: 'wall'`
+            // for a bare drop ('block', matching this "blocking wall" description), replaced
+            // by a recipe's own preset, and out-ranked field-by-field by a recipe's explicit
+            // collisionBehavior (expansion fills only undefined fields).
             defaultProps: KIND_DEFAULT_PROPS.Wall
         },
         // NOTE: 'backdrop' is intentionally NOT a placeable dropper kind — it is added

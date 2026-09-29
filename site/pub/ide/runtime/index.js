@@ -151,6 +151,12 @@ var _frqtlObj = {
     FrqtlApp: function (opts) {
         return new (_sugar('FrqtlApp'))(opts);
     },
+    // FrqtlApp.carryFactoryStatics — the setup-builder FACTORY template wraps the module
+    // export in an arrow and carries its factory statics (FrqtlApp.FACTORY_STATICS) onto it,
+    // so runner.setup() sees what the bare factory declares. Owner: FrqtlApp.
+    carryFactoryStatics: function (wrapper, factory) {
+        return _sugar('FrqtlApp').carryFactoryStatics(wrapper, factory);
+    },
     // The frozen recipe-facade (lib/frqtl/objects/RecipeContext.js) a saved
     // project's `buildExperiment(exp)` recipe is evaluated against — exposed here so
     // a notebook RECIPE-shape canvas cell (setup-builder.js `shape:'recipe'`) can

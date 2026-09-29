@@ -69,6 +69,12 @@
     var MAX_TICKS_PER_FRAME    = 10;    // hard cap for normal (bounded) operation
     var MAX_TICKS_UNBOUNDED    = 200;   // hard cap for unbounded TPS (Infinity tickHz)
 
+    // The keys setRateLimits() accepts — any other key is a FAIL-LOUD error there.
+    var RATE_LIMIT_KEYS        = Object.freeze(['fpsLimit', 'tpsLimit']);
+    // The factory statics setup() consumes (see FrqtlApp.prototype.setup) — the ONE list
+    // carryFactoryStatics() copies, so a wrapped factory boots the same scene as the bare one.
+    var FACTORY_STATICS        = Object.freeze(['initWorld', 'RATE_LIMITS']);
+
     // ── FrqtlApp ─────────────────────────────────────────────────────
 
     /**
@@ -1660,6 +1666,15 @@
      * Run a setup factory (e.g. setupDoubleSlit) on this runner's universe: its world
      * step (`setupFn.initWorld`, when the factory exports one), then the factory itself.
      *
+     * FACTORY STATICS — the declarations a factory exports for its runner, listed ONCE in
+     * `FrqtlApp.FACTORY_STATICS`; a wrapper around a factory carries them with
+     * `FrqtlApp.carryFactoryStatics(wrapper, factory)`:
+     *   - `initWorld(universe, opts)` — the world the factory's part implies, run FIRST.
+     *   - `RATE_LIMITS` — the scene's PACING, `{ fpsLimit?, tpsLimit? }`, applied through
+     *     `setRateLimits()` before the world is built; an unknown key throws there. Pacing
+     *     is wall-clock presentation only: the ticks and what each tick does are unchanged.
+     *     Re-applied on every setup() (so `restart()` restores the scene's own pacing).
+     *
      * CANONICAL TEARDOWN (CEO drive #2, 2026-07-14 — the S4 dispose discipline,
      * generalized to setup-level reinit): `universe.init()` (called by the world step
      * below) resets the WASM instance's physics state but does NOT
@@ -1698,6 +1713,9 @@
         // part step. A factory that owns its world (setupDoubleSlit, the composites) exports
         // none and inits inside. Either way `restart()` — which re-enters here — replays the
         // whole scene from a fresh world, never the part alone on a populated one.
+        if (setupFn.RATE_LIMITS !== undefined) {
+            this.setRateLimits(setupFn.RATE_LIMITS);               // 0. PACING
+        }
         if (typeof setupFn.initWorld === 'function') {
             setupFn.initWorld(this.universe, opts);                // 1. WORLD
         }
@@ -2302,12 +2320,19 @@
      *                                    Infinity = unbounded (up to safety budget).
      *                                    Must be ≥ 0 (or Infinity).
      *
-     * Throws a RangeError on invalid inputs (FAIL-LOUD).
+     * Throws a RangeError on invalid inputs and a TypeError on a key outside
+     * `FrqtlApp.RATE_LIMIT_KEYS` (FAIL-LOUD).
      */
     FrqtlApp.prototype.setRateLimits = function (limits) {
         if (!limits || typeof limits !== 'object') {
             throw new TypeError('[FrqtlApp.setRateLimits] limits must be an object');
         }
+        Object.keys(limits).forEach(function (k) {
+            if (RATE_LIMIT_KEYS.indexOf(k) === -1) {
+                throw new TypeError('[FrqtlApp.setRateLimits] unknown rate key "' + k +
+                    '" — accepted keys: ' + RATE_LIMIT_KEYS.join(', ') + ' (FAIL-LOUD).');
+            }
+        });
         if (limits.fpsLimit !== undefined) {
             var fps = limits.fpsLimit;
             if (typeof fps !== 'number' || fps < 0 || isNaN(fps)) {
@@ -2353,6 +2378,30 @@
             this._tickCount    = 0;
             this._rateWindowEnd = now + this._rateWindowMs;
         }
+    };
+
+    FrqtlApp.RATE_LIMIT_KEYS = RATE_LIMIT_KEYS;
+    FrqtlApp.FACTORY_STATICS = FACTORY_STATICS;
+
+    /**
+     * Copy the factory statics setup() consumes (`FrqtlApp.FACTORY_STATICS`) from a
+     * factory onto a wrapper around it — only the ones the factory has — so
+     * `runner.setup(wrapper)` boots the same scene as `runner.setup(factory)`.
+     *
+     * @param {Function} wrapper  the function handed to setup() in the factory's place.
+     * @param {Function} factory  the setup factory it wraps.
+     * @returns {Function} the wrapper.
+     * @throws {TypeError} FAIL-LOUD when either argument is not a function.
+     */
+    FrqtlApp.carryFactoryStatics = function (wrapper, factory) {
+        if (typeof wrapper !== 'function' || typeof factory !== 'function') {
+            throw new TypeError('[FrqtlApp.carryFactoryStatics] wrapper and factory must both be functions ' +
+                '(got ' + typeof wrapper + ', ' + typeof factory + ') (FAIL-LOUD).');
+        }
+        FACTORY_STATICS.forEach(function (k) {
+            if (factory[k] !== undefined) { wrapper[k] = factory[k]; }
+        });
+        return wrapper;
     };
 
     // ── Export ─────────────────────────────────────────────────────────────

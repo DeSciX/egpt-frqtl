@@ -107,6 +107,7 @@ function installFakeFrqtlApp() {
         this.opts = opts;
         this.setup = function (fn, knobOpts) { this._fn = fn; this._opts = knobOpts; };
     };
+    globalThis.window.FrqtlApp.carryFactoryStatics = function (wrapper) { return wrapper; };
 }
 
 const MODULE_SET = {

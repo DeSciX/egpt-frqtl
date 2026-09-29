@@ -118,7 +118,7 @@
  *   `"key=value,…"` (WS gym-controls-as-sugar fix-loop #6 Finding B, 2026-07-04) —
  *   the notebook-cell channel for the SAME `runner.setRenderOption(key, value)`
  *   calls a standalone experiment page makes page-side beside `setup()` (e.g.
- *   `collision-matrix-3d/index.html`'s `runner.setRenderOption('shape','cube')` /
+ *   `collision-matrix-3d/index.html`'s `runner.setRenderOption('shape','sphere')` /
  *   `('colorScheme','roygbiv')`). PURE PARSE — reuses the identical `_parseOpts`/
  *   `_joinOpts` machinery as `opts` (same `kind:'opts'`), but is a DISTINCT,
  *   SEPARATE key — never folded into `opts`. This is deliberate channel

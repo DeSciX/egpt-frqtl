@@ -14,7 +14,8 @@
 // <script> on experiment pages, where an `export` keyword is a syntax error. The bare
 // specifiers therefore point at a SIBLING `objects/setup-esm/<file>` URL whose body is
 // `appendEsmExports(source)`: the untouched source plus `export const <name> =
-// window.<name>;`. The classic `objects/setup/<file>` URL stays byte-for-byte unchanged.
+// window.<name>;` and the `carryFactoryStatics` helper export. The classic
+// `objects/setup/<file>` URL stays byte-for-byte unchanged.
 //
 // ONE TRANSFORM, TWO EMITTERS, ONE URL SPACE:
 //   - dev:  lib/server/frqtl-setup-esm.js serves `/frqtl/objects/setup-esm/:file` at request time;
@@ -130,8 +131,9 @@ export function frqtlSetupsSourceMissingError(mod, absSourcePath, cause) {
 
 /**
  * The ONE ESM transform. Verifies the source contains the expected browser-classic
- * assignment(s), appends `export const` statement(s) re-reading them off `window`, and
- * prepends a static side-effect import for each declared `deps` entry.
+ * assignment(s), appends `export const` statement(s) re-reading them off `window` plus
+ * the `carryFactoryStatics` export (CARRY_FACTORY_STATICS_EXPORT), and prepends a static
+ * side-effect import for each declared `deps` entry.
  *
  * @param {string} source  raw file contents of a canonical setup factory.
  * @param {{primary:string, statics?:string[], deps?:string[]}} spec
@@ -182,8 +184,27 @@ export function appendEsmExports(source, spec) {
         out += 'export const ' + s + ' = (typeof window !== "undefined" && window.' + primary +
             ' ? window.' + primary + '.' + s + ' : undefined);\n';
     }
+    out += CARRY_FACTORY_STATICS_EXPORT;
     return out;
 }
+
+/**
+ * Appended to EVERY transformed module: the FrqtlApp helper a notebook adapter cell wraps
+ * its canonical factory with (`carryFactoryStatics(adapter, factory)`), so the factory's
+ * statics (FrqtlApp.FACTORY_STATICS) reach runner.setup() through the adapter. Notebook
+ * code never reads window.*; the builder imports the module after ensureEngine(), so the
+ * game layer is live — an absent helper is a boot-order defect and throws at import.
+ */
+const CARRY_FACTORY_STATICS_EXPORT =
+    'export const carryFactoryStatics = (function () {\n' +
+    '    var F = (typeof window !== "undefined") ? window.FrqtlApp : undefined;\n' +
+    '    if (!F || typeof F.carryFactoryStatics !== "function") {\n' +
+    '        throw new Error("[frqtl-setup-esm] FrqtlApp.carryFactoryStatics (owner: lib/frqtl/objects/FrqtlApp.js) " +\n' +
+    '            "is not available — the game layer must be booted (await frqtl.ensureEngine()) before a " +\n' +
+    '            "@frqtl/setups/* module is imported (FAIL-LOUD).");\n' +
+    '    }\n' +
+    '    return F.carryFactoryStatics;\n' +
+    '})();\n';
 
 /**
  * Build the `{imports: {spec: url}}` import-map fragment for the canonical setup
