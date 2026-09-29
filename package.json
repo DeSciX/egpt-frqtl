@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "bash scripts/test/verification-record.sh"
+    "test": "bash scripts/test/verification-record.sh && bash scripts/test/refresh-site.sh"
   },
   "dependencies": {
     "@descix/cli": "^1.0.9"

@@ -9,8 +9,10 @@ bundle. **PROD is deliberately not a mirror of DEV.**
 ## Layout
 
 ```
-site/                          the static IDE bundle — the ONLY directory uploaded as the site
-  index.html                   IDE entry
+site/                          the ONLY directory uploaded as the site
+  index.html                   front page — authored here, never written by a refresh
+  images/*                     front-page images — authored here, never written by a refresh
+  app.html                     IDE entry — the bundle's index.html
   app-assets/*                 hashed React chunks (vite owns this namespace)
   pub/*                        engine, vendor, experiments, ide, notebooks, math SDK
 kb/
@@ -21,7 +23,7 @@ kb/
   Recipes/                     authored here — dse-planar
 plugin/                        Claude Code plugin `frqtl` (install string frqtl@egpt)
 scripts/
-  refresh-site.sh              replace site/ from a FRAQTL .deploy-static bundle
+  refresh-site.sh              replace site/'s bundle-derived files from a FRAQTL .deploy-static bundle
   refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
   lib/tree.sh                  the tree fingerprint both refresh scripts use
 .descix/
@@ -34,7 +36,7 @@ scripts/
 ```
 
 `site/`'s two namespaces are **disjoint**. Serving the sdk dist at root collides with the IDE's own
-`index.html`.
+`app.html` and the front page `index.html`.
 
 ## Refreshing content
 
@@ -57,12 +59,19 @@ not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (
 `build` and `phases` only) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
-On success it replaces `site/` and writes
+It also refuses a bundle that ships `app.html`, `index.html`'s published name, or `images/`, which
+belongs to the front page.
+On success it publishes the bundle's `index.html` byte-identical as `site/app.html`, replaces every
+other bundle-derived file in `site/` (files no longer in the bundle are removed), carries
+`site/index.html` and `site/images/` over untouched — or leaves them absent — and writes
 `.descix/site-provenance.json`:
 
 ```
-{ upstream_repo, upstream_sha, file_count, tree_sha256, refreshed_by_script }
+{ upstream_repo, upstream_sha, app_page, file_count, tree_sha256, tree_excludes, refreshed_by_script }
 ```
+
+`file_count` and `tree_sha256` cover the bundle-derived files only; `tree_excludes` names the
+front-page entries left out (`index.html`, `images`).
 
 A `site/` with no `.descix/site-provenance.json` beside it has no recorded provenance.
 
@@ -88,11 +97,11 @@ recorded as `host_rewrites_dev_to_prod`.
 
 ### Tree fingerprint
 
-`tree_sha256` is the sha256 of the sorted `sha256  ./path` listing of every file in the tree
-(`scripts/lib/tree.sh::tree_sha256`):
+`tree_sha256` is the sha256 of the sorted `sha256  ./path` listing of every file in the tree, minus
+any top-level `tree_excludes` (`scripts/lib/tree.sh::tree_sha256`). For `site/`:
 
 ```
-cd site && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+cd site && find . \( -path ./index.html -o -path ./images \) -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
 ```
 
 **`-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
@@ -111,7 +120,7 @@ workspace, API URL and environment in use). Always dry-run first.
 | One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
 
 - `descix site upload` uses `.descix/manifests/site.json`. Its only source is `site` with an
-  explicit include allowlist (`index.html`, `app-assets/**`, `pub/**`), so `assets/`, `kb/`,
+  explicit include allowlist (`index.html`, `app.html`, `app-assets/**`, `pub/**`), so `assets/`, `kb/`,
   `plugin/`, `scripts/` and `.descix/` are never uploaded. Site URLs are non-expiring and unsigned;
   never add a source whose path is `.` or a repo-root directory. SiteWalker traps: an empty
   `include` matches everything, `exclude` is tested **before** `include`, and a bare-name directory

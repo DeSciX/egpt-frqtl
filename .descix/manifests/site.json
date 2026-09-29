@@ -7,6 +7,7 @@
       "path": "site",
       "include": [
         "index.html",
+        "app.html",
         "app-assets/**",
         "pub/**"
       ],
@@ -17,6 +18,6 @@
     }
   ],
   "buildCommand": null,
-  "_two_namespaces": "The IDE entry is index.html with its hashed React chunks under app-assets/; every router-resolved engine, vendor, notebook and math URL lives under pub/. The two namespaces are deliberately DISJOINT — serving the sdk dist at root would collide with the IDE's own index.html. Do not add a source that flattens pub/ to root.",
+  "_two_namespaces": "The IDE entry is app.html with its hashed React chunks under app-assets/; every router-resolved engine, vendor, notebook and math URL lives under pub/. The two namespaces are deliberately DISJOINT — serving the sdk dist at root would collide with the IDE's own app.html and the front page index.html. Do not add a source that flattens pub/ to root.",
   "_why_not_apps_ide_dist": "apps/ide/dist on its own is HALF A SITE: it carries no pub/ payload and a bare vite build leaves it in DEV-CORE mode, every engine/monaco/notebook/math URL resolving at /frqtl/... and /egpt-src/... which nothing serves on a backend-less host. Nothing in the built bytes announces which mode they are, which is exactly how the wrong bundle reached PROD before and served a dead shell."
 }

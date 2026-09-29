@@ -5,24 +5,51 @@ die() {
   exit 1
 }
 
-# sha256 over the sorted `sha256  ./path` listing of every file under $1.
-# -print0 | sort -z | xargs -0 is load-bearing: pub/images carries a filename with
-# spaces, and a whitespace-split pipeline silently drops it from the hash.
+# find(1) arguments listing every file under the current directory except the named top-level
+# entries (files or directories). With no names, exactly `find . -type f`.
+_tree_find() {
+  local prune=() name
+  for name in "$@"; do
+    [ ${#prune[@]} -eq 0 ] || prune+=(-o)
+    prune+=(-path "./$name")
+  done
+  if [ ${#prune[@]} -eq 0 ]; then
+    find . -type f -print0
+  else
+    find . \( "${prune[@]}" \) -prune -o -type f -print0
+  fi
+}
+
+# tree_sha256 <dir> [excluded top-level entry...]
+# sha256 over the sorted `sha256  ./path` listing of every file under <dir>, minus the excluded
+# top-level entries. -print0 | sort -z | xargs -0 is load-bearing: pub/images carries a filename
+# with spaces, and a whitespace-split pipeline silently drops it from the hash.
 tree_sha256() {
-  (cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)
+  local dir=$1; shift
+  (cd "$dir" && _tree_find "$@" | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256 | cut -d' ' -f1)
 }
 
+# tree_file_count <dir> [excluded top-level entry...]
 tree_file_count() {
-  find "$1" -type f | wc -l | tr -d ' '
+  local dir=$1; shift
+  (cd "$dir" && _tree_find "$@" | tr -cd '\0' | wc -c | tr -d ' ')
 }
 
-# Replace directory $2 with a copy of directory $1, staged beside $2 so a failed copy
-# leaves $2 untouched.
+# replace_tree <src> <dest> [kept top-level entry...]
+# Replace directory <dest> with a copy of directory <src>, staged beside <dest> so a failed copy
+# leaves <dest> untouched. Each kept entry is owned outside <src>: it is carried over from the old
+# <dest> when present, stays absent when absent, and a <src> that ships it is refused.
 replace_tree() {
-  local src=$1 dest=$2 stage
+  local src=$1 dest=$2 stage name; shift 2
+  for name in "$@"; do
+    [ ! -e "$src/$name" ] || die "$src/$name is present, but $name in $(basename "$dest")/ is owned outside this source — refusing to shadow it"
+  done
   stage=$(mktemp -d "$(dirname "$dest")/.refresh-stage.XXXXXX")
   cp -R "$src/." "$stage/" || { rm -rf "$stage"; die "copy $src -> $stage failed"; }
   find "$stage" -name .DS_Store -delete
+  for name in "$@"; do
+    [ ! -e "$dest/$name" ] || cp -Rp "$dest/$name" "$stage/$name" || { rm -rf "$stage"; die "carry-over of $dest/$name failed"; }
+  done
   rm -rf "$dest"
   mv "$stage" "$dest"
 }
