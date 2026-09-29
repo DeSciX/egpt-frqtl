@@ -2273,6 +2273,27 @@
     });
 
     /**
+     * The world bounds, on all three axes — the ONE read consumers use for "how big /
+     * how deep is this scene" (e.g. the palette Wall drop's full-scene-depth default,
+     * R#101). A pure two-source FERRY — both bags are built by wasm-engine.js's
+     * `_wrapBoundaryRect` (THE ONE engine-bounds → JS bag normalizer,
+     * {x,y,z,w,h,d,left,right,top,bottom,near,far,r}); this getter builds nothing:
+     *   1. the engine-owned TickData ferry once a tick has run — the authority, since
+     *      it tracks live resizes;
+     *   2. before the first tick (design-mode drops happen at tick 0), the wrapper's
+     *      init-time declaration `universe.initBounds` (truth-in-labeling read-back at
+     *      the init site, gated by init-bounds-conformance.test.mjs).
+     * `null` when the wrapper published no init bounds and no tick has run.
+     */
+    Object.defineProperty(FrqtlApp.prototype, 'worldBounds', {
+        get: function () {
+            if (this._lastTickData) { return this._lastTickData.universeData.boundaryRect; }
+            var u = this.universe;
+            return (u && u.initBounds) || null;
+        }
+    });
+
+    /**
      * The active renderer provider (RendererProvider | null).
      * Available after start() has been called (or after the display slot is written).
      */

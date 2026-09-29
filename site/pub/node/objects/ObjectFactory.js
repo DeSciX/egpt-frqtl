@@ -553,6 +553,37 @@
             opts.w = ww;
             opts.h = wh;
         }
+        // R#101 (2026-09-28) — a palette DROP into a 3D scene is a FULL-SCENE-DEPTH slab
+        // by default. A bare 4-element rect reaches the engine as z=0/depth=w (the
+        // back-compat promotion) — a ~w-thin plate a directed stream walks around in z
+        // (measured: 146/300 crossers in 30 ticks, vs ~0 through a full-depth wall). The
+        // z-band is CONSUMED from the runner's ONE bounds read (`FrqtlApp.worldBounds`:
+        // the TickData boundary_rect ferry once ticked, the init-time initBounds read-back
+        // before) — never hand-typed. An explicit z / d / depth / z-carrying rect wins
+        // untouched, and the recipe path (no fromPalette) stays byte-identical.
+        if (ctx.fromPalette && gbl._egpt3D &&
+            opts.z === undefined && opts.d === undefined && opts.depth === undefined &&
+            !(opts.rect && (Array.isArray(opts.rect)
+                ? opts.rect.length === 6
+                : (opts.rect.z !== undefined || opts.rect.d !== undefined)))) {
+            var wb = ctx.runner && ctx.runner.worldBounds;
+            if (!wb || typeof wb.near !== 'number' || typeof wb.d !== 'number') {
+                throw new Error('[ObjectFactory] create("Wall"): a 3D palette drop derives its ' +
+                    'z-slab from the scene bounds (runner.worldBounds — the TickData ' +
+                    'boundary_rect ferry / init-time initBounds read-back), but the runner ' +
+                    'publishes none. (FAIL-LOUD — a depth-less wall in a 3D scene is the ' +
+                    'z-leak this default repairs.)');
+            }
+            opts.z = wb.near;
+            opts.depth = wb.d;
+        }
+        // Palette drops are census-numbered like every other numbered drop ('block N',
+        // 'sphere emitter N', 'livechart N'): repeated bare drops otherwise all read
+        // "wall" in LAYERS and collide in name-based lookups. Recipe path unchanged
+        // (no fromPalette => Wall's own bare default; an explicit name always wins).
+        if (ctx.fromPalette && opts.name == null) {
+            opts.name = 'wall ' + (ctx.runner.largeObjects.length + 1);
+        }
         var wall = new WallCls(ctx.runner.universe, opts);
         // Back-reference the facade from its inner LO so a name-based histogram-source
         // lookup (_resolveHistogramSource, used by the LiveChart builder) can hop from

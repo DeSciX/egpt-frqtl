@@ -44,7 +44,7 @@ Declare a canvas that runs it. `render3d="true"` requests the three.js 3D render
 <cell type="markdown">
 ## What you are seeing
 
-Seven pairs of bodies, drawn as lit spheres and arranged in a 3×3 grid facing the camera, collide head-on. Sparse (low-mass) lanes bounce almost instantly; dense (high-mass, near-capacity) lanes linger before separating — the SAME per-tick occupancy-ceiling law the 2D collision-matrix demonstrates, now visible with true perspective depth: spheres further back in Z genuinely recede, rather than merely stacking on a flat plane.
+Seven pairs of bodies, drawn as lit spheres and arranged in a 3×3 grid facing the camera, collide head-on. All seven lanes make first contact together (tick 64 at seed 42); how long a lane stays merged before separating varies NON-monotonically with its density under the per-tick occupancy-ceiling law — the same law the 2D collision-matrix demonstrates, now visible with true perspective depth: spheres further back in Z genuinely recede, rather than merely stacking on a flat plane.
 
 **Compare to the 2D version** (`collision-matrix`): identical physics, identical lane masses — the ONLY difference is the render intent (`render3d`) and the lane distribution (Y×Z grid instead of a single Y column), both of which the canonical `setupCollisionMatrix3D.js` factory already encodes; nothing in this notebook cell reimplements it.
 

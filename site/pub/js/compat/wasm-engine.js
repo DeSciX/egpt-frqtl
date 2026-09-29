@@ -985,6 +985,26 @@
             }
             config.depth = depth;
         }
+        // READ-BACK of the RESOLVED world bounds (truth-in-labeling, exactly as `activeAxes`
+        // above): the explicit `depth` when one was attached, else the engine's documented
+        // square→cube default (the OPTIONS `depth` row: omitted ⇒ depth = width; z-range
+        // CENTERED [-depth/2, depth/2]). Built THROUGH `_wrapBoundaryRect` — THE ONE
+        // engine-bounds → JS bag normalizer — from the same centre+extent 6-tuple the
+        // engine's own `boundary_rect` emits, so the pre-tick bag and the post-tick ferry
+        // share one shape by construction (init-bounds-conformance.test.mjs binds keys AND
+        // values to the first tick's `universeData.boundaryRect`). Pre-tick consumers read
+        // this via FrqtlApp.worldBounds (e.g. the palette Wall drop's full-scene-depth
+        // default, R#101); once a tick has run, the TickData ferry is the authority and
+        // wins (it tracks live resizes; this is the INIT-time declaration).
+        var resolvedDepth = (depth !== undefined) ? depth : universe_rect.w;
+        this.initBounds = _wrapBoundaryRect([
+            universe_rect.left + universe_rect.w / 2,
+            universe_rect.top + universe_rect.h / 2,
+            0,
+            universe_rect.w,
+            universe_rect.h,
+            resolvedDepth
+        ]);
 
         // The WORLD is being (re)built: every prior engine registration goes with it, so
         // the wrapper census empties too. A wrapper that survived a re-init would hold a

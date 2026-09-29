@@ -38,7 +38,10 @@
  *
  * Speed-up law: withInterQuantumCollisions=true runs voxel_collision_pass.  The
  * per-tick exchange ceiling carries occupancy (ρ_A·ρ_B), so the bounce TIMING
- * emerges from density. Dense lanes bounce earliest; sparse lanes linger.  On any
+ * emerges from density.  All seven lanes make first contact together (tick 64,
+ * seed 42); separation time varies NON-monotonically with lane density (measured
+ * seed-42 sweep, egpt-frqtl-notes/cm3d-spheres-log.md: m=512 parts at tick 139
+ * while m=32768 holds to 726 and m=4096 beyond 3000).  On any
  * single axis this is identical to the 2D matrix — the visual novelty is reading
  * the SAME density gradient in a perspective 3D view.
  *
@@ -224,7 +227,7 @@
      * RATE_LIMITS — this scene's PACING, a factory static FrqtlApp.setup() applies through
      * setRateLimits (FrqtlApp.FACTORY_STATICS). Wall-clock presentation only: the physics
      * this factory builds, and every tick of it, is unchanged. 240 tps plays the head-on
-     * approach (64 ticks) and the last lane's separation (~730 ticks) in about 3 s, at
+     * approach (64 ticks) and the last separating lane (~730 ticks) in about 3 s, at
      * 4 ticks per frame on a 60 Hz display — inside the runner's per-frame tick budget.
      */
     setupCollisionMatrix3D.RATE_LIMITS = Object.freeze({ tpsLimit: 240 });
