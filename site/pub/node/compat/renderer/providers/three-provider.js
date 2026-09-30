@@ -652,6 +652,8 @@
         var _driveCube     = null;   // THREE.LineSegments — universe-bounds wireframe
         var _driveCubeSig  = null;   // last bounds signature (rebuild the geometry only on a bounds change)
         var _driveCross    = null;   // THREE.LineSegments — 3-axis crosshair reticle at the target
+        var _driveRing     = null;   // THREE.LineSegments — rotation cue (ring + heading spoke) at a
+                                     // rotate-capable target's pivot, turned to its orientation
         var _feedbackScene = null;   // SEPARATE scene for cube+crosshair — drawn as a final overlay pass
                                      // AFTER all FX composites so bloom/god-rays can never wash it out (G2)
 
@@ -1721,8 +1723,10 @@
 
         // ── Target-UX drive-feedback layer update (spec §1) ──────────────────────
         // Gated on opts.driveFeedback (runner-fed, live per frame). 3D-only. Positions the
-        // universe-cube wireframe from bounds + the crosshair reticle at the driven center. G2:
-        // both live in a SEPARATE _feedbackScene drawn as a FINAL overlay pass (see
+        // universe-cube wireframe from bounds, the crosshair reticle at the driven center (a
+        // position-capable target) and the rotation cue at the orientation pivot (a rotate-capable
+        // one — a wall has no center, and without the cue its drive painted nothing). G2: all
+        // live in a SEPARATE _feedbackScene drawn as a FINAL overlay pass (see
         // _renderDriveFeedbackPass) AFTER every FX composite, so bloom/god-rays cannot wash them
         // out — the earlier warm crosshair in _scene dissolved into the sun's warm-white bloom at
         // telephoto (tester memo reference_bloomed_vfx_color_predicate_and_lightpos_gotchas.md).
@@ -1732,9 +1736,10 @@
         // remains at close orbit. depthTest:false + high renderOrder keeps it above any geometry.
         function _updateDriveFeedback(opts) {
             var fb = opts && opts.driveFeedback;
-            if (!_is3D || !fb || !fb.center || !fb.bounds) {
+            if (!_is3D || !fb || !fb.bounds || (!fb.center && !fb.orientation)) {
                 if (_driveCube)  { _driveCube.visible  = false; }
                 if (_driveCross) { _driveCross.visible = false; }
+                if (_driveRing)  { _driveRing.visible  = false; }
                 return;
             }
             if (!_feedbackScene) { _feedbackScene = new THREE.Scene(); }
@@ -1744,6 +1749,7 @@
                 // Rebuild the cube + crosshair geometry only when the universe bounds change.
                 if (_driveCube)  { _feedbackScene.remove(_driveCube);  _driveCube.geometry.dispose(); }
                 if (_driveCross) { _feedbackScene.remove(_driveCross); _driveCross.geometry.dispose(); _driveCross = null; }
+                if (_driveRing)  { _feedbackScene.remove(_driveRing);  _driveRing.geometry.dispose();  _driveRing = null; }
                 var box = new THREE.BoxGeometry(w, h, Math.max(1, 2 * zHalf));
                 _driveCube = new THREE.LineSegments(
                     new THREE.EdgesGeometry(box),
@@ -1762,11 +1768,27 @@
                     new THREE.LineBasicMaterial({ color: 0xff33ff, depthTest: false }));
                 _driveCross.renderOrder = 9999; _driveCross.frustumCulled = false;
                 _feedbackScene.add(_driveCross);
+                // Rotation cue: a ring in the rotation plane (world xy — orientation is a yaw about z)
+                // plus a heading spoke along local +x with an arrowhead, so the object's current
+                // aim reads at a glance and turns as LOOK-x rotates it. Same opaque magenta as the
+                // crosshair: one colour means "you are driving this".
+                var rr = s * 1.6, seg = 48, rp = [];
+                for (var ri = 0; ri < seg; ri++) {
+                    var a0 = ri / seg * Math.PI * 2, a1 = (ri + 1) / seg * Math.PI * 2;
+                    rp.push(rr * Math.cos(a0), rr * Math.sin(a0), 0, rr * Math.cos(a1), rr * Math.sin(a1), 0);
+                }
+                var tip = rr * 1.35, ah = rr * 0.22;
+                rp.push(0, 0, 0, tip, 0, 0,   tip, 0, 0, tip - ah, ah * 0.6, 0,   tip, 0, 0, tip - ah, -ah * 0.6, 0);
+                var rg = new THREE.BufferGeometry();
+                rg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rp), 3));
+                _driveRing = new THREE.LineSegments(rg,
+                    new THREE.LineBasicMaterial({ color: 0xff33ff, depthTest: false }));
+                _driveRing.renderOrder = 9999; _driveRing.frustumCulled = false;
+                _feedbackScene.add(_driveRing);
                 _driveCubeSig = sig;
             }
             _driveCube.position.set(w / 2, h / 2, 0);   // BoxGeometry is origin-centered → universe center
             _driveCube.visible = true;
-            _driveCross.position.set(fb.center[0], fb.center[1], (fb.center[2] != null) ? fb.center[2] : 0);
             // Framing-normalize the reticle: at the provider's default framing (distance =
             // max(w,h)*1.6, set in _init) scale == 1; at telephoto the world size grows in step
             // with the orbit distance so the APPARENT screen size holds ~constant (screen-stable
@@ -1774,15 +1796,27 @@
             // does not double-count perspective; a residual closer=bigger cue survives at close orbit.
             var ref = Math.max(_width, _height) * 1.6;
             var fscale = (ref > 0 && _orbit.distance > 0) ? (_orbit.distance / ref) : 1;
-            _driveCross.scale.setScalar(fscale);
-            _driveCross.visible = true;
+            if (fb.center) {
+                _driveCross.position.set(fb.center[0], fb.center[1], (fb.center[2] != null) ? fb.center[2] : 0);
+                _driveCross.scale.setScalar(fscale);
+            }
+            _driveCross.visible = !!fb.center;
+            var ori = fb.orientation;
+            if (ori && ori.pivot) {
+                _driveRing.position.set(ori.pivot[0], ori.pivot[1], (ori.pivot[2] != null) ? ori.pivot[2] : 0);
+                // Same yaw sign as the wall shell (R2: rotation.z = +deg — the world holds raw
+                // physics coordinates), so the spoke turns WITH the drawn object.
+                _driveRing.rotation.z = (ori.deg || 0) * Math.PI / 180;
+                _driveRing.scale.setScalar(fscale);
+            }
+            _driveRing.visible = !!(ori && ori.pivot);
         }
 
         // G2 final overlay pass: render the feedback scene (cube + crosshair) OVER the composited
         // screen with autoClear disabled, so it survives bloom/god-ray/water composites untouched.
         // Called last in _renderTick (after the FX dispatch has drawn to the default framebuffer).
         function _renderDriveFeedbackPass() {
-            if (!_feedbackScene || !_driveCross || !_driveCross.visible) { return; }
+            if (!_feedbackScene || !_driveCube || !_driveCube.visible) { return; }
             var prevAuto = _renderer.autoClear;
             _renderer.autoClear = false;
             _renderer.setRenderTarget(null);

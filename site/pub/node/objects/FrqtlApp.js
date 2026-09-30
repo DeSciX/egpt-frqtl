@@ -1336,6 +1336,22 @@
         if (Array.isArray(t.center)) { return t.center.slice(); }
         return null;
     };
+    /**
+     * _objectCentroid(object) → [x,y,z] | null — where an object SITS, for the pick and the drive
+     * feedback alike (one resolver, so the pick aims at the same point the cue is drawn at). A
+     * center-bearing object answers with its drive center; any other LO with the center of its
+     * rect. `rect.z` is the NEAR-face corner (the LargeObject 6-element rect convention), so the
+     * z-center is z + d/2 (d defaults to w, as the engine's z-capable rectangle does); a legacy
+     * 4-element rect sits at z = 0 — the same box the renderer draws.
+     */
+    FrqtlApp.prototype._objectCentroid = function (object) {
+        var c = this._readDriveCenter(this._resolveDriveTarget(object));
+        if (c) { return c; }
+        var r = object && object.rect;
+        if (!r) { return null; }
+        var z = (typeof r.z === 'number') ? r.z + ((typeof r.d === 'number') ? r.d : r.w) / 2 : 0;
+        return [r.left + r.w / 2, r.top + r.h / 2, z];
+    };
 
     /**
      * getUniverseBounds() → { width, height, zHalf } (engine px). The 2D canvas is
@@ -1368,18 +1384,22 @@
      * stores null ⇒ drive inert (the sticks orbit the camera as today).
      */
     FrqtlApp.prototype.setInputDriveTarget = function (object) {
-        this._inputDrive = null;
-        if (!object) { return; }
+        this._inputDrive = this._armInputDrive(object);
+        this._notifyInputDriveListeners();
+    };
+    /** The drive bag for `object`, or null when it cannot be driven (see setInputDriveTarget). */
+    FrqtlApp.prototype._armInputDrive = function (object) {
+        if (!object) { return null; }
         var cam = this.cameraControl;
         if (!cam || typeof cam.cameraOffsetFromWorld !== 'function' ||
-            typeof cam.worldFromCameraOffset !== 'function') { return; }
+            typeof cam.worldFromCameraOffset !== 'function') { return null; }
         var target = this._resolveDriveTarget(object);
         var orientationTarget = this._resolveOrientationTarget(object, target);
         var center = this._readDriveCenter(target);
         // Arm if we can drive EITHER position (center) OR orientation (rotate-capable target).
         // A rotate-only target (e.g. a wall selected for LOOK-spin) still LOCKS the camera so
         // the LOOK stick rotates it; positional terms are simply inert (no captured offset).
-        if (!center && !orientationTarget) { return; }
+        if (!center && !orientationTarget) { return null; }
         // SCREEN-NORMALIZED DRIVE (CEO ruled): capture the LOCKED orbit distance so driveInput can
         // scale a stick deflection to the same APPARENT screen motion at any zoom. A perspective
         // camera subtends a world displacement δ over screen-pixels ∝ δ/distance — so to hold the
@@ -1390,12 +1410,75 @@
         // distance/ref puts the drive on the render's own scale. lockedDist is invariant during a
         // drive (camera locked).
         var lockedDist = (typeof cam.getOrbit === 'function') ? cam.getOrbit().distance : null;
-        this._inputDrive = {
+        return {
+            object: object,
             target: target,
             off: center ? cam.cameraOffsetFromWorld(center) : null,
             lockedDist: lockedDist,
             orientationTarget: orientationTarget
         };
+    };
+    /**
+     * addInputDriveListener(fn) → unsubscribe. `fn()` is called after every setInputDriveTarget
+     * (arm, re-arm, disarm) — the drive's own change notice, for a consumer that presents the
+     * drive (CameraControls' axis legend) and must not wait for a stick push to learn of it.
+     */
+    FrqtlApp.prototype.addInputDriveListener = function (fn) {
+        var ls = this._inputDriveListeners || (this._inputDriveListeners = []);
+        if (ls.indexOf(fn) === -1) { ls.push(fn); }
+        return function () { var i = ls.indexOf(fn); if (i !== -1) { ls.splice(i, 1); } };
+    };
+    FrqtlApp.prototype._notifyInputDriveListeners = function () {
+        var ls = (this._inputDriveListeners || []).slice();
+        for (var i = 0; i < ls.length; i++) { ls[i](); }
+    };
+
+    /**
+     * What each stick axis does for a drive role — the ONE label table; consumers render
+     * `getInputDriveAxes()` and never re-enumerate it.
+     */
+    var DRIVE_AXIS_LABELS = Object.freeze({
+        slide:  'slide left / right',
+        push:   'push away / pull near',
+        lift:   'lift up / down',
+        rotate: 'rotate',
+        none:   'no effect'
+    });
+    /**
+     * The drive's axis map, derived from the TARGET's capabilities (a positional center, an
+     * orientation) — never a per-part table. driveInput routes by it and the legend reads it, so
+     * what the legend says IS what the stick does.
+     *   MOVE-x → slide along camera-right (position-capable)
+     *   MOVE-y → push/pull along camera-forward (position-capable)
+     *   LOOK-x → rotate (rotate-capable), else slide along camera-right (position-capable)
+     *   LOOK-y → lift along camera-up (position-capable)
+     */
+    FrqtlApp.prototype._driveAxisRoles = function (d) {
+        var pos = !!d.off, rot = !!d.orientationTarget;
+        return {
+            moveX: pos ? 'slide' : 'none',
+            moveY: pos ? 'push' : 'none',
+            lookX: rot ? 'rotate' : (pos ? 'slide' : 'none'),
+            lookY: pos ? 'lift' : 'none'
+        };
+    };
+    /**
+     * getInputDriveAxes() → null when nothing is driven, else
+     * `{ name, kind: 'position'|'rotate'|'position+rotate', axes: { moveX, moveY, lookX, lookY } }`
+     * with each axis `{ action, label }` (action ∈ slide|push|lift|rotate|none).
+     */
+    FrqtlApp.prototype.getInputDriveAxes = function () {
+        var d = this._inputDrive;
+        if (!d) { return null; }
+        var roles = this._driveAxisRoles(d);
+        var axes = {};
+        for (var k in roles) {
+            if (Object.prototype.hasOwnProperty.call(roles, k)) {
+                axes[k] = { action: roles[k], label: DRIVE_AXIS_LABELS[roles[k]] };
+            }
+        }
+        var kind = (d.off && d.orientationTarget) ? 'position+rotate' : (d.off ? 'position' : 'rotate');
+        return { name: (d.object && d.object.name) || '', kind: kind, axes: axes };
     };
     /**
      * DRIVE_DISTANCE_REF — the reference orbit distance at which the screen-normalized drive rate
@@ -1416,10 +1499,12 @@
     FrqtlApp.prototype.isInputDriveActive = function () { return !!this._inputDrive; };
 
     /**
-     * driveInput({ right, up, forward }) — apply ONE drive step (engine px in the camera
-     * basis). Accumulate the deltas into the captured offset, map back to world via
-     * worldFromCameraOffset (reads the LOCKED pose), clamp to the canvas cube, write via the
-     * canonical `updateObjectProperty(target,'center',…)` accessor, then RE-PROJECT the offset
+     * driveInput({ right, up, forward, strafe, rotate }) — apply ONE drive step (engine px in the
+     * camera basis; `rotate` in degrees). `right` is LOOK-x's slide and `strafe` is MOVE-x's; each
+     * applies only when the axis map (_driveAxisRoles) gives that axis the slide role. Accumulate
+     * the deltas into the captured offset, map back to world via worldFromCameraOffset (reads
+     * the LOCKED pose), clamp to the canvas cube, write via the canonical
+     * `updateObjectProperty(target,'center',…)` accessor, then RE-PROJECT the offset
      * from the clamped center so a clamped axis "sticks" at the wall (no invisible over-travel).
      */
     FrqtlApp.prototype.driveInput = function (delta) {
@@ -1432,8 +1517,8 @@
         //   When a rotate target is present, LOOK-x is CONSUMED by rotation, so the positional
         //   `right` term (also lookX-derived) is dropped — MOVE is unchanged, camera-drive
         //   (no target) is untouched. Walls re-aim their directional cone; emitters sweep (pulsar).
-        var rotating = !!d.orientationTarget;
-        if (rotating && typeof delta.rotate === 'number' && delta.rotate) {
+        var roles = this._driveAxisRoles(d);
+        if (roles.lookX === 'rotate' && typeof delta.rotate === 'number' && delta.rotate) {
             var cur = (typeof d.orientationTarget.getOrientation === 'function')
                 ? (d.orientationTarget.getOrientation() || 0) : 0;
             try { d.orientationTarget.setOrientation(cur + delta.rotate); } catch (e) { /* fail-soft */ }
@@ -1449,9 +1534,10 @@
         // distance (older provider / 2D) ⇒ scale 1 (unchanged).
         var ref = this._driveDistanceRef();
         var scale = (typeof d.lockedDist === 'number' && d.lockedDist > 0 && ref > 0) ? (d.lockedDist / ref) : 1;
-        // LOOK-x is repurposed to rotation for a rotate-capable target → drop the lateral `right`
-        // slide (else lookX would both rotate AND slide). MOVE (up/forward) is unchanged.
-        var rightDelta = rotating ? 0 : (delta.right || 0);
+        // Camera-right slide: LOOK-x's `right` only when LOOK-x is not claimed by rotation (else it
+        // would both rotate AND slide), plus MOVE-x's `strafe`.
+        var rightDelta = ((roles.lookX === 'slide') ? (delta.right || 0) : 0) +
+                         ((roles.moveX === 'slide') ? (delta.strafe || 0) : 0);
         d.off.right   += rightDelta * scale;
         d.off.up      += (delta.up      || 0) * scale;
         d.off.forward += (delta.forward || 0) * scale;
@@ -1471,12 +1557,27 @@
     // over the EXISTING renderTick(…, opts) path (no new RendererProvider method, no signature
     // change). A provider that ignores opts.driveFeedback draws nothing (capability-checked, R4/R5).
 
-    /** @returns {{center:number[], bounds:object}|null} the live drive-feedback, or null when not driving. */
+    /**
+     * The live drive-feedback, or null when not driving:
+     *   `{ bounds, center?, orientation?: { pivot:[x,y,z], deg } }`
+     * `center` (the crosshair) is present for a position-capable target; `orientation` (the
+     * rotation cue, drawn at `pivot` and aimed at `deg`) for a rotate-capable one — so a
+     * rotate-only wall is as visibly selected as an emitter. The cue's presence follows the same
+     * capabilities the axis map does.
+     */
     FrqtlApp.prototype._computeDriveFeedback = function () {
-        if (!this.isInputDriveActive()) { return null; }
-        var center = this._readDriveCenter(this._inputDrive.target);
-        if (!center) { return null; }
-        return { center: center, bounds: this.getUniverseBounds() };
+        var d = this._inputDrive;
+        if (!d) { return null; }
+        var fb = { bounds: this.getUniverseBounds() };
+        var center = this._readDriveCenter(d.target);
+        if (center) { fb.center = center; }
+        if (d.orientationTarget) {
+            var pivot = center || this._objectCentroid(d.object);
+            var deg = (typeof d.orientationTarget.getOrientation === 'function')
+                ? (d.orientationTarget.getOrientation() || 0) : 0;
+            if (pivot) { fb.orientation = { pivot: pivot, deg: deg }; }
+        }
+        return (fb.center || fb.orientation) ? fb : null;
     };
     /** The render options for a frame: the persistent user options plus the live drive-feedback (if any). */
     FrqtlApp.prototype._renderOptsWithFeedback = function () {
@@ -1488,40 +1589,66 @@
     };
 
     /**
-     * pickObjectAtScreen(cssX, cssY, cssW, cssH) → the nearest placeable object to a CAMERA-AWARE
-     * ray through the screen point, or null (spec §2). Replaces the flat camera-blind bbox hit-test
-     * in 3D: for each object, unproject the click onto THAT object's own z-plane via the provider's
-     * screenToWorld capability and measure the world distance to its center; pick the nearest within
-     * a world-px threshold. So clicking where the object VISUALLY appears selects it. Objects-layer
-     * (composes the provider ray + a nearest-center test); consumed downward by AuthorView. Returns
-     * null (fail-soft) when there is no screenToWorld capability (2D / BYO without it) — the host
-     * then falls back to the Layers panel (the guaranteed camera-independent selector).
+     * _screenPointOf(world, cssX, cssY, cssW, cssH) → [x,y] | null — the screen point at which the
+     * renderer DRAWS world point `world`, found through the provider's own screenToWorld (the one
+     * camera authority; no second projection is derived here): Newton steps on the unprojection
+     * onto world's z-plane, from the click, using the local Jacobian (world delta per +1 screen px).
+     * The map on a plane is projective, so a few steps converge; the answer is accepted only if it
+     * unprojects back onto `world` (else null — the point is not on screen from this view).
+     */
+    FrqtlApp.prototype._screenPointOf = function (world, cssX, cssY, cssW, cssH) {
+        var r = this.renderer, z = (typeof world[2] === 'number') ? world[2] : 0;
+        var x = cssX, y = cssY;
+        for (var k = 0; k < 8; k++) {
+            var p0 = r.screenToWorld(x, y, cssW, cssH, z);
+            var px = r.screenToWorld(x + 1, y, cssW, cssH, z);
+            var py = r.screenToWorld(x, y + 1, cssW, cssH, z);
+            if (!p0 || !px || !py) { return null; }
+            var a = px.x - p0.x, b = py.x - p0.x, e = px.y - p0.y, f = py.y - p0.y;
+            var det = a * f - b * e;
+            if (!det) { return null; }   // the plane is edge-on to the view
+            var wx = world[0] - p0.x, wy = world[1] - p0.y;
+            var dx = (f * wx - b * wy) / det, dy = (a * wy - e * wx) / det;
+            x += dx; y += dy;
+            if (Math.abs(dx) + Math.abs(dy) < 0.05) { break; }
+        }
+        var q = r.screenToWorld(x, y, cssW, cssH, z);
+        if (!q || Math.abs(q.x - world[0]) + Math.abs(q.y - world[1]) > 0.5) { return null; }
+        return [x, y];
+    };
+
+    /** Screen radius (in the caller's screen units) inside which a click picks an object. */
+    FrqtlApp.PICK_RADIUS_PX = 32;
+    /** A center-bearing (drivable) object's pick distance is divided by this, so in a dense scene
+     *  the thing the sticks can MOVE wins a near-tie against a wall behind it. */
+    FrqtlApp.PICK_DRIVE_PRIORITY = 2;
+
+    /**
+     * pickObjectAtScreen(cssX, cssY, cssW, cssH) → the object whose centroid is DRAWN nearest the
+     * screen point, or null (spec §2). The distance is in SCREEN px (each centroid is located on
+     * screen through the provider's screenToWorld — _screenPointOf), so the pick radius is what the
+     * eye sees at any zoom, axis and depth; a world-px radius on each object's own plane was
+     * anisotropic on screen and different per plane, which let a wall behind the emitter win inside
+     * the emitter's own footprint. A drivable object's distance is divided by PICK_DRIVE_PRIORITY.
+     * Objects-layer; consumed downward by AuthorView. Null (fail-soft) with no screenToWorld
+     * capability — the host falls back to the Layers panel.
      */
     FrqtlApp.prototype.pickObjectAtScreen = function (cssX, cssY, cssW, cssH) {
         var r = this.renderer;
         if (!r || typeof r.screenToWorld !== 'function') { return null; }
         var los = this.largeObjects;
-        if (!los.length) { return null; }
-        var bounds = this.getUniverseBounds();
-        var thresh = Math.max(bounds.width, bounds.height) * 0.08;   // world-px pick radius
-        var best = null, bestD = Infinity;
+        var best = null, bestScore = Infinity;
         for (var i = 0; i < los.length; i++) {
             var lo = los[i];
-            // Prefer the emitter facade's live center (the drive target); else the LO rect center.
-            var center = this._readDriveCenter(this._resolveDriveTarget(lo));
-            if (!center) {
-                if (lo.rect) {
-                    center = [lo.rect.left + lo.rect.w / 2, lo.rect.top + lo.rect.h / 2,
-                              (typeof lo.rect.z === 'number') ? lo.rect.z : 0];
-                } else { continue; }
-            }
-            var z = (typeof center[2] === 'number') ? center[2] : 0;
-            var wp = r.screenToWorld(cssX, cssY, cssW, cssH, z);   // world (x,y) on this object's z-plane
-            if (!wp) { continue; }
-            var dd = Math.sqrt((wp.x - center[0]) * (wp.x - center[0]) + (wp.y - center[1]) * (wp.y - center[1]));
-            if (dd < bestD) { bestD = dd; best = lo; }
+            var c = this._objectCentroid(lo);
+            if (!c) { continue; }
+            var sp = this._screenPointOf(c, cssX, cssY, cssW, cssH);
+            if (!sp) { continue; }
+            var drivable = !!this._readDriveCenter(this._resolveDriveTarget(lo));
+            var score = Math.hypot(sp[0] - cssX, sp[1] - cssY) / (drivable ? FrqtlApp.PICK_DRIVE_PRIORITY : 1);
+            if (score < bestScore) { bestScore = score; best = lo; }
         }
-        return (bestD <= thresh) ? best : null;
+        return (bestScore <= FrqtlApp.PICK_RADIUS_PX) ? best : null;
     };
 
     /**

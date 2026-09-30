@@ -101,9 +101,11 @@
  *     Wheel/pinch → dolly (distance), independent of the pads.
  *   OBJECT-DRIVE FORK: when the runner has an input-drive target the sticks are
  *   routed to that OBJECT and the camera pose is FROZEN (see the drive block in
- *   frame()). LOOK-x therefore means ROLL with no drive target and OBJECT-ROTATE
- *   with one — one stick, two well-defined meanings selected by the target's
- *   presence, never an overlap.
+ *   frame()). Each axis's meaning for the target comes from the runner's axis map
+ *   (`runner.getInputDriveAxes()`, derived from the target's capabilities) — LOOK-x
+ *   means ROLL with no drive target and OBJECT-ROTATE with a rotate-capable one;
+ *   MOVE-x slides the object along camera-right. While a target is driven a LEGEND
+ *   above the pads names what each axis does for it (`data-role="drive-legend"`).
  *   All the geometry lives at the ONE camera authority (the provider's
  *   `getCameraControl()` handle: `look` rotates, `move` translates) — this object
  *   re-derives NO orbit math and integrates NO angles. A BYO provider whose handle
@@ -280,10 +282,10 @@
             // route the sticks to the OBJECT via runner.driveInput (the runner owns the basis
             // math + the clamp) and emit ZERO camera output (no setOrbit, no wheel-dolly) — the
             // presence of the target IS the lock (spec §2b). The camera pair reused verbatim; this
-            // is a dumb forwarder (no center/basis/clamp knowledge here). Signs follow the §1
-            // convention (LOOK-x → screen x slide, LOOK-y → y lift, MOVE-y → view-forward z
-            // push/pull); MOVE-x is unused in drive mode. The on-screen sign confirmation is the
-            // tester's named LOOK item (§2b) — flip a term here if a direction reads inverted.
+            // is a dumb forwarder (no center/basis/clamp knowledge here): it sends every axis and
+            // the runner's axis map decides which apply. Signs follow the §1 convention (LOOK-x →
+            // screen x slide, LOOK-y → y lift, MOVE-y → view-forward z push/pull, MOVE-x →
+            // screen x slide).
             if (runner && typeof runner.getInputDriveTarget === 'function' && runner.getInputDriveTarget()) {
                 if (typeof runner.driveInput === 'function') {
                     runner.driveInput({
@@ -301,6 +303,9 @@
                         right:   lookX * driveSpeed * dt,
                         up:      lookY * driveSpeed * dt,
                         forward: moveY * driveSpeed * dt,
+                        // MOVE-x — the camera-right slide on the MOVE pad (same sign criterion
+                        // as `right`: stick-right == crosshair screen-right).
+                        strafe:  moveX * driveSpeed * dt,
                         // ROTATION (B7b) — LOOK's HORIZONTAL also carries a rotate rate (deg/frame,
                         // = lookX × ROT_DRIVE_SPEED × dt). This is a DUMB forwarder: it always sends
                         // `rotate`; the runner CONSUMES it only when the drive target is rotate-capable
@@ -416,6 +421,61 @@
             focusMount();   // best-effort focus at attach
         }
 
+        // ── Drive legend — what each stick axis does for the DRIVEN target ────
+        // Rendered from runner.getInputDriveAxes() (the runner's axis map + its label table), so
+        // the legend cannot disagree with what driveInput does. Shown only while a target is
+        // driven; refreshed on the runner's drive-change notice. Each row carries
+        // data-axis / data-action so a non-human reader (the VLA loop) reads the same map.
+        var legendEl = null;
+        var unsubscribeDrive = null;
+        var LEGEND_ROWS = {
+            move: [['move-y', 'moveY', '\u2191\u2193'], ['move-x', 'moveX', '\u2190\u2192']],
+            look: [['look-y', 'lookY', '\u2191\u2193'], ['look-x', 'lookX', '\u2190\u2192']]
+        };
+        function makeDriveLegend() {
+            var el = doc.createElement('div');
+            el.setAttribute('data-role', 'drive-legend');
+            el.style.cssText = 'position:absolute;left:16px;right:16px;bottom:118px;display:none;' +
+                'justify-content:space-between;align-items:flex-end;' +
+                'pointer-events:none;z-index:40;font:11px sans-serif;';
+            return el;
+        }
+        function renderDriveLegend() {
+            if (!legendEl) { return; }
+            var info = (runner && typeof runner.getInputDriveAxes === 'function') ? runner.getInputDriveAxes() : null;
+            while (legendEl.firstChild) { legendEl.removeChild(legendEl.firstChild); }
+            if (!info) {
+                legendEl.style.display = 'none';
+                legendEl.removeAttribute('data-drive-kind');
+                return;
+            }
+            legendEl.setAttribute('data-drive-kind', info.kind);
+            ['move', 'look'].forEach(function (stick) {
+                var block = doc.createElement('div');
+                block.setAttribute('data-stick', stick);
+                block.style.cssText = (stick === 'move' ? '' : 'text-align:right;') +
+                    'max-width:45%;padding:4px 6px;border-radius:4px;background:rgba(20,30,38,0.75);' +
+                    'border:1px solid rgba(255,51,255,0.55);color:rgba(230,240,245,0.95);line-height:1.45;';
+                if (stick === 'move') {
+                    var head = doc.createElement('div');
+                    head.textContent = 'DRIVING ' + (info.name || 'object') + ' (' + info.kind + ')';
+                    head.style.cssText = 'color:#ff33ff;font-weight:bold;';
+                    block.appendChild(head);
+                }
+                LEGEND_ROWS[stick].forEach(function (row) {
+                    var ax = info.axes[row[1]];
+                    var line = doc.createElement('div');
+                    line.setAttribute('data-axis', row[0]);
+                    line.setAttribute('data-action', ax.action);
+                    line.textContent = stick.toUpperCase() + ' ' + row[2] + ' ' + ax.label;
+                    if (ax.action === 'none') { line.style.opacity = '0.5'; }
+                    block.appendChild(line);
+                });
+                legendEl.appendChild(block);
+            });
+            legendEl.style.display = 'flex';
+        }
+
         // ── On-screen joystick pads ──────────────────────────────────────────
         var padEls = [];
         var padCleanups = [];        // per-pad force-release (used on dispose mid-drag)
@@ -527,8 +587,14 @@
             lookPad.style.pointerEvents = 'auto';
             container.appendChild(movePad);
             container.appendChild(lookPad);
+            legendEl = makeDriveLegend();
+            container.appendChild(legendEl);
             mountEl.appendChild(container);
             padEls = [movePad, lookPad];
+            if (runner && typeof runner.addInputDriveListener === 'function') {
+                unsubscribeDrive = runner.addInputDriveListener(renderDriveLegend);
+            }
+            renderDriveLegend();
 
             // Wheel/pinch zoom on the mount surface (dolly), independent of the pads.
             if (wheelStep > 0) {
@@ -589,6 +655,8 @@
                 if (onWheel && mountEl && mountEl.removeEventListener) {
                     mountEl.removeEventListener('wheel', onWheel);
                 }
+                if (unsubscribeDrive) { unsubscribeDrive(); unsubscribeDrive = null; }
+                legendEl = null;
                 if (container && container.parentNode) { container.parentNode.removeChild(container); }
                 if (restoreMountPosition !== null && mountEl) { mountEl.style.position = restoreMountPosition; }
                 padEls = [];
