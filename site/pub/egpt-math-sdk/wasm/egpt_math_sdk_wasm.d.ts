@@ -101,6 +101,17 @@ export function arenaToPpfFull(h: bigint): string;
 
 export function arenaToPrimeAtoms(n: bigint): string;
 
+/**
+ * `f64ToOddDenom(f)` → `{"sign", "odd", "denomLog2"}` (odd as a decimal string).
+ */
+export function boundaryF64ToOddDenom(f: number): string;
+
+/**
+ * `toEGPTReal(f)`'s branch and operands: `{"zero":true}` → `fromBigInt(0n)`, `{"n"}` →
+ * `fromBigInt(n)` (denomLog2 0), `{"n","d"}` → `fromRational(n, 2^denomLog2)`.
+ */
+export function boundaryToEgptRealParts(f: number): string;
+
 export function bridge_version(): string;
 
 /**
@@ -168,11 +179,25 @@ export function materializeStr(handle: bigint): string;
  */
 export function materializeV2(handle: bigint): Uint8Array;
 
-export function orderFinderCalculateSampleSize(n: string): number;
+/**
+ * `a * b` over BigInts.
+ */
+export function multilinearMul(a: string, b: string): string;
+
+export function multilinearNextOddPrime(last: string): string;
 
 /**
- * `OrderFinder.findOrder` → decimal string, or "" for the JS `null`.
+ * `{"n", "d", "counts": [[numeratorCount, denominatorCount], …]}` (residues as decimal strings).
  */
+export function multilinearSplitOverCache(numerator: string, denominator: string, cache_json: string): string;
+
+/**
+ * `a - b` over BigInts.
+ */
+export function multilinearSub(a: string, b: string): string;
+
+export function orderFinderCalculateSampleSize(n: string): number;
+
 export function orderFinderFindOrder(a: string, n: string, a_disp: string, n_disp: string): string;
 
 export function orderFinderVerifyOrder(a: string, n: string, r: string): boolean;
@@ -183,29 +208,18 @@ export function orderFinderVerifyOrder(a: string, n: string, r: string): boolean
 export function polyPort(op: string, a_json: string, b_json: string): string;
 
 /**
- * `matMul(A, B)` over JSON matrices of handles; tags index the row-major flattening.
+ * The MatrixAsPolynomial.js exports over JSON matrices of handles — `op` names the JS
+ * function (`matMul`, `matMulDense`, `detectToeplitzStencil`; the last ignores `b_json`).
+ * Tags index the row-major flattening of each input; a matrix result is an array of tag
+ * rows, a stencil a tag array, no stencil `null`.
  */
-export function polyPortMatMul(a_json: string, b_json: string): string;
+export function polyPortMatrix(op: string, a_json: string, b_json: string): string;
 
 /**
  * `forwardTransform(coeffs, N)` / `inverseTransform(samples, N)` — N is the JS number;
  * `n_disp` its `${N}` for the length message.
  */
 export function polyPortTransform(op: string, a_json: string, n: number, n_disp: string): string;
-
-export function poly_add_wasm(a_json: string, b_json: string): string;
-
-export function poly_div_wasm(a_json: string, b_json: string): string;
-
-export function poly_evaluate_at_wasm(poly_json: string, x_json: string): string;
-
-export function poly_forward_transform_wasm(coeffs_json: string, n: number): string;
-
-export function poly_gcd_wasm(a_json: string, b_json: string): string;
-
-export function poly_inverse_transform_wasm(samples_json: string, n: number): string;
-
-export function poly_mul_wasm(a_json: string, b_json: string): string;
 
 export function primeAtomBigOmega(n: string): string;
 
@@ -219,6 +233,12 @@ export function primeAtomDivisorsOf(n: string): string;
 export function primeAtomFactMultiply(va_json: string, vb_json: string): string;
 
 export function primeAtomFactorize(n: string): string;
+
+/**
+ * `OrderFinder.findOrder` → decimal string, or "" for the JS `null`.
+ * `sumAsInt += reconstruct(…)` — the integer add of `primeAtomMatMul`'s boundary sum.
+ */
+export function primeAtomIntegerAdd(a: string, b: string): string;
 
 export function primeAtomLogspaceSum(n: string): string;
 
@@ -336,6 +356,8 @@ export interface InitOutput {
     readonly releaseHandle: (a: bigint) => [number, number];
     readonly resetScope: () => void;
     readonly arenaToMathString: (a: bigint) => [number, number, number, number];
+    readonly boundaryF64ToOddDenom: (a: number) => [number, number];
+    readonly boundaryToEgptRealParts: (a: number) => [number, number];
     readonly codecDecomposeOdd: (a: number, b: number) => [number, number, number, number];
     readonly codecF64Lift: (a: number) => [number, number];
     readonly codecIeeeEncode: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
@@ -354,7 +376,7 @@ export interface InitOutput {
     readonly primeCacheIndexOf: (a: number, b: number) => number;
     readonly primeCacheSieve: (a: number, b: number, c: number) => [number, number, number, number];
     readonly polyPort: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
-    readonly polyPortMatMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly polyPortMatrix: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly polyPortTransform: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly orderFinderCalculateSampleSize: (a: number, b: number) => [number, number, number];
     readonly orderFinderFindOrder: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
@@ -364,19 +386,12 @@ export interface InitOutput {
     readonly primeAtomDivisorsOf: (a: number, b: number) => [number, number, number, number];
     readonly primeAtomFactMultiply: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly primeAtomFactorize: (a: number, b: number) => [number, number, number, number];
+    readonly primeAtomIntegerAdd: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly primeAtomLogspaceSum: (a: number, b: number) => [number, number, number, number];
     readonly primeAtomMakeMeter: () => [number, number];
     readonly primeAtomOmega: (a: number, b: number) => [number, number, number];
     readonly primeAtomReconstruct: (a: number, b: number) => [number, number, number, number];
     readonly primeAtomTotient: (a: number, b: number) => [number, number, number, number];
-    readonly bridge_version: () => [number, number];
-    readonly poly_add_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly poly_div_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly poly_evaluate_at_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly poly_forward_transform_wasm: (a: number, b: number, c: number) => [number, number, number, number];
-    readonly poly_gcd_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly poly_inverse_transform_wasm: (a: number, b: number, c: number) => [number, number, number, number];
-    readonly poly_mul_wasm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
     readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
     readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
@@ -389,6 +404,11 @@ export interface InitOutput {
     readonly primeCompositeNew: (a: number, b: number) => [bigint, number, number];
     readonly primeCompositeRecordsKey: (a: number, b: number) => [number, number, number, number];
     readonly primeCompositeState: (a: bigint) => [number, number, number, number];
+    readonly bridge_version: () => [number, number];
+    readonly multilinearMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly multilinearNextOddPrime: (a: number, b: number) => [number, number, number, number];
+    readonly multilinearSplitOverCache: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly multilinearSub: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly egpt_add: (a: number, b: number) => number;
     readonly egpt_cmp: (a: number, b: number) => number;
     readonly egpt_div: (a: number, b: number) => number;
