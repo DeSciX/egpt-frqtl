@@ -177,10 +177,6 @@
 
     // THE 2D camera map (pan/zoom). Pure + backend-free, so the provider stays thin and the
     // SAME map serves the offline unprojectStill — one authority, live and offline.
-    // The axes a 2D camera does NOT have. Named once so the setOrbit guard and the docs
-    // cannot drift apart.
-    var ANGULAR_KEYS = ['azimuth', 'elevation', 'roll'];
-
     function _resolveCamera2dGeometry() {
         if (typeof module !== 'undefined' && module.exports) {
             var path = require('path');
@@ -831,10 +827,12 @@
                         // ignoring it would let a 3D camera path path "run" in 2D and produce
                         // fabricated evidence. The handle declares what it has; asking for
                         // more fails loud.
-                        for (var i = 0; i < ANGULAR_KEYS.length; i++) {
-                            if (spec[ANGULAR_KEYS[i]] !== undefined) {
+                        // The angular axes are named once, at the pose-vocabulary owner.
+                        var angular = _resolveOrbitBag().ANGULAR_FIELDS;
+                        for (var i = 0; i < angular.length; i++) {
+                            if (spec[angular[i]] !== undefined) {
                                 throw new Error('p5-provider camera setOrbit: this camera declares no "' +
-                                    ANGULAR_KEYS[i] + '" axis (2D pose is {distance, target}). Check ' +
+                                    angular[i] + '" axis (2D pose is {distance, target}). Check ' +
                                     'cameraControl.poseFields rather than assuming a mode. (FAIL-LOUD.)');
                             }
                         }

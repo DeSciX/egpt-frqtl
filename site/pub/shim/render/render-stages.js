@@ -102,7 +102,8 @@
  *                     the BYO case)
  *   renderBaseCanvas  the boolean in effect at composite, or null on a stage where
  *                     nothing composited                        (the provider)
- *   pose              `cameraControl.getOrbit()`, or null in 2D (the dispatcher, via the
+ *   pose              `cameraControl.getOrbit()` (the 2D bag is {distance, target}), or null
+ *                     with no camera pose control at all (the dispatcher, via the
  *                     ONE camera authority — a derived read, no new machinery; without it
  *                     a 3D composite cannot be co-registered to the field)
  *   composedOf        upstreamStages(stage) — the ordered upstream stage names, DERIVED

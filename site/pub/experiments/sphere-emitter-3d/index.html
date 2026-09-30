@@ -106,8 +106,8 @@
                 <span class="val" id="ctrl-wavelength-val">1</span>
             </label>
             <div class="control-divider"></div>
-            <!-- Camera orbit controls — shown ONLY when runner.cameraControl exists
-                 (the 3D three.js provider). Capability-checked, never renderer-sniffed. -->
+            <!-- Camera orbit controls — shown ONLY for an ANGULAR camera (OrbitBag.hasAngularPose
+                 on the camera handle's poseFields). Never renderer-sniffed. -->
             <span id="camera-controls" style="display:none; align-items:center; gap:14px;">
                 <label title="Orbit the camera horizontally">
                     az:
@@ -266,7 +266,7 @@
     // correct default from CURRENT _is2D, never an incremental adjustment.
     function _applyDefaultCameraOrbit() {
         var cam = runner.cameraControl;
-        if (!cam) { return; }
+        if (!window.OrbitBag.hasAngularPose(cam)) { return; }   // an orbit framing needs an angular camera
         if (_is2D) {
             cam.setOrbit({ azimuth: 180, elevation: 0, distance: 600 * 1.30 });
         } else {
@@ -424,7 +424,7 @@
 
         // ── Camera orbit control (sugar handle — mirrors cone-emitter-3d) ──
         var cam = runner.cameraControl;
-        if (cam) {
+        if (window.OrbitBag.hasAngularPose(cam)) {   // az/el sliders: an angular camera only
             document.getElementById('camera-controls').style.display = 'inline-flex';
 
             // Default orbit for the CURRENT mode: flat straight-on for 2D

@@ -68,9 +68,8 @@
                 <input type="range" id="ctrl-ringCount" min="1" max="10" step="1" value="4">
                 <span class="val" id="ctrl-ringCount-val">4</span>
             </label>
-            <!-- Camera orbit controls — shown ONLY when runner.cameraControl exists
-                 (the 3D three.js provider). Capability-checked, never renderer-sniffed
-                 (mirrors particle-walk-3d). -->
+            <!-- Camera orbit controls — shown ONLY for an ANGULAR camera (OrbitBag.hasAngularPose
+                 on the camera handle's poseFields). Never renderer-sniffed. -->
             <span id="camera-controls" style="display:none; align-items:center; gap:16px;">
                 <label title="Orbit the camera horizontally">
                     cam azimuth:
@@ -230,7 +229,7 @@
 
         // ── Camera orbit control (sugar handle — mirrors particle-walk-3d) ──
         var cam = runner.cameraControl;
-        if (cam) {
+        if (window.OrbitBag.hasAngularPose(cam)) {   // az/el sliders: an angular camera only
             document.getElementById('camera-controls').style.display = 'inline-flex';
 
             // Default view: 'rooftop' (3/4 aerial, az=45/el=45) — shows the ring's

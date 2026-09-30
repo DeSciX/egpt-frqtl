@@ -6,7 +6,7 @@
  * it in with ONE call; it drives the existing `runner.cameraControl` capability
  * (the camera-as-sugar / BYO-renderer pattern — `getCameraControl()` →
  * `look({spin,pitch})` ROTATES, `move({forward,strafe})` TRANSLATES) with two
- * on-screen joysticks + arrow/WASD keys, replacing the preset-dropdown pair.
+ * on-screen joysticks + arrow/WASD keys.
  *
  * ── Layer 1: API contract ────────────────────────────────────────────────────
  *
@@ -14,9 +14,12 @@
  *
  *   @param {object} runner  — an FrqtlApp. The ONLY coupling: it reads
  *     `runner.cameraControl` (the OPTIONAL camera sugar handle the active
- *     renderer provider exposes via `getCameraControl()`; three → a handle, p5/2D
- *     → null). NO renderer-sniffing, NO engine, NO per-page coupling — the object
- *     knows nothing about which experiment mounts it.
+ *     renderer provider exposes via `getCameraControl()`). The pads mount only
+ *     for a camera that DECLARES an angular axis — `OrbitBag.hasAngularPose(cam)`
+ *     (compat/renderer/orbit-bag.js), asked of the handle's own `poseFields`. The
+ *     2D p5 camera is a real handle too (`{distance, target}`, no look/move), so
+ *     handle presence is never the test. NO renderer-sniffing, NO engine, NO
+ *     per-page coupling — the object knows nothing about which experiment mounts it.
  *   @param {HTMLElement} mountEl — the container the two joystick pads are
  *     absolutely positioned within (typically the experiment's canvas wrapper).
  *     Its `position` is set to `relative` while attached if it is `static`
@@ -27,10 +30,10 @@
  *       default framing. Omitted ⇒ the camera's CURRENT `getOrbit()` is kept.
  *       CALLER CONTRACT: name ONLY axes the TARGET camera declares. Every camera
  *       publishes its own axes as `cameraControl.poseFields` (the CameraPath idiom:
- *       ask what axes EXIST, never what mode the camera is in) — and NOT every
- *       camera is angular: the p5 2D camera declares `{distance, target}` and no
- *       azimuth/elevation/roll, so an `{azimuth,…}` bag aimed at it FAILS LOUD
- *       inside `setOrbit` (by design, at the provider that owns the axes). This
+ *       ask what axes EXIST, never what mode the camera is in); an axis the camera
+ *       does not declare FAILS LOUD inside `setOrbit` (by design, at the provider
+ *       that owns the axes). A flat camera never gets this far — attach() mounts
+ *       nothing for it (see the handle below). This
  *       widget deliberately does not re-validate or filter the bag: a second
  *       enumeration of the pose vocabulary here would be a schema mirror, and
  *       silently dropping an axis the caller asked for is the failure mode
@@ -75,10 +78,11 @@
  *     getState():object,            // the camera's whole orbit bag
  *     setState(spec):void,          // apply an orbit-bag PATCH to the camera + publish
  *     sync():void,                  // re-read the camera's orbit into the hook (e.g. after an external setOrbit)
- *     mounted:boolean               // false when the provider had no cameraControl (FAIL-SOFT 2D no-op)
- *   }} handle. When `runner.cameraControl` is null (2D/p5 provider) NOTHING mounts
- *   and a no-op handle (`mounted:false`, all methods safe) is returned — the
- *   capability check IS the presence of the handle; the object never throws in 2D.
+ *     mounted:boolean               // false when the camera declares no angular axis (FAIL-SOFT no-op)
+ *   }} handle. When the camera declares no angular axis (the 2D p5 camera) or there
+ *   is no camera handle at all, NOTHING mounts and a no-op handle (`mounted:false`,
+ *   all methods safe) is returned — every caller, including an unconditional
+ *   walkthrough-rung attach, is right in 2D by construction.
  *
  * ── Input mapping — the STANDARD FPS SPLIT (CEO-ruled 2026-07-26/07-28) ──────
  *   The two pads are the two halves of a first-person camera and they do NOT
@@ -128,8 +132,20 @@
 
     function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-    // No-op handle returned when the active provider exposes no cameraControl
-    // (2D/p5) — the capability check. All methods are safe to call.
+    /** THE 3D-ness predicate's owner (compat/renderer/orbit-bag.js). FAIL-LOUD. */
+    function _resolveOrbitBag() {
+        if (typeof module !== 'undefined' && module.exports) {
+            return require('../../compat/renderer/orbit-bag.js');
+        }
+        if (typeof window !== 'undefined' && window.OrbitBag) { return window.OrbitBag; }
+        throw new Error('[CameraControls] canonical contract OrbitBag (lib/frqtl/compat/renderer/' +
+            'orbit-bag.js) is unreachable (load order) — it owns the 3D-ness predicate ' +
+            'hasAngularPose and rides the RENDERER phase (renderer-layer-manifest.js). ' +
+            'Fail-loud, not a fallback.');
+    }
+
+    // No-op handle returned when the camera declares no angular axis (the 2D p5
+    // camera) or there is no camera. All methods are safe to call.
     function noopHandle() {
         return {
             mounted: false,
@@ -144,11 +160,18 @@
         opts = opts || {};
 
         // ── CAPABILITY CHECK (FAIL-SOFT) ─────────────────────────────────────
-        // Method presence on runner.cameraControl IS the check — never a renderer
-        // sniff. No handle, or one without setOrbit/getOrbit ⇒ mount nothing.
+        // The pads are the ANGULAR affordance: they mount only for a camera whose own
+        // poseFields declare an angular axis (OrbitBag.hasAngularPose — the ONE 3D-ness
+        // predicate). A flat camera (2D p5: {distance, target}, no look/move) would get
+        // a LOOK pad with no live axis. Never a renderer sniff, never handle presence.
+        // That predicate is the ONLY no-op exit: an angular camera that cannot set or read
+        // its pose breaks the camera contract and throws.
         var cam = (runner && runner.cameraControl) ? runner.cameraControl : null;
-        if (!cam || typeof cam.setOrbit !== 'function' || typeof cam.getOrbit !== 'function') {
-            return noopHandle();
+        if (!_resolveOrbitBag().hasAngularPose(cam)) { return noopHandle(); }
+        if (typeof cam.setOrbit !== 'function' || typeof cam.getOrbit !== 'function') {
+            throw new Error('[CameraControls] the camera declares angular axes but its handle has no ' +
+                'setOrbit()/getOrbit() — every getCameraControl() handle sets and reads its pose ' +
+                '(RENDERER_CONTRACT §1a.2). (FAIL-LOUD.)');
         }
 
         // ── IDEMPOTENT per mountEl (F4, CEO 2026-07-23) ──────────────────────

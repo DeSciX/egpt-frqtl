@@ -479,6 +479,9 @@
         // one identical throw under every provider). BOTH camera handles ferry every
         // point-valued field through it — must precede both providers.
         { src: _u('compat/renderer/orbit-bag.js') },
+        // lo-drawn-center.js: THE LO drawn-center authority (where an LO rect's box is drawn).
+        // three-provider places meshes through it and FrqtlApp aims its pick at it.
+        { src: _u('compat/renderer/lo-drawn-center.js') },
         { src: _u('compat/renderer/providers/p5-provider.js') },
         // unprojectStill.js: THE pixel→universe mapping authority for a captured still
         // (RENDERER_CONTRACT §10.5). Ferries window.ThreeCameraGeometry lazily for the

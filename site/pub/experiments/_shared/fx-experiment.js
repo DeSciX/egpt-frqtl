@@ -114,6 +114,20 @@
         godrayDensity: 'spread'
     };
 
+    // THE 3D-ness predicate (OrbitBag.hasAngularPose, lib/frqtl/compat/renderer/orbit-bag.js,
+    // renderer phase): is the scene's camera angular? Asked of the handle's own poseFields — the
+    // 2D p5 camera is a real handle too, so handle presence is never the test.
+    function _sceneIs3D(runner) {
+        if (typeof window !== 'undefined' && window.OrbitBag) {
+            return window.OrbitBag.hasAngularPose(runner.cameraControl);
+        }
+        throw new Error(
+            '[fx-experiment] OrbitBag not available. ' +
+            'Ensure lib/frqtl/compat/renderer/orbit-bag.js is loaded before fx-experiment.js ' +
+            '(the renderer phase, renderer-layer-manifest.js).'
+        );
+    }
+
     // PageParams contract (WS gym-controls-as-sugar Bite 3 item 0/2): the URL param
     // KEY NAME this file reads (`seed`) is single-sourced from
     // lib/shim/page-params/index.js, live-imported via window.PageParams (installed
@@ -149,11 +163,13 @@
         return isNaN(n) ? 42 : n;
     }
 
-    // Applies a {render:{...}, orbit:{...}} preset to the runner.
+    // Applies a {render:{...}, orbit:{...}} preset to the runner. `orbit` is an ANGULAR
+    // framing — applied only on a camera that has angular axes (a partial angular framing on
+    // the 2D camera would be a different framing, not a lesser one).
     function _applyPreset(runner, preset) {
         if (!preset) { return; }
         if (preset.render) { runner.setRenderOptions(preset.render); }
-        if (preset.orbit && runner.cameraControl) {
+        if (preset.orbit && _sceneIs3D(runner)) {
             runner.cameraControl.setOrbit(preset.orbit);
         }
     }
@@ -301,11 +317,11 @@
     }
 
     // Wires the camera orbit sliders + presets + layer toggles IF the page declares them
-    // (same id contract as particle-walk-3d) AND the active provider exposes cameraControl.
+    // (same id contract as particle-walk-3d) AND the camera is angular (az/el/dist sliders).
     function _wireCamera(runner) {
         var cam = runner.cameraControl;
         var host = document.getElementById('camera-controls');
-        if (!cam || !host) { return; }
+        if (!host || !_sceneIs3D(runner)) { return; }
         host.style.display = 'inline-flex';
         var o = cam.getOrbit();
         function _set(id, v) { var el = document.getElementById(id); if (el) { el.textContent = v; } }
@@ -418,10 +434,10 @@
         // "down-barrel = the DEFAULT view"). Declared ONCE on window._egptFx.cameraPreset
         // (a preset name from runner.cameraControl.presets, e.g. 'down-barrel') — applied
         // BEFORE _wireCamera() seeds the orbit sliders, so the sliders reflect the ACTUAL
-        // starting view rather than the renderer's generic fallback orbit. Capability-checked
-        // (no-op in 2D / when unset) — every existing fx-* page that doesn't declare this
-        // field is byte-identical (still opens on the renderer's generic default orbit).
-        if (cfg.cameraPreset && runner.cameraControl && typeof runner.cameraControl.setPreset === 'function') {
+        // starting view rather than the renderer's generic fallback orbit. A 3D preset name,
+        // so applied only on an angular camera (no-op in 2D / when unset) — every existing
+        // fx-* page that doesn't declare this field is byte-identical.
+        if (cfg.cameraPreset && _sceneIs3D(runner)) {
             runner.cameraControl.setPreset(cfg.cameraPreset);
         }
 
@@ -436,7 +452,7 @@
         runner.loopControl = loopState;
 
         // 3D experiments default to a VIEWING cadence (capped TPS → smooth FPS).
-        if (runner.cameraControl) { runner.setRateLimits({ fpsLimit: 0, tpsLimit: 120 }); }
+        if (_sceneIs3D(runner)) { runner.setRateLimits({ fpsLimit: 0, tpsLimit: 120 }); }
 
         runner.start();
         if (typeof frameRate === 'function') { frameRate(60); }

@@ -271,6 +271,21 @@
     }
 
     /**
+     * Resolve THE LO drawn-center authority (`compat/renderer/lo-drawn-center.js`) — where an LO
+     * rect's box is drawn. The runner's pick and drive feedback aim at the same point through it.
+     */
+    function _resolveLoDrawnCenter() {
+        if (typeof module !== 'undefined' && module.exports) {
+            var p = require('path');
+            return require(p.resolve(__dirname, '../lo-drawn-center.js'));
+        }
+        if (typeof window !== 'undefined' && window.LoDrawnCenter) { return window.LoDrawnCenter; }
+        throw new Error('three-provider: canonical contract LoDrawnCenter ' +
+            '(compat/renderer/lo-drawn-center.js) is unreachable (load order) — ' +
+            'fail-loud, not a fallback.');
+    }
+
+    /**
      * Resolve the camera's PURE GEOMETRY authority (`three-camera-geometry.js`) —
      * the orbit bag ⇄ camera-basis maps (`_orbitCameraBasis` / its exported
      * adjoint `_decomposeOrbitBasis`), the screen-relative `_rotateOrbit` /
@@ -1478,20 +1493,11 @@
                     if (rec.mesh && rec.mesh.material) { applyLoSkin(rec.mesh.material, lo); }
                     rec.skinSig = skinSig;
                 }
-                // Update position EVERY frame (cheap) — this is what moves a moving LO.
-                // FRQTL-MAINT (2026-07-01, #61): z used to be hardcoded to 0 — correct only
-                // for the LOs that happen to sit at world z=0 (Bullet, Gun body); WRONG for
-                // any LO whose true z-center is elsewhere (e.g. Tube's walls, whose z-slab now
-                // rides the landed rect_to_z_capable_rectangle wire contract). Generic fix:
-                // consume the LO's OWN rect.z/rect.d (ferried onto the JS wrapper's `this.rect`
-                // by LargeObject.js's rectToArray for a 6-element rect) — z is a CORNER (near
-                // face, same corner-mode convention as left/top), so the mesh's CENTER is
-                // z + d/2. A legacy 4-element rect carries no rect.z at all → falls back to 0,
-                // byte-identical to every existing 3D LO (Bullet/Gun) that never set it.
-                var loZCenter = (lo.rect.z !== undefined)
-                    ? lo.rect.z + (lo.rect.d !== undefined ? lo.rect.d : lo.rect.w) / 2
-                    : 0;
-                rec.mesh.position.set(lo.rect.left + lo.rect.w / 2, lo.rect.top + lo.rect.h / 2, loZCenter);
+                // Update position EVERY frame (cheap) — this is what moves a moving LO. The mesh
+                // sits at the rect's drawn center, owned by lo-drawn-center.js (the runner's pick
+                // aims at the same point through it).
+                var loCenter = _resolveLoDrawnCenter().drawnCenter(lo.rect);
+                rec.mesh.position.set(loCenter[0], loCenter[1], loCenter[2]);
                 // R2 — VISIBLE ROTATION: rotate the shell about z by the ferried orientationDeg.
                 // Cheap per-frame update (not a geometry rebuild). orientation 0 ⇒ no rotation,
                 // byte-identical to every existing LO (SU1). Skipped for a billboard LO

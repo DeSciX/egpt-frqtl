@@ -766,7 +766,7 @@ function applyRecipeRenderState(runner, bootOpts) {
     );
     runner.setRenderOptions(parts.apply);
     var cam = bootOpts.camera;
-    var camCtl = runner.cameraControl;   // capability handle (null in 2D)
+    var camCtl = runner.cameraControl;   // capability handle (null only with no pose control)
     if (cam && camCtl) {
         if (cam.mode === 'preset' && typeof camCtl.setPreset === 'function') {
             camCtl.setPreset(cam.name);

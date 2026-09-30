@@ -163,6 +163,19 @@
             '(renderer-layer-manifest.js). Fail-loud, not a fallback.');
     }
 
+    /** THE LO drawn-center authority (compat/renderer/lo-drawn-center.js) — where the renderer
+     *  draws an LO rect; the pick and the drive feedback aim at the same point. FAIL-LOUD. */
+    function _resolveLoDrawnCenter() {
+        if (typeof module !== 'undefined' && module.exports) {
+            return require('../compat/renderer/lo-drawn-center.js');
+        }
+        if (typeof window !== 'undefined' && window.LoDrawnCenter) { return window.LoDrawnCenter; }
+        throw new Error('[FrqtlApp] canonical contract LoDrawnCenter (lib/frqtl/compat/renderer/' +
+            'lo-drawn-center.js) is unreachable (load order) — it is the ONE owner of where an LO ' +
+            'rect is drawn, and it rides the RENDERER phase (renderer-layer-manifest.js). ' +
+            'Fail-loud, not a fallback.');
+    }
+
     /**
      * The wall-clock loop (`start()`, `toggle()` resume) runs on `requestAnimationFrame`.
      * A host without one (node) gets a NAMED door here instead of a raw ReferenceError, and
@@ -1339,18 +1352,15 @@
     /**
      * _objectCentroid(object) → [x,y,z] | null — where an object SITS, for the pick and the drive
      * feedback alike (one resolver, so the pick aims at the same point the cue is drawn at). A
-     * center-bearing object answers with its drive center; any other LO with the center of its
-     * rect. `rect.z` is the NEAR-face corner (the LargeObject 6-element rect convention), so the
-     * z-center is z + d/2 (d defaults to w, as the engine's z-capable rectangle does); a legacy
-     * 4-element rect sits at z = 0 — the same box the renderer draws.
+     * center-bearing object answers with its drive center; any other LO with its rect's drawn
+     * center (lo-drawn-center.js — the point the renderer draws its box at).
      */
     FrqtlApp.prototype._objectCentroid = function (object) {
         var c = this._readDriveCenter(this._resolveDriveTarget(object));
         if (c) { return c; }
         var r = object && object.rect;
         if (!r) { return null; }
-        var z = (typeof r.z === 'number') ? r.z + ((typeof r.d === 'number') ? r.d : r.w) / 2 : 0;
-        return [r.left + r.w / 2, r.top + r.h / 2, z];
+        return _resolveLoDrawnCenter().drawnCenter(r);
     };
 
     /**
@@ -1380,8 +1390,8 @@
      * setInputDriveTarget(object | null) — arm/disarm camera-locked object drive.
      * Called by the host (Studio's selection effect) on select (object) / deselect (null).
      * Resolves the center-bearing target + captures the LOCKED camera-local offset once.
-     * FAIL-SOFT: no object / no cameraControl (2D) / no cameraOffsetFromWorld / no center ⇒
-     * stores null ⇒ drive inert (the sticks orbit the camera as today).
+     * FAIL-SOFT: no object / no cameraControl / no cameraOffsetFromWorld (the 2D camera has
+     * none) / no center ⇒ stores null ⇒ drive inert (the sticks orbit the camera as today).
      */
     FrqtlApp.prototype.setInputDriveTarget = function (object) {
         this._inputDrive = this._armInputDrive(object);
@@ -1589,16 +1599,26 @@
     };
 
     /**
-     * _screenPointOf(world, cssX, cssY, cssW, cssH) → [x,y] | null — the screen point at which the
-     * renderer DRAWS world point `world`, found through the provider's own screenToWorld (the one
-     * camera authority; no second projection is derived here): Newton steps on the unprojection
-     * onto world's z-plane, from the click, using the local Jacobian (world delta per +1 screen px).
-     * The map on a plane is projective, so a few steps converge; the answer is accepted only if it
-     * unprojects back onto `world` (else null — the point is not on screen from this view).
+     * screenPointOf(world, cssW, cssH, seed?) → [x,y] | null — THE world→screen map: the point, in
+     * a cssW×cssH screen surface, at which the renderer DRAWS world point `world` ([x,y] or
+     * [x,y,z]; z defaults to 0). It is the ADJOINT of the provider's own screenToWorld (the one
+     * camera authority, in both directions — no second projection is derived here): Newton steps
+     * on the unprojection onto world's z-plane, from `seed` ([x,y]; default the surface centre),
+     * using the local Jacobian (world delta per +1 screen px). The map on a plane is projective
+     * (affine for the 2D pan/zoom camera), so a few steps converge; the answer is accepted only if
+     * it unprojects back onto `world`. null is the contracted "not on screen from this view"
+     * answer — never a cue to try another mapping. THROWS when there is no renderer or it lacks
+     * the screenToWorld capability (RENDERER_CONTRACT: screenToWorld).
      */
-    FrqtlApp.prototype._screenPointOf = function (world, cssX, cssY, cssW, cssH) {
-        var r = this.renderer, z = (typeof world[2] === 'number') ? world[2] : 0;
-        var x = cssX, y = cssY;
+    FrqtlApp.prototype.screenPointOf = function (world, cssW, cssH, seed) {
+        var r = this.renderer;
+        if (!r || typeof r.screenToWorld !== 'function') {
+            throw new Error('[FrqtlApp.screenPointOf] the active renderer provider has no ' +
+                'screenToWorld capability (RENDERER_CONTRACT) — world→screen is its adjoint and ' +
+                'has no other source. (FAIL-LOUD.)');
+        }
+        var z = (typeof world[2] === 'number') ? world[2] : 0;
+        var x = seed ? seed[0] : cssW / 2, y = seed ? seed[1] : cssH / 2;
         for (var k = 0; k < 8; k++) {
             var p0 = r.screenToWorld(x, y, cssW, cssH, z);
             var px = r.screenToWorld(x + 1, y, cssW, cssH, z);
@@ -1626,7 +1646,7 @@
     /**
      * pickObjectAtScreen(cssX, cssY, cssW, cssH) → the object whose centroid is DRAWN nearest the
      * screen point, or null (spec §2). The distance is in SCREEN px (each centroid is located on
-     * screen through the provider's screenToWorld — _screenPointOf), so the pick radius is what the
+     * screen through the provider's screenToWorld — screenPointOf), so the pick radius is what the
      * eye sees at any zoom, axis and depth; a world-px radius on each object's own plane was
      * anisotropic on screen and different per plane, which let a wall behind the emitter win inside
      * the emitter's own footprint. A drivable object's distance is divided by PICK_DRIVE_PRIORITY.
@@ -1642,7 +1662,7 @@
             var lo = los[i];
             var c = this._objectCentroid(lo);
             if (!c) { continue; }
-            var sp = this._screenPointOf(c, cssX, cssY, cssW, cssH);
+            var sp = this.screenPointOf(c, cssW, cssH, [cssX, cssY]);
             if (!sp) { continue; }
             var drivable = !!this._readDriveCenter(this._resolveDriveTarget(lo));
             var score = Math.hypot(sp[0] - cssX, sp[1] - cssY) / (drivable ? FrqtlApp.PICK_DRIVE_PRIORITY : 1);
@@ -1934,8 +1954,10 @@
      * exactly as blackbody does `if (result.temperatureControl) …`. The presence
      * of the handle is the CAPABILITY CHECK — the page never sniffs the renderer.
      * Resolves lazily (after start(), when the provider is live) and caches the
-     * non-null handle (null/2D providers re-check cheaply; a custom provider that
-     * implements getCameraControl() gets the same UI for free).
+     * non-null handle (a provider with no pose control re-checks cheaply; a custom provider
+     * that implements getCameraControl() gets the same UI for free). The 2D p5 camera is a
+     * handle too — whether a scene is 3D is `OrbitBag.hasAngularPose(runner.cameraControl)`,
+     * never the handle's presence.
      * @returns {{ setOrbit(spec):void, getOrbit():Object }|null}
      */
     Object.defineProperty(FrqtlApp.prototype, 'cameraControl', {
@@ -1944,7 +1966,7 @@
             if (!this._cameraControl) {
                 var r = this._getRenderer();
                 if (r && typeof r.getCameraControl === 'function') {
-                    this._cameraControl = r.getCameraControl();   // null in 2D, handle in 3D
+                    this._cameraControl = r.getCameraControl();   // null only with no pose control
                 }
             }
             return this._cameraControl || null;

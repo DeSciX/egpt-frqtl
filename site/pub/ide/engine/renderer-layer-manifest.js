@@ -110,6 +110,9 @@ export var RENDERER_LAYER_SCRIPTS = [
     // BOTH camera handles ferry every point-valued field through it, so it precedes both
     // providers — same "shared owner before both providers" rule as the entries above.
     'compat/renderer/orbit-bag.js',
+    // THE LO drawn-center authority (where an LO rect's box is drawn). The three provider places
+    // meshes through it and the game layer's FrqtlApp aims its pick at it, so it precedes both.
+    'compat/renderer/lo-drawn-center.js',
     'compat/renderer/providers/p5-provider.js',
     // THE pixel→universe mapping authority for a captured still. It resolves
     // `window.ThreeCameraGeometry` LAZILY (only the perspective branch needs it), so

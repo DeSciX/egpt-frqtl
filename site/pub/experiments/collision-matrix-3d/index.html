@@ -63,9 +63,8 @@
 
     CAMERA CONTROL (sugar, not renderer-sniffing):
       runner.cameraControl = renderer.getCameraControl()
-      In 3D (perspective) mode: returns { setOrbit, getOrbit, setPreset, presets } handle.
-      In 2D (orthographic) mode: returns null.
-      The page CAPABILITY-CHECKS: if (cam) { show sliders; wire cam.setOrbit() }
+      Both providers return a handle; the 2D one declares {distance, target} and no angles.
+      The page asks the ONE 3D-ness predicate: if (OrbitBag.hasAngularPose(cam)) { show sliders; wire cam.setOrbit() }
       No `if (renderer === 'three')` — zero renderer sniffing.
 
     SCENE LAYOUT (3D only):
@@ -102,8 +101,8 @@
                 <input type="range" id="ctrl-angle" min="0" max="1" step="0.1" value="0">
                 <span class="val" id="ctrl-angle-val">0.0</span>
             </label>
-            <!-- Camera orbit sliders — shown only when cameraControl is available (3D mode).
-                 Wired via capability check; zero renderer sniffing (Particle Walk 3D pattern). -->
+            <!-- Camera orbit sliders — shown only for an ANGULAR camera (OrbitBag.hasAngularPose
+                 on the camera handle's poseFields); zero renderer sniffing. -->
             <span id="camera-controls" style="display:none; align-items:center; gap:16px;">
                 <label title="Orbit horizontally">
                     cam azimuth:
@@ -245,10 +244,11 @@
         }
 
         // ── Camera orbit (sugar handle — zero renderer sniffing) ───────────────
-        // runner.cameraControl is null in 2D (orthographic), a handle in 3D (perspective).
-        // We capability-CHECK it; never sniff window._egptRenderer or the THREE namespace.
+        // The 2D camera is a handle too ({distance, target}); these az/el sliders need an
+        // ANGULAR camera — the ONE 3D-ness predicate, asked of the handle's own poseFields.
+        // Never sniff window._egptRenderer or the THREE namespace.
         var cam = runner.cameraControl;
-        if (cam) {
+        if (window.OrbitBag.hasAngularPose(cam)) {
             document.getElementById('camera-controls').style.display = 'inline-flex';
 
             // Seed sliders from the provider's initial orbit (single source of truth).

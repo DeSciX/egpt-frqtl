@@ -284,7 +284,7 @@
     var currentCamPreset = 'down-barrel';
     function applyCameraForCurrentScale() {
         var cam = runner.cameraControl;
-        if (!cam) { return; }
+        if (!window.OrbitBag.hasAngularPose(cam)) { return; }   // 3D preset names: an angular camera only
         cam.setPreset(currentCamPreset);
         var o = cam.getOrbit();
         var scaleDim = (currentCamPreset === 'down-barrel')
@@ -505,7 +505,7 @@
         // AWARE (applyCameraForCurrentScale, above) — never the renderer's own
         // fixed canvas-based preset distance directly. ────────────────────────
         var cam = runner.cameraControl;
-        if (cam) {
+        if (window.OrbitBag.hasAngularPose(cam)) {   // 3D preset buttons: an angular camera only
             document.getElementById('camera-controls').style.display = 'inline-flex';
             (cam.presets || []).forEach(function (name) {
                 var btn = document.getElementById('cam-preset-' + name);

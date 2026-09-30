@@ -1044,42 +1044,23 @@
         }
 
         // ── CAMERA — the REUSABLE CameraControls sugar object ─────────────────────────
-        // (ws-emitter-wave Bite 3B, CEO 2026-07-20.) Replaces the retired preset-dropdown +
-        // manual-zoom-slider pair with a first-person-game-style control ANY experiment
-        // can drop in: two on-screen joysticks (MOVE bottom-left = dolly + orbit; LOOK
-        // bottom-right = azimuth/elevation) mounted OVER the canvas + arrow/WASD keys, all
-        // driving the SAME runner.cameraControl handle (capability-checked, never renderer-
-        // sniffed). `cam` is retained for the snapshot persistence + FX rate-limit blocks
-        // below (both capability-checked on it).
+        // (ws-emitter-wave Bite 3B, CEO 2026-07-20.) Two on-screen joysticks (MOVE bottom-left
+        // translates, LOOK bottom-right rotates) mounted OVER the canvas + arrow/WASD keys, all
+        // driving the SAME runner.cameraControl handle. Whether they mount is attach()'s own
+        // decision — the ONE 3D-ness predicate (OrbitBag.hasAngularPose, asked of the handle's
+        // poseFields): the 2D p5 camera is a real handle ({distance, target}, no angles) and gets
+        // no pads, so the flat capture keeps its bare canvas, its default pacing and its 1:1
+        // framing.
         var cam = runner.cameraControl;
 
         // THE FRAMING IS PER-CAMERA, AND THE CAMERA DECLARES ITS OWN AXES.
-        // `runner.cameraControl` is NOT null in 2D any more: since the p5 provider gained the
-        // DEGENERATE orbit bag (2D pan/zoom — it declares `distance` + `target` and NO
-        // azimuth/elevation/roll), both providers hand back a real handle, and the old
-        // "FAIL-SOFT no-ops in 2D because cameraControl is null" assumption this call was
-        // written under is simply no longer true. The axes are read from the handle's own
-        // `poseFields` — the SAME field-presence idiom CameraPath uses ("the consumer asks
-        // what axes EXIST, never what mode it is in"), never `is3D`, never a renderer sniff.
-        //
         // OUTSIDE_OVERVIEW is an ANGULAR framing: azimuth/elevation are what make it an
         // overview, and its `distance` means "how far the eye sits from the target" — on the
         // 2D camera the same key means "the VISIBLE HEIGHT of the view in physics px", so
         // pushing this bag at a camera without the angles would not be a partial framing, it
-        // would be a DIFFERENT one (1400 px of visible height on a 600 px canvas = silently
-        // zoomed out, and every capture of this page re-framed). So the framing is offered
-        // ONLY to a camera that declares all of its axes; any other camera keeps its own
-        // default pose, which is what omitting `initialOrbit` means (CameraControls then
-        // preserves the camera's CURRENT getOrbit()). The p5 default pose is the identity
-        // 1:1 fit — the framing every existing capture of this page was taken at.
-        // The SAME derived value also decides whether this page offers the widget at all:
-        // the joysticks this page mounts ARE the angular affordance (MOVE = dolly + orbit,
-        // LOOK = azimuth/elevation — see the "CAMERA (3D only)" control label and the
-        // on-canvas hint, both written for that camera). A camera with no angular axes gets
-        // no orbit widget from this page, exactly as before the 2D camera handle existed —
-        // so the flat p5 capture keeps its bare canvas, its default pacing and its 1:1
-        // framing. That is a capability check (the presence of the AXES is the check), not a
-        // swallowed error: nothing is attempted and then hidden.
+        // would be a DIFFERENT one. So the framing is offered ONLY to a camera that declares
+        // all of its axes; any other camera keeps its own default pose (omitting
+        // `initialOrbit` keeps the camera's CURRENT getOrbit()).
         var OUTSIDE_OVERVIEW = { azimuth: 45, elevation: 45, distance: 1400 };
         function framingForCamera(camHandle) {
             var declared = {};
@@ -1093,16 +1074,13 @@
         }
         var _overviewFraming = framingForCamera(cam);
 
-        var camControls = (window.CameraControls && _overviewFraming)
-            ? window.CameraControls.attach(runner, document.getElementById('canvas-wrapper'), {
-                // The previous default framing ("outside" overview) — applied only to a
-                // camera that declares azimuth/elevation/distance (see above).
-                initialOrbit: _overviewFraming,
-                minDistance: 60, maxDistance: 1800,   // same dolly range the old zoom slider spanned
-                hookName: '__frqtlCamera'
-            })
-            : { mounted: false, dispose: function () {}, getState: function () { return null; },
-                setState: function () {}, sync: function () {} };
+        var camControls = window.CameraControls.attach(runner, document.getElementById('canvas-wrapper'), {
+            // The "outside" overview framing — applied only to a camera that declares
+            // azimuth/elevation/distance (see above).
+            initialOrbit: _overviewFraming,
+            minDistance: 60, maxDistance: 1800,   // same dolly range the old zoom slider spanned
+            hookName: '__frqtlCamera'
+        });
         if (camControls.mounted) {
             var camHint = document.getElementById('cam-hint-wrap');
             if (camHint) { camHint.style.display = 'inline-flex'; }
@@ -1271,10 +1249,11 @@
                 emitters:   emitters.map(function (e) { return { dim: e.dim, mass: e.mass, color: e.color || null, center: e.center || null }; }),
                 selectedIndex: (function () { for (var i = 0; i < emitters.length; i++) { if (emitters[i].id === selectedId) return i; } return 0; })()
             };
-            // Camera framing across the 2D↔3D reinit: persist the full orbit
-            // {azimuth,elevation,distance} (the CameraControls sugar owns the camera now —
-            // there is no dropdown/slider state to snapshot). Only present in 3D (cam null in 2D).
-            if (cam && typeof cam.getOrbit === 'function') { snap.camOrbit = cam.getOrbit(); }
+            // Camera framing across the 2D↔3D reinit: persist the orbit of the camera the
+            // CameraControls sugar drives — the ANGULAR camera only (restored through the same
+            // widget below). A 2D pose is not carried: its `distance` is a visible height, a
+            // different quantity from the 3D eye distance it would be restored into.
+            if (camControls.mounted) { snap.camOrbit = camControls.getState(); }
             return snap;
         }
         function persistSnapshotForToggle() {

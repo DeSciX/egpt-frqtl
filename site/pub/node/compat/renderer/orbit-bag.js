@@ -47,6 +47,15 @@
  *                                      Non-point keys are passed through untouched (the
  *                                      per-axis finite guards stay with the provider that
  *                                      declares those axes).
+ *   ANGULAR_FIELDS                   — the pose keys that ROTATE the view (azimuth, elevation,
+ *                                      roll). A camera that declares none of them is flat.
+ *   hasAngularPose(cameraHandle)     — THE 3D-ness predicate: does this camera handle declare an
+ *                                      angular axis in its own `poseFields`? Every consumer that
+ *                                      must branch on "is this scene 3D?" asks this — never handle
+ *                                      presence (the 2D p5 camera is a real handle too) and never
+ *                                      a renderer sniff. `null` (no pose control at all) is flat;
+ *                                      a handle without a `poseFields` array breaks the camera
+ *                                      contract and THROWS.
  *
  * ── Layer 2: physics behaviour ───────────────────────────────────────────────
  * ZERO physics. This is pose-input spelling at the output boundary: it changes which pixels
@@ -61,6 +70,32 @@
 
 /** The pose keys whose value is a POINT. Named once so no consumer re-lists them. */
 var POINT_FIELDS = ['target'];
+
+/** The pose keys that ROTATE the view. Named once: the 2D provider's setOrbit guard and the
+ *  3D-ness predicate both read it. */
+var ANGULAR_FIELDS = ['azimuth', 'elevation', 'roll'];
+
+/**
+ * hasAngularPose(cameraHandle) — THE 3D-ness predicate, asked of the handle's own axis
+ * declaration (`poseFields[].name`), never of its presence.
+ *
+ * @param {object|null} cameraHandle — a `getCameraControl()` handle, or null (no pose control).
+ * @returns {boolean} true iff the handle declares at least one ANGULAR_FIELDS axis.
+ * @throws {Error} when a non-null handle publishes no `poseFields` array (camera contract breach).
+ */
+function hasAngularPose(cameraHandle) {
+    if (cameraHandle === null || cameraHandle === undefined) { return false; }
+    var fields = cameraHandle.poseFields;
+    if (!Array.isArray(fields)) {
+        throw new Error('camera pose: the camera handle publishes no `poseFields` array, so whether ' +
+            'it has angular axes cannot be read — every getCameraControl() handle declares its ' +
+            'axes (RENDERER_CONTRACT §1a.2). (FAIL-LOUD.)');
+    }
+    for (var i = 0; i < fields.length; i++) {
+        if (fields[i] && ANGULAR_FIELDS.indexOf(fields[i].name) !== -1) { return true; }
+    }
+    return false;
+}
 
 /** @private — the ONE message, so both providers are byte-identical on a bad input. */
 function _reject(fieldName, value) {
@@ -142,8 +177,10 @@ function normalizeOrbitPatch(patch) {
 
 var OrbitBag = {
     POINT_FIELDS:        POINT_FIELDS,
+    ANGULAR_FIELDS:      ANGULAR_FIELDS,
     normalizePoint:      normalizePoint,
-    normalizeOrbitPatch: normalizeOrbitPatch
+    normalizeOrbitPatch: normalizeOrbitPatch,
+    hasAngularPose:      hasAngularPose
 };
 
 if (typeof module !== 'undefined' && module.exports) {
