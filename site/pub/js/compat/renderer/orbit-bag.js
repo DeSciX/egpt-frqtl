@@ -56,6 +56,13 @@
  *                                      a renderer sniff. `null` (no pose control at all) is flat;
  *                                      a handle without a `poseFields` array breaks the camera
  *                                      contract and THROWS.
+ *   makePoseNotice()                 — the POSE-CHANGE notice every camera handle publishes as
+ *                                      `addPoseListener(fn) → unsubscribe`: `{ add, notify }`.
+ *                                      A provider calls `notify(bag)` from the ONE place its pose
+ *                                      is applied, so EVERY write reaches every listener (pads,
+ *                                      camera strip, wheel, page-code `setOrbit`, a resize). A
+ *                                      dependent that re-derived the notice per write site would
+ *                                      go silently stale on the site it forgot.
  *
  * ── Layer 2: physics behaviour ───────────────────────────────────────────────
  * ZERO physics. This is pose-input spelling at the output boundary: it changes which pixels
@@ -175,7 +182,37 @@ function normalizeOrbitPatch(patch) {
 
 // ── Export ────────────────────────────────────────────────────────────────────
 
+/**
+ * makePoseNotice() → `{ add(fn) → unsubscribe, notify(bag) }` — the pose-change listener list a
+ * camera handle publishes as `addPoseListener`. Listeners are provider-scoped (every handle the
+ * provider returns shares one list), so a listener registered through one handle hears a write
+ * made through another. `notify` iterates a SNAPSHOT (a listener may unsubscribe itself) and lets
+ * a listener's throw propagate to the pose writer — a dependent that cannot follow the camera
+ * fails loud at the write, never silently. A non-function listener THROWS at `add`.
+ */
+function makePoseNotice() {
+    var listeners = [];
+    return {
+        add: function (fn) {
+            if (typeof fn !== 'function') {
+                throw new TypeError('[OrbitBag] addPoseListener(fn) needs a function, got ' +
+                    String(fn) + '. (FAIL-LOUD.)');
+            }
+            if (listeners.indexOf(fn) === -1) { listeners.push(fn); }
+            return function () {
+                var i = listeners.indexOf(fn);
+                if (i !== -1) { listeners.splice(i, 1); }
+            };
+        },
+        notify: function (bag) {
+            var ls = listeners.slice();
+            for (var i = 0; i < ls.length; i++) { ls[i](bag); }
+        }
+    };
+}
+
 var OrbitBag = {
+    makePoseNotice:      makePoseNotice,
     POINT_FIELDS:        POINT_FIELDS,
     ANGULAR_FIELDS:      ANGULAR_FIELDS,
     normalizePoint:      normalizePoint,

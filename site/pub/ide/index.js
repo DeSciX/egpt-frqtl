@@ -33,9 +33,10 @@ export { engineRouter, DEV_CORE_PROFILE, DIST_PROFILE } from './engine/router.js
 // Math backend registry — re-exported so lib/features can import from the shim
 // barrel (the sanctioned route) without reaching past the shim into lib/egpt directly.
 // Module identity is preserved: both the barrel re-export and any direct import of
-// MathBackendProvider.js resolve to the SAME singleton because ESM caches by
-// canonical URL — there is only one MathBackendRegistry instance.
-export { MathBackendRegistry, MathBackendNotAvailableError } from '../egpt/js/model/backend/MathBackendProvider.js';
+// MathBackendRegistry.js resolve to the SAME singleton because ESM caches by
+// canonical URL — there is only one MathBackendRegistry instance. The registry
+// module has zero imports; the JS reference core never enters this graph.
+export { MathBackendRegistry, MathBackendNotAvailableError } from '../egpt/js/model/backend/MathBackendRegistry.js';
 // Notebook spine (WS-NOTEBOOK-A1): the native format parser/serializer and the
 // per-notebook kernel. The kernel calls Runtime.runCell directly (no Bus
 // executor). Consumers (the A2 notebook pane) import these from the barrel.

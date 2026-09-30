@@ -460,10 +460,11 @@
     Object.defineProperty(Wall.prototype, 'z',           { get: function () { return (this.lo && this.lo.rect && typeof this.lo.rect.z === 'number') ? this.lo.rect.z : 0; } });
 
     // NOTE: a Wall deliberately exposes NO getCenter — its descriptor declares
-    // ux.draggable {'3d': false} (a boundary you place in 2D, not repositioned by the
-    // 3D sticks). The drive arms it ROTATION-ONLY (via setOrientation / the runner's
-    // orientationTarget branch): LOOK-x re-aims it, MOVE does nothing (ux honored). The
-    // 2D-canvas drag (draggable 2d:true) is unchanged — a separate pointer surface.
+    // ux.draggable {'3d': false} (a boundary you place in 2D). A GRABBED wall (STUDIO's
+    // spacebar aim, AIM_GRAB_FEEDBACK_CONTRACT) carries its HEADING only: the runner holds
+    // the heading vector in the camera frame, re-expresses it in the live basis, projects
+    // it onto world-xy and writes it through setOrientation below. Its position does not
+    // carry. The 2D-canvas drag (draggable 2d:true) is a separate pointer surface.
 
     /** getOrientation() → the wall's current orientation in degrees (0 default). */
     Wall.prototype.getOrientation = function () {

@@ -272,7 +272,7 @@
 
     /**
      * Resolve THE LO drawn-center authority (`compat/renderer/lo-drawn-center.js`) — where an LO
-     * rect's box is drawn. The runner's pick and drive feedback aim at the same point through it.
+     * rect's box is drawn. The runner's pick and aim ray and this provider's shadow-surround read the same owner.
      */
     function _resolveLoDrawnCenter() {
         if (typeof module !== 'undefined' && module.exports) {
@@ -482,16 +482,44 @@
         // consumer kept an unrolled basis. Both are DELETED; this is now a four-line
         // ferry, and a source gate asserts no up-vector literal ever comes back
         // (camera-roll-geometry.test.mjs).
+        //
+        // It is also the ONE place a pose write lands (setOrbit, look, move, setPreset, a
+        // resize), so it is where the POSE-CHANGE NOTICE fires: every write reaches every
+        // `addPoseListener` subscriber, whichever surface made it.
         function _applyOrbit() {
-            if (!_is3D || !_camera) { return; }
-            var _g = _resolveThreeCameraGeometry();
-            var c = _g._orbitCenter(_orbit, _width, _height);
-            var b = _g._orbitCameraBasis(_orbit, _width, _height);
-            _camera.position.set(b.pos.x, b.pos.y, b.pos.z);
-            _camera.up.set(b.up.x, b.up.y, b.up.z);   // DERIVED (rolled), never a literal
-            _camera.lookAt(c.x, c.y, c.z);
-            _camera.updateProjectionMatrix();
+            if (!_is3D) { return; }
+            if (_camera) {
+                var _g = _resolveThreeCameraGeometry();
+                var c = _g._orbitCenter(_orbit, _width, _height);
+                var b = _g._orbitCameraBasis(_orbit, _width, _height);
+                _camera.position.set(b.pos.x, b.pos.y, b.pos.z);
+                _camera.up.set(b.up.x, b.up.y, b.up.z);   // DERIVED (rolled), never a literal
+                _camera.lookAt(c.x, c.y, c.z);
+                _camera.updateProjectionMatrix();
+            }
+            if (_poseNotice) { _poseNotice.notify(_orbitBag()); }
         }
+
+        // The whole pose bag, COPIED (a captured pose must not keep tracking the camera): what
+        // getOrbit() returns and what every pose-change listener receives.
+        function _orbitBag() {
+            return {
+                azimuth: _orbit.azimuth, elevation: _orbit.elevation, distance: _orbit.distance,
+                // ROLL is a DECLARED field: a roll-capable provider always returns it as a
+                // number, so a consumer's capability check is `typeof cam.getOrbit().roll ===
+                // 'number'` — field presence, the peer of move()'s method presence. Absent ⇒
+                // hide the affordance, never substitute a different rotation.
+                roll: _orbit.roll,
+                // Carried so a captured pose ROUND-TRIPS through setOrbit (a saved project
+                // restores the walk, not just the look).
+                target: _orbit.target
+                    ? { x: _orbit.target.x, y: _orbit.target.y, z: _orbit.target.z } : null
+            };
+        }
+
+        // The pose-change listener list (OrbitBag.makePoseNotice), provider-scoped so every
+        // handle getCameraControl() returns shares it. Created on the first subscription.
+        var _poseNotice = null;
 
         // ── Per-dim render layers (R4-GEO, 2026-07-02 CEO geometry-aware effects design,
         // the "smoke design SETTLED" ruling) ────────────────────────────────────────
@@ -657,20 +685,18 @@
         var _cubeMat4     = null;   // THREE.Matrix4 scratch (reused per-instance, no alloc)
         var _cubeColor    = null;   // THREE.Color scratch (reused per-instance, no alloc)
 
-        // ── Target-UX drive-feedback layer (spec §1): a universe-cube wireframe + a crosshair
-        // reticle at the driven target, gated on opts.driveFeedback. Lazily created (like
-        // _meshGroup/_cubeMesh), added to _scene once, toggled .visible + repositioned per frame —
-        // never rebuilt per tick. The crosshair is CONSTANT WORLD SIZE at the target's world (x,y,z);
-        // the perspective camera scales it on screen — closer (pulled toward the viewer, +z) ⇒
-        // BIGGER, farther ⇒ smaller — the CEO's depth cue for FREE (no manual 1/distance factor,
-        // which would double-count perspective). Both are 3D-only (p5 returns no camera → never here).
-        var _driveCube     = null;   // THREE.LineSegments — universe-bounds wireframe
-        var _driveCubeSig  = null;   // last bounds signature (rebuild the geometry only on a bounds change)
-        var _driveCross    = null;   // THREE.LineSegments — 3-axis crosshair reticle at the target
-        var _driveRing     = null;   // THREE.LineSegments — rotation cue (ring + heading spoke) at a
-                                     // rotate-capable target's pivot, turned to its orientation
-        var _feedbackScene = null;   // SEPARATE scene for cube+crosshair — drawn as a final overlay pass
-                                     // AFTER all FX composites so bloom/god-rays can never wash it out (G2)
+        // ── Aim feedback layer (opts.aimFeedback — see _updateAimFeedback): the universe cube,
+        // the screen-centre reticle, the shadow-surrounds, the lock glyph and the heading ring.
+        // Lazily created, toggled .visible + transformed per frame — never rebuilt per tick.
+        var _aimCube       = null;   // THREE.LineSegments — universe-bounds wireframe
+        var _aimCubeSig    = null;   // last bounds signature (rebuild only on a bounds change)
+        var _aimReticle    = null;   // THREE.LineSegments — the screen-centre reticle
+        var _aimRing       = null;   // THREE.LineSegments — passive heading ring + spoke
+        var _aimLock       = null;   // THREE.LineSegments — the grabbed lock glyph
+        var _aimHoverSur   = null;   // shadow-surround for the aimed / grabbed object
+        var _aimSelSur     = null;   // shadow-surround for the host selection
+        var _feedbackScene = null;   // SEPARATE scene drawn as a final overlay pass AFTER all FX
+                                     // composites so bloom/god-rays can never wash it out (G2)
 
         // ── Sphere InstancedMesh — per-dim baseline (R6, 2026-07-03 CEO in-page ────
         // per-dim matrix drawing: Effect=None -> paint:'sphere', "the 2D coloring
@@ -1727,102 +1753,175 @@
             _renderer.render(_fxScene, _quadCamera);
         }
 
-        // ── Target-UX drive-feedback layer update (spec §1) ──────────────────────
-        // Gated on opts.driveFeedback (runner-fed, live per frame). 3D-only. Positions the
-        // universe-cube wireframe from bounds, the crosshair reticle at the driven center (a
-        // position-capable target) and the rotation cue at the orientation pivot (a rotate-capable
-        // one — a wall has no center, and without the cue its drive painted nothing). G2: all
-        // live in a SEPARATE _feedbackScene drawn as a FINAL overlay pass (see
-        // _renderDriveFeedbackPass) AFTER every FX composite, so bloom/god-rays cannot wash them
-        // out — the earlier warm crosshair in _scene dissolved into the sun's warm-white bloom at
-        // telephoto (tester memo reference_bloomed_vfx_color_predicate_and_lightpos_gotchas.md).
-        // The crosshair is a COOL, OPAQUE magenta (max contrast against warm emission, survives an
-        // additive composite) and is FRAMING-NORMALIZED (scaled by orbit-distance / default-framing)
-        // so its apparent screen weight stays legible at long telephoto while a residual depth cue
-        // remains at close orbit. depthTest:false + high renderOrder keeps it above any geometry.
-        function _updateDriveFeedback(opts) {
-            var fb = opts && opts.driveFeedback;
-            if (!_is3D || !fb || !fb.bounds || (!fb.center && !fb.orientation)) {
-                if (_driveCube)  { _driveCube.visible  = false; }
-                if (_driveCross) { _driveCross.visible = false; }
-                if (_driveRing)  { _driveRing.visible  = false; }
+        // ── Aim feedback layer update (docs/internal/engine/AIM_GRAB_FEEDBACK_CONTRACT.md) ──
+        // Gated on opts.aimFeedback (runner-fed, live per frame). 3D-only. Draws, in a SEPARATE
+        // _feedbackScene rendered as a FINAL overlay pass (see _renderAimFeedbackPass) AFTER every
+        // FX composite so bloom/god-rays cannot wash it out:
+        //   • the universe-cube wireframe from `bounds`;
+        //   • the RETICLE — a screen-centre glyph with no position of its own: it is placed each
+        //     frame at the orbit centre (the point the camera looks at, on its centre ray) facing
+        //     the camera, so it sits at screen centre by construction;
+        //   • the SHADOW-SURROUND around `hover` (grab-ready / grabbed) and `selected` (the host
+        //     selection) — painted FROM the volume in the bag, the same lo-drawn-center volume the
+        //     runner's ray tested: a dark translucent shell plus amber edges;
+        //   • the LOCK glyph on the grabbed object's shadow;
+        //   • the passive heading ring (amber, the highlight's colour) at `orientation.pivot`,
+        //     turned by `orientation.deg`. Magenta is the reticle's alone.
+        // Reticle, surround and lock are framing-normalized (scaled by orbit-distance / default
+        // framing) so their screen weight holds at telephoto; depthTest:false keeps them on top.
+        var AIM_RETICLE_COLOR = 0xff33ff;   // opaque magenta — the aim instrument
+        var AIM_SURROUND_EDGE = 0xffaa00;   // amber — the shadow-surround's rim
+        var AIM_LOCK_COLOR    = 0x33ff99;   // green — grabbed
+        function _lineGeo(pts) {
+            var g = new THREE.BufferGeometry();
+            g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+            return g;
+        }
+        // `transparent:true` at full opacity puts the lines in three's TRANSPARENT list with the dark
+        // surround shells, so renderOrder (lines 9999 over shells 9997) decides — an opaque line
+        // would be drawn first and then darkened by the shell over it.
+        function _overlayLines(geo, color) {
+            var l = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: color, depthTest: false,
+                transparent: true, opacity: 1 }));
+            l.renderOrder = 9999; l.frustumCulled = false;
+            return l;
+        }
+        function _circlePts(r, seg, z) {
+            var p = [];
+            for (var i = 0; i < seg; i++) {
+                var a0 = i / seg * Math.PI * 2, a1 = (i + 1) / seg * Math.PI * 2;
+                p.push(r * Math.cos(a0), r * Math.sin(a0), z || 0, r * Math.cos(a1), r * Math.sin(a1), z || 0);
+            }
+            return p;
+        }
+        /** One shadow-surround: a unit dark shell + amber rim for a box volume, a camera-facing
+         *  dark disc + amber ring for a sphere; transformed per frame from the bag's volume. */
+        function _makeSurround() {
+            var unitBox = new THREE.BoxGeometry(1, 1, 1);
+            var dark = function () {
+                return new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.38,
+                    depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+            };
+            var box = new THREE.Mesh(unitBox, dark());
+            box.add(_overlayLines(new THREE.EdgesGeometry(unitBox), AIM_SURROUND_EDGE));
+            var disc = new THREE.Mesh(new THREE.CircleGeometry(1, 48), dark());
+            disc.add(_overlayLines(_lineGeo(_circlePts(1, 48)), AIM_SURROUND_EDGE));
+            [box, disc].forEach(function (m) { m.renderOrder = 9997; m.frustumCulled = false; m.visible = false; _feedbackScene.add(m); });
+            return { box: box, disc: disc };
+        }
+        /** Place `sur` around `vol` (padded by `pad` world px); returns the volume's outer radius. */
+        function _placeSurround(sur, vol, pad) {
+            var c = vol.center;
+            if (vol.kind === 'sphere') {
+                var r = vol.radius + pad;
+                sur.disc.position.set(c[0], c[1], c[2]);
+                sur.disc.quaternion.copy(_camera.quaternion);
+                sur.disc.scale.setScalar(r);
+                sur.disc.visible = true; sur.box.visible = false;
+                return r;
+            }
+            sur.box.position.set(c[0], c[1], c[2]);
+            sur.box.rotation.order = 'ZYX';                               // the shell's own order
+            sur.box.rotation.z = (vol.yawDeg || 0) * Math.PI / 180;
+            sur.box.rotation.y = (vol.pitchDeg || 0) * Math.PI / 180;
+            sur.box.scale.set(2 * (vol.half[0] + pad), 2 * (vol.half[1] + pad), 2 * (vol.half[2] + pad));
+            sur.box.visible = true; sur.disc.visible = false;
+            return Math.hypot(vol.half[0], vol.half[1], vol.half[2]) + pad;
+        }
+        function _hideSurround(sur) { if (sur) { sur.box.visible = false; sur.disc.visible = false; } }
+
+        function _updateAimFeedback(opts) {
+            var fb = opts && opts.aimFeedback;
+            if (!_is3D || !fb || !fb.bounds) {
+                if (_aimCube)    { _aimCube.visible = false; }
+                if (_aimReticle) { _aimReticle.visible = false; }
+                if (_aimRing)    { _aimRing.visible = false; }
+                if (_aimLock)    { _aimLock.visible = false; }
+                _hideSurround(_aimHoverSur); _hideSurround(_aimSelSur);
                 return;
             }
             if (!_feedbackScene) { _feedbackScene = new THREE.Scene(); }
             var w = fb.bounds.width, h = fb.bounds.height, zHalf = fb.bounds.zHalf;
             var sig = w + 'x' + h + 'x' + zHalf;
-            if (!_driveCube || _driveCubeSig !== sig) {
-                // Rebuild the cube + crosshair geometry only when the universe bounds change.
-                if (_driveCube)  { _feedbackScene.remove(_driveCube);  _driveCube.geometry.dispose(); }
-                if (_driveCross) { _feedbackScene.remove(_driveCross); _driveCross.geometry.dispose(); _driveCross = null; }
-                if (_driveRing)  { _feedbackScene.remove(_driveRing);  _driveRing.geometry.dispose();  _driveRing = null; }
-                var box = new THREE.BoxGeometry(w, h, Math.max(1, 2 * zHalf));
-                _driveCube = new THREE.LineSegments(
-                    new THREE.EdgesGeometry(box),
-                    new THREE.LineBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.5, depthTest: false })
-                );
-                _driveCube.renderOrder = 9998; _driveCube.frustumCulled = false;
-                _feedbackScene.add(_driveCube);
-                box.dispose();
-                var s = Math.max(4, Math.min(w, h) * 0.06);   // reticle half-length (world px, base)
-                var cpos = new Float32Array([-s, 0, 0,  s, 0, 0,   0, -s, 0,  0, s, 0,   0, 0, -s,  0, 0, s]);
-                var cg = new THREE.BufferGeometry();
-                cg.setAttribute('position', new THREE.BufferAttribute(cpos, 3));
-                // OPAQUE magenta (transparent:false) — a base-hue that does NOT sit in the sun's
-                // warm-white bloom band, so it reads over the brightest emission (G2 color predicate).
-                _driveCross = new THREE.LineSegments(cg,
-                    new THREE.LineBasicMaterial({ color: 0xff33ff, depthTest: false }));
-                _driveCross.renderOrder = 9999; _driveCross.frustumCulled = false;
-                _feedbackScene.add(_driveCross);
-                // Rotation cue: a ring in the rotation plane (world xy — orientation is a yaw about z)
-                // plus a heading spoke along local +x with an arrowhead, so the object's current
-                // aim reads at a glance and turns as LOOK-x rotates it. Same opaque magenta as the
-                // crosshair: one colour means "you are driving this".
-                var rr = s * 1.6, seg = 48, rp = [];
-                for (var ri = 0; ri < seg; ri++) {
-                    var a0 = ri / seg * Math.PI * 2, a1 = (ri + 1) / seg * Math.PI * 2;
-                    rp.push(rr * Math.cos(a0), rr * Math.sin(a0), 0, rr * Math.cos(a1), rr * Math.sin(a1), 0);
+            var s = Math.max(4, Math.min(w, h) * 0.06);   // glyph half-length (world px, base)
+            if (!_aimCube || _aimCubeSig !== sig) {
+                // (Re)build the bounds-sized geometry only when the universe bounds change.
+                [_aimCube, _aimReticle, _aimRing, _aimLock].forEach(function (o) {
+                    if (o) { _feedbackScene.remove(o); o.geometry.dispose(); }
+                });
+                var cube = new THREE.BoxGeometry(w, h, Math.max(1, 2 * zHalf));
+                _aimCube = new THREE.LineSegments(new THREE.EdgesGeometry(cube),
+                    new THREE.LineBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.5, depthTest: false }));
+                _aimCube.renderOrder = 9998; _aimCube.frustumCulled = false;
+                _feedbackScene.add(_aimCube);
+                cube.dispose();
+                // Reticle: four ticks around an open centre plus a small ring (camera plane).
+                var g0 = s * 0.25;
+                _aimReticle = _overlayLines(_lineGeo([-s, 0, 0, -g0, 0, 0,  g0, 0, 0, s, 0, 0,
+                    0, -s, 0, 0, -g0, 0,  0, g0, 0, 0, s, 0].concat(_circlePts(s * 0.55, 32))), AIM_RETICLE_COLOR);
+                _feedbackScene.add(_aimReticle);
+                // Heading ring: a ring in world xy (orientation is a yaw about z) + a spoke along
+                // local +x with an arrowhead, turned with the object it describes.
+                var rr = s * 1.6, tip = rr * 1.35, ah = rr * 0.22;
+                _aimRing = _overlayLines(_lineGeo(_circlePts(rr, 48).concat(
+                    [0, 0, 0, tip, 0, 0,  tip, 0, 0, tip - ah, ah * 0.6, 0,  tip, 0, 0, tip - ah, -ah * 0.6, 0])),
+                    AIM_SURROUND_EDGE);   // the highlight's colour: magenta is the reticle alone
+                _feedbackScene.add(_aimRing);
+                // Lock glyph: a padlock (body rectangle + shackle arch), camera-facing.
+                var bw = s * 0.45, bh = s * 0.4, lk = [-bw, -bh, 0, bw, -bh, 0,  bw, -bh, 0, bw, bh * 0.4, 0,
+                    bw, bh * 0.4, 0, -bw, bh * 0.4, 0,  -bw, bh * 0.4, 0, -bw, -bh, 0];
+                var sr = bw * 0.62;
+                for (var ai = 0; ai < 12; ai++) {
+                    var q0 = ai / 12 * Math.PI, q1 = (ai + 1) / 12 * Math.PI;
+                    lk.push(sr * Math.cos(q0), bh * 0.4 + sr * 0.3 + sr * Math.sin(q0), 0,
+                            sr * Math.cos(q1), bh * 0.4 + sr * 0.3 + sr * Math.sin(q1), 0);
                 }
-                var tip = rr * 1.35, ah = rr * 0.22;
-                rp.push(0, 0, 0, tip, 0, 0,   tip, 0, 0, tip - ah, ah * 0.6, 0,   tip, 0, 0, tip - ah, -ah * 0.6, 0);
-                var rg = new THREE.BufferGeometry();
-                rg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rp), 3));
-                _driveRing = new THREE.LineSegments(rg,
-                    new THREE.LineBasicMaterial({ color: 0xff33ff, depthTest: false }));
-                _driveRing.renderOrder = 9999; _driveRing.frustumCulled = false;
-                _feedbackScene.add(_driveRing);
-                _driveCubeSig = sig;
+                lk.push(sr, bh * 0.4, 0, sr, bh * 0.4 + sr * 0.3, 0,  -sr, bh * 0.4, 0, -sr, bh * 0.4 + sr * 0.3, 0);
+                _aimLock = _overlayLines(_lineGeo(lk), AIM_LOCK_COLOR);
+                _feedbackScene.add(_aimLock);
+                if (!_aimHoverSur) { _aimHoverSur = _makeSurround(); _aimSelSur = _makeSurround(); }
+                _aimCubeSig = sig;
             }
-            _driveCube.position.set(w / 2, h / 2, 0);   // BoxGeometry is origin-centered → universe center
-            _driveCube.visible = true;
-            // Framing-normalize the reticle: at the provider's default framing (distance =
-            // max(w,h)*1.6, set in _init) scale == 1; at telephoto the world size grows in step
-            // with the orbit distance so the APPARENT screen size holds ~constant (screen-stable
-            // line weight). This is a per-frame framing scalar — NOT a per-vertex 1/z term, so it
-            // does not double-count perspective; a residual closer=bigger cue survives at close orbit.
+            _aimCube.position.set(w / 2, h / 2, 0);   // BoxGeometry is origin-centred → universe centre
+            _aimCube.visible = true;
             var ref = Math.max(_width, _height) * 1.6;
             var fscale = (ref > 0 && _orbit.distance > 0) ? (_orbit.distance / ref) : 1;
-            if (fb.center) {
-                _driveCross.position.set(fb.center[0], fb.center[1], (fb.center[2] != null) ? fb.center[2] : 0);
-                _driveCross.scale.setScalar(fscale);
-            }
-            _driveCross.visible = !!fb.center;
+            // Reticle at the orbit centre, facing the camera: screen centre by construction.
+            var oc = _resolveThreeCameraGeometry()._orbitCenter(_orbit, _width, _height);
+            _aimReticle.position.set(oc.x, oc.y, oc.z);
+            _aimReticle.quaternion.copy(_camera.quaternion);
+            _aimReticle.scale.setScalar(fscale);
+            _aimReticle.visible = true;
+            var pad = 4 * fscale;
+            var hoverR = fb.hover ? _placeSurround(_aimHoverSur, fb.hover.volume, pad) : 0;
+            if (!fb.hover) { _hideSurround(_aimHoverSur); }
+            if (fb.selected && !(fb.hover && fb.hover.name === fb.selected.name)) {
+                _placeSurround(_aimSelSur, fb.selected.volume, pad);
+            } else { _hideSurround(_aimSelSur); }
+            if (fb.grabbed && fb.hover) {
+                // The lock rides the top of the grabbed object's shadow (screen-up of its centre).
+                var gc = fb.hover.volume.center, up = _camera.up, lift = hoverR + s * 0.8 * fscale;
+                _aimLock.position.set(gc[0] + up.x * lift, gc[1] + up.y * lift, gc[2] + up.z * lift);
+                _aimLock.quaternion.copy(_camera.quaternion);
+                _aimLock.scale.setScalar(fscale);
+                _aimLock.visible = true;
+            } else { _aimLock.visible = false; }
             var ori = fb.orientation;
             if (ori && ori.pivot) {
-                _driveRing.position.set(ori.pivot[0], ori.pivot[1], (ori.pivot[2] != null) ? ori.pivot[2] : 0);
+                _aimRing.position.set(ori.pivot[0], ori.pivot[1], (ori.pivot[2] != null) ? ori.pivot[2] : 0);
                 // Same yaw sign as the wall shell (R2: rotation.z = +deg — the world holds raw
                 // physics coordinates), so the spoke turns WITH the drawn object.
-                _driveRing.rotation.z = (ori.deg || 0) * Math.PI / 180;
-                _driveRing.scale.setScalar(fscale);
+                _aimRing.rotation.z = (ori.deg || 0) * Math.PI / 180;
+                _aimRing.scale.setScalar(fscale);
             }
-            _driveRing.visible = !!(ori && ori.pivot);
+            _aimRing.visible = !!(ori && ori.pivot);
         }
 
-        // G2 final overlay pass: render the feedback scene (cube + crosshair) OVER the composited
-        // screen with autoClear disabled, so it survives bloom/god-ray/water composites untouched.
-        // Called last in _renderTick (after the FX dispatch has drawn to the default framebuffer).
-        function _renderDriveFeedbackPass() {
-            if (!_feedbackScene || !_driveCube || !_driveCube.visible) { return; }
+        // G2 final overlay pass: render the feedback scene OVER the composited screen with
+        // autoClear disabled, so it survives bloom/god-ray/water composites untouched. Called last
+        // in _renderTick (after the FX dispatch has drawn to the default framebuffer).
+        function _renderAimFeedbackPass() {
+            if (!_feedbackScene || !_aimCube || !_aimCube.visible) { return; }
             var prevAuto = _renderer.autoClear;
             _renderer.autoClear = false;
             _renderer.setRenderTarget(null);
@@ -1835,7 +1934,7 @@
         function _renderTick(tickData, largeObjects, options) {
             if (!_initialized) return;
             _lastTickData = tickData;
-            _updateDriveFeedback(options || {});
+            _updateAimFeedback(options || {});
 
             // Sync large objects (pass render options so LO render.mesh resolves + rebuilds on load)
             _syncLargeObjects(largeObjects, options || {});
@@ -1848,7 +1947,7 @@
             var opts          = options || {};
             var drawParticles = opts.renderBaseCanvas !== false;          // Particles layer
             // SNAPSHOT, not the reference: _renderOptsWithFeedback() returns
-            // this._renderOptions ITSELF when there is no drive-feedback bag, so retaining
+            // this._renderOptions ITSELF when there is no aim-feedback bag, so retaining
             // `opts` would let a setRenderOption between ticks silently change what
             // captureStill() replays (§1a.4's "as of the last completed renderTick").
             _lastOpts = Object.assign({}, opts);
@@ -2233,9 +2332,9 @@
                 _renderer.render(_scene, _camera);
             }
 
-            // G2 — draw the drive-feedback cube+crosshair LAST, over whatever the FX dispatch just
+            // G2 — draw the aim feedback (cube, reticle, surrounds) LAST, over whatever the FX dispatch just
             // composited to the screen, so it can never be washed by bloom/god-rays.
-            _renderDriveFeedbackPass();
+            _renderAimFeedbackPass();
         }
 
         // ── Public interface ─────────────────────────────────────────────────
@@ -2296,6 +2395,10 @@
                     }
                     if (_rtA) { _rtA.setSize(w, h); }
                     if (_rtB) { _rtB.setSize(w, h); }
+                } else if (_is3D) {
+                    // No camera yet, but the pose basis still moved with the canvas centre:
+                    // _applyOrbit is the one pose-applied site, so it carries the notice.
+                    _applyOrbit();
                 }
                 // Field DataTexture uses FieldBuilder.FIELD_OPTS dimensions (fixed).
                 // No rebuild needed for canvas resize — field resolution is independent.
@@ -2432,20 +2535,15 @@
                         }
                         _applyOrbit();
                     },
-                    getOrbit: function () {
-                        return {
-                            azimuth: _orbit.azimuth, elevation: _orbit.elevation, distance: _orbit.distance,
-                            // ROLL is a DECLARED field: a roll-capable provider always
-                            // returns it as a number, so a consumer's capability check is
-                            // `typeof cam.getOrbit().roll === 'number'` — field presence,
-                            // the peer of move()'s method presence. Absent ⇒ hide the
-                            // affordance, never substitute a different rotation.
-                            roll: _orbit.roll,
-                            // Carried so a captured pose ROUND-TRIPS through setOrbit
-                            // (a saved project restores the walk, not just the look).
-                            target: _orbit.target
-                                ? { x: _orbit.target.x, y: _orbit.target.y, z: _orbit.target.z } : null
-                        };
+                    getOrbit: function () { return _orbitBag(); },
+                    // addPoseListener(fn) → unsubscribe — the POSE-CHANGE NOTICE: `fn(bag)` runs
+                    // after EVERY pose write (setOrbit, look, move, setPreset, a resize), with
+                    // the getOrbit() bag, whichever surface wrote it. A dependent that must
+                    // follow the camera (the runner's aim + carry) subscribes here instead of
+                    // being forwarded to by each writer.
+                    addPoseListener: function (fn) {
+                        if (!_poseNotice) { _poseNotice = _resolveOrbitBag().makePoseNotice(); }
+                        return _poseNotice.add(fn);
                     },
                     setPreset: function (name) {
                         var p = _presets()[name];

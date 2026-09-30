@@ -5,7 +5,7 @@
  * ROOT CAUSE guarded: in the WASM-only PUBLISH build, the egpt-math-sdk dist
  * entry (`dist-entry.js`, served at the site's `./pub/egpt-math-sdk/index.js`) registers its
  * wasm provider ONLY into its own private facade slot — it never imports
- * `MathBackendProvider.js` (WASM-only publish rule), so `wasm-math` was never in
+ * `lib/egpt/js/model/backend/*` (WASM-only publish rule), so `wasm-math` was never in
  * the `MathBackendRegistry` the Runtime uses. `_applyBackendSelection` →
  * `select('wasm-math')` therefore threw "'wasm-math' is not registered", the
  * eager math load rejected, and the QFT notebook pane never mounted.
@@ -84,7 +84,7 @@ let Runtime, MathBackendRegistry;
 before(async () => {
     ({ Runtime } = await import(path.join(repoRoot, 'lib/shim/runtime/index.js')));
     ({ MathBackendRegistry } = await import(
-        path.join(repoRoot, 'lib/egpt/js/model/backend/MathBackendProvider.js')
+        path.join(repoRoot, 'lib/egpt/js/model/backend/MathBackendRegistry.js')
     ));
 });
 

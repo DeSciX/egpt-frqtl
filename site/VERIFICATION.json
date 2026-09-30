@@ -1,13 +1,13 @@
 {
-  "build": "d8fd0396",
+  "build": "4a41a09c",
   "phases": {
     "root": "GREEN",
     "prefix": "GREEN"
   },
-  "verified_at": "2026-09-30T05:52:32Z",
+  "verified_at": "2026-09-30T06:31:27Z",
   "instrument": {
     "script": "scripts/verify-static-deploy.sh",
     "urls": "scripts/verify-static-deploy-urls.mjs",
-    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/stack-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js", "apps/ide/test/studio-palette-selector.spec.js", "apps/ide/test/surface-deep-links.spec.js", "apps/ide/test/studio-hands.spec.js", "apps/ide/test/studio-grab-ux.spec.js", "apps/ide/test/studio-2d-parity.spec.js"]
+    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/stack-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js", "apps/ide/test/studio-palette-selector.spec.js", "apps/ide/test/surface-deep-links.spec.js", "apps/ide/test/studio-hands.spec.js", "apps/ide/test/studio-grab-ux.spec.js", "apps/ide/test/studio-2d-parity.spec.js", "apps/ide/test/math-dist-debug-panel.spec.js", "apps/ide/test/static-ide-debug-panel-once.spec.js"]
   }
 }

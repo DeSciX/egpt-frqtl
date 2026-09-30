@@ -41,7 +41,7 @@ import { Bus, Runtime } from '../../lib/shim/index.js';
 
 | Export | File | Role |
 |---|---|---|
-| `MathBackendRegistry` | `../egpt/js/model/backend/MathBackendProvider.js` | Singleton registry for the active math backend (js-reference or wasm-math). Re-exported from the shim barrel so `lib/features` imports from the sanctioned route. Module identity is preserved by ESM caching — one singleton regardless of import path. |
+| `MathBackendRegistry` | `../egpt/js/model/backend/MathBackendRegistry.js` | Singleton registry for the active math backend (js-reference or wasm-math); a zero-import module, so the JS reference core never enters the shim's graph. Re-exported from the shim barrel so `lib/features` imports from the sanctioned route. Module identity is preserved by ESM caching — one singleton regardless of import path. |
 | `MathBackendNotAvailableError` | same | Thrown on FAIL-LOUD backend selection failure. |
 
 ### Notebook spine

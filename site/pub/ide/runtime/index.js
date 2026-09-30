@@ -34,7 +34,7 @@
  */
 
 import { Bus } from '../bus.js';
-import { MathBackendRegistry, MathBackendNotAvailableError } from '../../egpt/js/model/backend/MathBackendProvider.js';
+import { MathBackendRegistry, MathBackendNotAvailableError } from '../../egpt/js/model/backend/MathBackendRegistry.js';
 import { ensureEngineStack } from '../engine/engine-stack-boot.js';
 import { validateAndMap as validateKnob } from '../notebook/knob.js';
 import {
@@ -47,12 +47,22 @@ import {
 
 /* ── Internal state ─────────────────────────────────────────────────── */
 var _initialized = false;
+// The realm's math sdk — set ONLY once its provider registered AND the requested
+// backend was selected, so a cached sdk always runs the backend that was asked for.
 var _mathSdk     = null;
+// The ONE math-SDK load of the realm. Concurrent callers (init's eager load racing a
+// view's ensureMath) share it, so a realm builds exactly one sdk — and registers
+// exactly one provider object per id (MathBackendRegistry.register throws on a
+// second). A load that was ATTEMPTED and failed stays here, rejected: every later
+// caller gets the same loud error (a reload clears it). Retrying a deterministic
+// failure would build a second provider object and trip the identity guard with a
+// misleading "two bundles" message.
+var _mathSdkLoad = null;
 var _mathSdkUrl  = '';
 var _mathWasmUrl = '';
 var _mathWasmModuleUrl = '';
 var _engine      = 'js';
-var _mathBackend = 'js-reference';  // M4: router-resolved backend id (default)
+var _mathBackend = null;  // M4: router-resolved backend id (the router profile owns the default)
 // E2a: the engineRouter INSTANCE threaded in by Runtime.init (FraqtlIde passes
 // `router`). frqtl.ensureEngine passes it straight to ensureEngineStack(router),
 // which uses BOTH `.resolve` (locate stack-boot.js) and `.ensureBrowserPathMap()`
@@ -269,7 +279,9 @@ function init(opts) {
     _mathWasmModuleUrl = opts.mathWasmModuleUrl  || (opts._routerMathWasmModuleUrl || '');
     _engine            = opts.engine             || 'js';
     // M4: router passes the requested backend id; normalise 'wasm'→'wasm-math'.
-    var _requestedBackend = opts.mathBackend || opts._routerMathBackend || 'js-reference';
+    // No default here — the router profile (`__mathBackend`) is the one default
+    // authority. With no id at all, the registry's first registrant stays active.
+    var _requestedBackend = opts.mathBackend || opts._routerMathBackend || null;
     if (_requestedBackend === 'wasm') { _requestedBackend = 'wasm-math'; }
     _mathBackend = _requestedBackend;
     // E2a: thread the engineRouter INSTANCE so frqtl.ensureEngine boots the engine
@@ -283,18 +295,21 @@ function init(opts) {
     // otherwise never be applied for this init's backend. Apply it now; a failure
     // rejects init's promise (FAIL-LOUD), never a silent js-reference fallback.
     var _lateSelectionError = null;
+    var _eagerMath = null;
     if (_mathSdk) {
-        try { _applyBackendSelection(); } catch (e) { _lateSelectionError = e; }
+        try { _applyBackendSelection(_mathSdk); } catch (e) { _failMathRealm(e); _lateSelectionError = e; }
     } else if (_mathBackend && _mathBackend !== 'js-reference') {
-        // M4 fix: a non-default backend is requested — eager-load the math SDK now
-        // so wasm-math registers AND selects at startup (badges/bench chips derive
-        // from MathBackendRegistry, so they read correctly without a first Run).
-        // FAIL-LOUD: _applyBackendSelection writes the precise error (incl. the
-        // `npm run build:wasm-bridge` hint) to the console pane and rejects here —
-        // never a silent js-reference fallback.
-        _ensureMathSdk().catch(function (e) {
-            console.error('[Runtime] eager math SDK load for backend "' + _mathBackend + '" failed:', e);
-        });
+        // M4 fix: eager-load the math SDK so the requested backend registers AND
+        // selects at startup (badges/bench chips derive from MathBackendRegistry, so
+        // they read correctly without a first Run). js-reference is excluded ONLY so
+        // a dev STUDIO session does not pull the JS reference core at boot; a
+        // js-reference request that this realm cannot serve still fails loud, at
+        // the first math use.
+        // FAIL-LOUD: init's promise settles only after this load, and REJECTS with
+        // its error (_applyBackendSelection's precise diagnosis, incl. the
+        // `npm run build:wasm-bridge` hint, also lands in the console pane) —
+        // never a console line alone, never a silent js-reference fallback.
+        _eagerMath = _ensureMathSdk();
     }
 
     // P1 (WS-CODE-SINGLE-RUN): dedup the run:request executor.
@@ -307,7 +322,7 @@ function init(opts) {
     };
     Bus.on('run:request', _runRequestHandler);
 
-    return new Promise(function (resolve, reject) {
+    var _engineReady = new Promise(function (resolve, reject) {
         if (_lateSelectionError) { reject(_lateSelectionError); return; }
         if (typeof window !== 'undefined' && typeof window._egptWhenEngineReady === 'function') {
             window._egptWhenEngineReady(function () {
@@ -326,6 +341,11 @@ function init(opts) {
             resolve();
         }
     });
+    if (!_eagerMath) { return _engineReady; }
+    return Promise.all([_engineReady, _eagerMath.catch(function (e) {
+        console.error('[Runtime] eager math SDK load for backend "' + _mathBackend + '" failed:', e);
+        throw e;
+    })]).then(function () {});
 }
 
 /* ── run ────────────────────────────────────────────────────────────── */
@@ -352,19 +372,23 @@ function run(opts) {
     _consoleObj.clear();
     _consoleObj.log('info', '--- run:' + source + ' (' + fileId + ') ---');
 
-    // P2 (WS-CODE-SINGLE-RUN): one derived backend header per run.
-    // Shows WHICH math backend will execute — derived from MathBackendRegistry at
-    // execution time, never hardcoded.  Emitted ONCE per run:request execution so
-    // duplicate-execution bugs are immediately visible (N headers = N executions).
-    var _backendLabel;
-    try { _backendLabel = MathBackendRegistry.active().id; } catch (_) { _backendLabel = 'none'; }
-    _consoleObj.log('info', 'backend: ' + _backendLabel);
-
     if (source === 'math') {
         _runMath(code, fileId, sourceUrl);
     } else {
+        _logBackendHeader();
         _runFrqtl(code, fileId);
     }
+}
+
+// P2 (WS-CODE-SINGLE-RUN): one derived backend header per run. Shows WHICH math
+// backend executes — derived from MathBackendRegistry, never hardcoded — emitted
+// ONCE per run:request execution so duplicate-execution bugs are immediately
+// visible (N headers = N executions). The math lane emits it after ensureMath
+// settles, so it names the backend the run actually uses, not the pre-load state.
+function _logBackendHeader() {
+    var label;
+    try { label = MathBackendRegistry.active().id; } catch (_) { label = 'none'; }
+    _consoleObj.log('info', 'backend: ' + label);
 }
 
 function _runFrqtl(code, fileId) {
@@ -381,6 +405,7 @@ function _runFrqtl(code, fileId) {
 
 function _runMath(code, fileId, sourceUrl) {
     _ensureMathSdk().then(function (sdk) {
+        _logBackendHeader();
         // The math example suites are authored as ES modules with the contract
         // `export async function run(sdk)` — the SAME contract the sdk editor's
         // test-runner-worker executes. new Function cannot parse module syntax
@@ -404,7 +429,8 @@ function _runMath(code, fileId, sourceUrl) {
             _consoleObj.error(msg);
             Bus.emit('run:result', { source: 'math', ok: false, error: msg });
         }
-    }).catch(function (e) {
+    }, function (e) {
+        _logBackendHeader();
         var msg = 'Math SDK init failed: ' + (e && e.message ? e.message : String(e));
         _consoleObj.error(msg);
         Bus.emit('run:result', { source: 'math', ok: false, error: msg });
@@ -854,6 +880,7 @@ function _ensureMathSdk(opts) {
         if (_b === 'wasm') { _b = 'wasm-math'; }
         _mathBackend = _b;
     }
+    if (_mathSdkLoad) { return _mathSdkLoad; }
     if (!_mathSdkUrl && (typeof window === 'undefined' || !window.createEgptMathSdk)) {
         // V2/AM-C2-3 (R3 binding): FAIL-LOUD — a null SDK silently produces wrong results.
         // The URL must come from the engineRouter profile (mathSdkUrl in DEV_CORE_PROFILE /
@@ -866,30 +893,36 @@ function _ensureMathSdk(opts) {
             'Ensure Runtime.init() is called with a router that defines __mathSdkUrl.'
         ));
     }
-    if (typeof window !== 'undefined' && window.createEgptMathSdk) {
-        return window.createEgptMathSdk({
+    var built = (typeof window !== 'undefined' && window.createEgptMathSdk)
+        ? window.createEgptMathSdk({
             wasmUrl:       _mathWasmUrl || undefined,
             wasmModuleUrl: _mathWasmModuleUrl || undefined
-        }).then(function (sdk) {
-            _mathSdk = sdk;
-            _registerSdkProvider(sdk);
-            _applyBackendSelection();
-            return sdk;
+        })
+        : import(_mathSdkUrl).then(function (mod) {
+            var factory = mod.createEgptMathSdk;
+            if (typeof factory !== 'function') { throw new Error('createEgptMathSdk not exported from ' + _mathSdkUrl); }
+            return factory({
+                wasmUrl:       _mathWasmUrl || undefined,
+                wasmModuleUrl: _mathWasmModuleUrl || undefined
+            });
         });
-    }
-    return import(_mathSdkUrl).then(function (mod) {
-        var factory = mod.createEgptMathSdk;
-        if (typeof factory !== 'function') { throw new Error('createEgptMathSdk not exported from ' + _mathSdkUrl); }
-        return factory({
-            wasmUrl:       _mathWasmUrl || undefined,
-            wasmModuleUrl: _mathWasmModuleUrl || undefined
-        });
-    }).then(function (sdk) {
-        _mathSdk = sdk;
+    _mathSdkLoad = built.then(function (sdk) {
         _registerSdkProvider(sdk);
-        _applyBackendSelection();
+        _applyBackendSelection(sdk);
+        _mathSdk = sdk;
         return sdk;
     });
+    return _mathSdkLoad;
+}
+
+/* A selection that failed AFTER the sdk was cached (a later init requesting a
+ * backend this realm cannot select) poisons the realm the same way a failed load
+ * does: drop the cached sdk and pin the rejection, so no later caller resolves on
+ * the previously selected backend. */
+function _failMathRealm(err) {
+    _mathSdk = null;
+    _mathSdkLoad = Promise.reject(err);
+    _mathSdkLoad.catch(function () {});   // observed by every later caller, not unhandled here
 }
 
 /* ── provider registration (static/dist twin-registry fix) ──────────────────
@@ -901,7 +934,7 @@ function _ensureMathSdk(opts) {
  * `./pub/egpt-math-sdk/index.js` in the static build) registers its wasm provider ONLY into its private facade
  * slot (`wasm-facade.js` `_setActiveWasmProvider`). To keep the JS math core OUT
  * of the published bundle (CEO 2026-07-10 WASM-only publish rule) it deliberately
- * NEVER imports `MathBackendProvider.js`, so it CANNOT register into the registry
+ * NEVER imports `lib/egpt/js/model/backend/*`, so it CANNOT register into the registry
  * this Runtime uses — and in a built app its bundled registry copy would be a
  * DIFFERENT module instance across the dynamic-import boundary anyway. Result:
  * `_applyBackendSelection` → `MathBackendRegistry.select('wasm-math')` threw
@@ -917,29 +950,32 @@ function _ensureMathSdk(opts) {
  * 'wasm-math' truthfully from the registry (truth-in-labeling, not a hardcoded
  * label), and `resetScope()` reach the wasm arena.
  *
- * DEV byte-equivalence: `sdk-entry.js` still self-registers into the shared
- * registry, so in dev either `sdk.mathBackendProvider` is absent OR the id is
- * already registered — both make this a guarded no-op. We register ONLY when the
- * field is a conformant provider AND its id is not already present.
- * FAIL-LOUD: a malformed provider makes `register()` throw (surfaced as the
- * ensureMath rejection) — never a silent skip.
+ * The DEV entry (`sdk-entry.js`) exposes its js-reference provider the same way.
+ * Where that entry shares this registry instance (the dev server) the SAME object
+ * self-registered through the reference barrel, and `register()` is a no-op for it.
+ * Where it is bundled separately (the .vsix co-served egpt-math-sdk.mjs) this is how
+ * js-reference reaches this registry at all.
+ *
+ * `register()` owns provider identity: the same object again is a no-op, a
+ * DIFFERENT object under a taken id throws (two provider bundles in one realm), and
+ * a malformed provider throws. Each surfaces as the ensureMath rejection.
  */
 function _registerSdkProvider(sdk) {
     var provider = sdk && sdk.mathBackendProvider;
     if (!provider || typeof provider !== 'object' || typeof provider.id !== 'string') { return; }
-    if (MathBackendRegistry.registeredIds().indexOf(provider.id) !== -1) { return; }
     MathBackendRegistry.register(provider);
 }
 
 /* ── backend selection ──────────────────────────────────────────────── */
-// M4: called once after the SDK resolves (wasm-math is registered by that point
-// if the WASM module loaded). FAIL-LOUD: if the requested backend isn't registered,
-// MathBackendRegistry.select() throws MathBackendNotAvailableError — never silently
-// falls back to js-reference.
-function _applyBackendSelection() {
+// M4: called once after the SDK resolves (the sdk's provider is registered by
+// that point). FAIL-LOUD: if the requested backend isn't registered,
+// MathBackendRegistry.select() throws MathBackendNotAvailableError. js-reference is
+// a provider like any other — it exists only where a source graph registered it
+// (the dev sdk entry), so requesting it from a distribution throws here.
+function _applyBackendSelection(sdk) {
     var id = _mathBackend;
-    if (!id || id === 'js-reference') {
-        // js-reference auto-registers at import time; always available. No-op.
+    if (!id) {
+        // No backend requested: the registry's first registrant stays active.
         return;
     }
     try {
@@ -951,7 +987,7 @@ function _applyBackendSelection() {
         // the provider never registered: missing router URLs vs unbuilt bridge.
         var detail = '';
         if (id === 'wasm-math') {
-            var meta = _mathSdk && _mathSdk.metadata;
+            var meta = sdk && sdk.metadata;
             if (!_mathWasmModuleUrl) {
                 detail = ' No wasmModuleUrl was configured — the engineRouter profile ' +
                     '__mathWasmModuleUrl is empty or was not threaded into Runtime.';
@@ -967,8 +1003,9 @@ function _applyBackendSelection() {
             (err && err.message ? err.message : String(err)) + '.' + detail +
             ' Never falls back silently to js-reference (FAIL-LOUD).';
         _consoleObj.error(msg);
-        // Re-throw so the calling .then chain rejects and the error surfaces.
-        throw new Error(msg);
+        // Re-throw so the calling .then chain rejects and the error surfaces. The
+        // registry's own error rides as `cause` (e.g. MathBackendNotAvailableError).
+        throw new Error(msg, { cause: err });
     }
 }
 

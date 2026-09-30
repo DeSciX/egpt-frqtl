@@ -103,13 +103,16 @@
  *     Arrow keys  → mirror the LOOK pad  (←/→ spin/roll, ↑/↓ pitch).
  *     W/A/S/D     → mirror the MOVE pad  (W/S walk, A/D strafe).
  *     Wheel/pinch → dolly (distance), independent of the pads.
- *   OBJECT-DRIVE FORK: when the runner has an input-drive target the sticks are
- *   routed to that OBJECT and the camera pose is FROZEN (see the drive block in
- *   frame()). Each axis's meaning for the target comes from the runner's axis map
- *   (`runner.getInputDriveAxes()`, derived from the target's capabilities) — LOOK-x
- *   means ROLL with no drive target and OBJECT-ROTATE with a rotate-capable one;
- *   MOVE-x slides the object along camera-right. While a target is driven a LEGEND
- *   above the pads names what each axis does for it (`data-role="drive-legend"`).
+ *   THE STICKS ONLY EVER FLY THE CAMERA — in every state, with nothing selected, an
+ *   object aimed at, or an object grabbed. There is no object-drive branch: a
+ *   grabbed object follows the camera because the runner carries it on the camera's
+ *   own pose notice (`addPoseListener`), not because a stick is routed to it.
+ *     Space       → `runner.grabToggle()` — the aim's grab/place key (STUDIO's
+ *                   stationary reticle; docs/internal/engine/AIM_GRAB_FEEDBACK_CONTRACT.md).
+ *                   Ignored while typing (INPUT/TEXTAREA/SELECT/contenteditable) and
+ *                   on key auto-repeat; a no-op while the runner's aim is off.
+ *   A state label above the pads (`data-role="aim-state"`) reads the runner's aim
+ *   state (roaming / grab-ready / grabbed) while the aim is armed.
  *   All the geometry lives at the ONE camera authority (the provider's
  *   `getCameraControl()` handle: `look` rotates, `move` translates) — this object
  *   re-derives NO orbit math and integrates NO angles. A BYO provider whose handle
@@ -202,14 +205,6 @@
         // defined NO-OP on the LOOK pad — never a substituted azimuth/elevation
         // integration here, which would put orbit geometry back in the widget.
         var canLook = (typeof cam.look === 'function');
-        // STAGE 3: engine-px/sec the OBJECT moves at full stick deflection when an input-drive
-        // target is set on the runner (camera-locked object drive). Distinct from the orbit
-        // speeds (deg/sec / px-distance/sec) — this drives a world position, not the camera pose.
-        var driveSpeed = (typeof opts.driveSpeed === 'number') ? opts.driveSpeed : 300;
-        // STAGE 3 (B7b): deg/sec the rotate-capable OBJECT spins at full LOOK-x deflection when
-        // it is the input-drive target. Angular (not distance-scaled) — an angle is zoom-invariant.
-        var rotDriveSpeed = (typeof opts.rotDriveSpeed === 'number') ? opts.rotDriveSpeed : 90;
-        var ROT_DRIVE_SPEED = rotDriveSpeed;
         var wheelStep  = (typeof opts.wheelStep  === 'number') ? opts.wheelStep  : 60;
         var minDist    = (typeof opts.minDistance === 'number') ? opts.minDistance : 20;
         var maxDist    = (typeof opts.maxDistance === 'number') ? opts.maxDistance : 12000;
@@ -279,8 +274,8 @@
         var cAF = (typeof cancelAnimationFrame === 'function')
             ? cancelAnimationFrame : clearTimeout;
 
-        // A stick/key/wheel step changes what the frame SHOWS — the camera pose, or a
-        // driven object and its crosshair. A running loop paints every frame; a STOPPED one
+        // A stick/key/wheel step changes what the frame SHOWS — the camera pose, and with it
+        // a grabbed object the runner carries. A running loop paints every frame; a STOPPED one
         // (STUDIO Design) paints only when asked, so ask the runner for one repaint of the
         // CURRENT state. repaint() never advances the tick clock — no physics.
         function paintIfStopped() {
@@ -300,51 +295,6 @@
             var lookY = clamp(jLook.y + kl.y, -1, 1);   // pitch (about screen-right)
             var moveX = clamp(jMove.x + km.x, -1, 1);   // strafe (translation, screen-right)
             var moveY = clamp(jMove.y + km.y, -1, 1);   // walk   (translation, into the picture)
-
-            // STAGE 3 — OBJECT-DRIVE (camera LOCKED). If the runner has an input-drive target,
-            // route the sticks to the OBJECT via runner.driveInput (the runner owns the basis
-            // math + the clamp) and emit ZERO camera output (no setOrbit, no wheel-dolly) — the
-            // presence of the target IS the lock (spec §2b). The camera pair reused verbatim; this
-            // is a dumb forwarder (no center/basis/clamp knowledge here): it sends every axis and
-            // the runner's axis map decides which apply. Signs follow the §1 convention (LOOK-x →
-            // screen x slide, LOOK-y → y lift, MOVE-y → view-forward z push/pull, MOVE-x →
-            // screen x slide).
-            if (runner && typeof runner.getInputDriveTarget === 'function' && runner.getInputDriveTarget()) {
-                if (typeof runner.driveInput === 'function') {
-                    runner.driveInput({
-                        // SIGN CRITERION (do NOT re-flip without re-reading this): the acceptance
-                        // test is stick-direction == CROSSHAIR screen-direction, in ANY camera basis
-                        // (docs/internal/engine/DRIVE_FEEDBACK_CONTRACT.md §SIGN CRITERION — do NOT
-                        // re-flip without re-reading it). The crosshair is the object's TRUE projected
-                        // feedback (a scene reticle at the drive target), so `right` here IS the
-                        // camera-basis rightward offset and it projects to screen-right in every basis
-                        // by construction — no negation. (The earlier `-lookX` was calibrated against
-                        // the camera-BLIND flat marker, which decoupled from the projection at az≠0 and
-                        // read inverted at rung 7 az=45; the crosshair dissolves that decoupling.)
-                        // LOOK-y (lift) and MOVE (forward = z push/pull, pull=toward camera) were
-                        // confirmed correct and are untouched.
-                        right:   lookX * driveSpeed * dt,
-                        up:      lookY * driveSpeed * dt,
-                        forward: moveY * driveSpeed * dt,
-                        // MOVE-x — the camera-right slide on the MOVE pad (same sign criterion
-                        // as `right`: stick-right == crosshair screen-right).
-                        strafe:  moveX * driveSpeed * dt,
-                        // ROTATION (B7b) — LOOK's HORIZONTAL also carries a rotate rate (deg/frame,
-                        // = lookX × ROT_DRIVE_SPEED × dt). This is a DUMB forwarder: it always sends
-                        // `rotate`; the runner CONSUMES it only when the drive target is rotate-capable
-                        // (a wall/emitter with setOrientation), and in that case drops the `right`
-                        // slide (LOOK-x becomes the aim). MOVE is untouched. deg/sec, NOT
-                        // distance-scaled (an angle is zoom-invariant; the runner distance-scales
-                        // only the positional terms). The CEO-identified redundancy fix: LOOK-x no
-                        // longer duplicates a lateral slide when an object exposes an orientation.
-                        rotate:  lookX * ROT_DRIVE_SPEED * dt
-                    });
-                    paintIfStopped();
-                }
-                publishState();   // camera pose unchanged; keep the realm hook fresh
-                if (anyInputActive()) { scheduleFrame(); }
-                return;
-            }
 
             var o = cam.getOrbit();
             // ── THE FPS SPLIT (CEO 2026-07-26, screen-relative 2026-07-28) ───
@@ -396,8 +346,23 @@
             ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1,
             KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1
         };
+        // Typing never grabs: the same editable-element guard as STUDIO's Delete binding, asked
+        // of the event target and of the focused element (Monaco types into a textarea).
+        function _isEditable(el) {
+            var tag = el && el.tagName;
+            return !!el && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true);
+        }
         function onKeyDown(e) {
             var code = e.code || e.key;
+            if (code === 'Space') {
+                if (_isEditable(e.target) || (doc && _isEditable(doc.activeElement))) { return; }
+                if (!runner || typeof runner.grabToggle !== 'function' || !runner.isAimArmed()) { return; }
+                if (e.preventDefault) { e.preventDefault(); }   // Space is the page-scroll key
+                if (e.repeat) { return; }                       // a held key toggles once
+                runner.grabToggle();
+                paintIfStopped();
+                return;
+            }
             if (!HANDLED_KEYS[code]) { return; }
             keys[code] = true;
             if (e.preventDefault) { e.preventDefault(); }   // stop arrow-key page scroll
@@ -444,59 +409,42 @@
             focusMount();   // best-effort focus at attach
         }
 
-        // ── Drive legend — what each stick axis does for the DRIVEN target ────
-        // Rendered from runner.getInputDriveAxes() (the runner's axis map + its label table), so
-        // the legend cannot disagree with what driveInput does. Shown only while a target is
-        // driven; refreshed on the runner's drive-change notice. Each row carries
-        // data-axis / data-action so a non-human reader (the VLA loop) reads the same map.
-        var legendEl = null;
-        var unsubscribeDrive = null;
-        var LEGEND_ROWS = {
-            move: [['move-y', 'moveY', '\u2191\u2193'], ['move-x', 'moveX', '\u2190\u2192']],
-            look: [['look-y', 'lookY', '\u2191\u2193'], ['look-x', 'lookX', '\u2190\u2192']]
+        // ── Aim state label — what the reticle is doing, read off the runner ──────
+        // Rendered from runner.getAimState() on the runner's aim notice, so it cannot disagree
+        // with what SPACE does. Shown only while the aim is armed (STUDIO Design). Carries
+        // data-aim-* attributes so a non-human reader (the VLA loop) reads the same state.
+        var aimLabelEl = null;
+        var unsubscribeAim = null;
+        var AIM_TEXT = {
+            'roaming':    function () { return 'ROAMING \u2014 aim the reticle at an object'; },
+            'grab-ready': function (st) { return 'GRAB-READY ' + (st.hover || 'object') + ' \u2014 press SPACE to grab'; },
+            'grabbed':    function (st) { return 'GRABBED ' + (st.grabbed || 'object') + ' \u2014 move the world to place it, SPACE to release'; }
         };
-        function makeDriveLegend() {
+        function makeAimLabel() {
             var el = doc.createElement('div');
-            el.setAttribute('data-role', 'drive-legend');
-            el.style.cssText = 'position:absolute;left:16px;right:16px;bottom:118px;display:none;' +
-                'justify-content:space-between;align-items:flex-end;' +
-                'pointer-events:none;z-index:40;font:11px sans-serif;';
+            el.setAttribute('data-role', 'aim-state');
+            el.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:118px;display:none;' +
+                'max-width:70%;padding:4px 8px;border-radius:4px;background:rgba(20,30,38,0.8);' +
+                'border:1px solid rgba(255,170,0,0.7);color:rgba(240,240,240,0.95);' +
+                'pointer-events:none;z-index:40;font:11px sans-serif;line-height:1.45;text-align:center;';
             return el;
         }
-        function renderDriveLegend() {
-            if (!legendEl) { return; }
-            var info = (runner && typeof runner.getInputDriveAxes === 'function') ? runner.getInputDriveAxes() : null;
-            while (legendEl.firstChild) { legendEl.removeChild(legendEl.firstChild); }
-            if (!info) {
-                legendEl.style.display = 'none';
-                legendEl.removeAttribute('data-drive-kind');
-                return;
-            }
-            legendEl.setAttribute('data-drive-kind', info.kind);
-            ['move', 'look'].forEach(function (stick) {
-                var block = doc.createElement('div');
-                block.setAttribute('data-stick', stick);
-                block.style.cssText = (stick === 'move' ? '' : 'text-align:right;') +
-                    'max-width:45%;padding:4px 6px;border-radius:4px;background:rgba(20,30,38,0.75);' +
-                    'border:1px solid rgba(255,51,255,0.55);color:rgba(230,240,245,0.95);line-height:1.45;';
-                if (stick === 'move') {
-                    var head = doc.createElement('div');
-                    head.textContent = 'DRIVING ' + (info.name || 'object') + ' (' + info.kind + ')';
-                    head.style.cssText = 'color:#ff33ff;font-weight:bold;';
-                    block.appendChild(head);
-                }
-                LEGEND_ROWS[stick].forEach(function (row) {
-                    var ax = info.axes[row[1]];
-                    var line = doc.createElement('div');
-                    line.setAttribute('data-axis', row[0]);
-                    line.setAttribute('data-action', ax.action);
-                    line.textContent = stick.toUpperCase() + ' ' + row[2] + ' ' + ax.label;
-                    if (ax.action === 'none') { line.style.opacity = '0.5'; }
-                    block.appendChild(line);
-                });
-                legendEl.appendChild(block);
-            });
-            legendEl.style.display = 'flex';
+        function renderAimLabel() {
+            if (!aimLabelEl) { return; }
+            var st = runner.getAimState();
+            aimLabelEl.setAttribute('data-aim-state', st.state);
+            aimLabelEl.setAttribute('data-aim-target', st.grabbed || st.hover || '');
+            aimLabelEl.setAttribute('data-aim-edge', st.atEdge ? 'true' : 'false');
+            aimLabelEl.setAttribute('data-aim-heading-held', st.headingHeld ? 'true' : 'false');
+            if (st.state === 'off') { aimLabelEl.style.display = 'none'; aimLabelEl.textContent = ''; return; }
+            var lines = [AIM_TEXT[st.state](st)];
+            if (st.atEdge) { lines.push('AT WORLD EDGE \u2014 held at the universe boundary'); }
+            if (st.headingHeld) { lines.push('HEADING HELD \u2014 it points along the depth axis'); }
+            if (st.error) { lines.push('RELEASED: ' + st.error); }
+            aimLabelEl.textContent = lines.join('\n');
+            aimLabelEl.style.whiteSpace = 'pre-line';
+            aimLabelEl.style.color = (st.state === 'grabbed') ? '#ffcc66' : 'rgba(240,240,240,0.95)';
+            aimLabelEl.style.display = 'block';
         }
 
         // ── On-screen joystick pads ──────────────────────────────────────────
@@ -610,28 +558,18 @@
             lookPad.style.pointerEvents = 'auto';
             container.appendChild(movePad);
             container.appendChild(lookPad);
-            legendEl = makeDriveLegend();
-            container.appendChild(legendEl);
             mountEl.appendChild(container);
             padEls = [movePad, lookPad];
-            if (runner && typeof runner.addInputDriveListener === 'function') {
-                unsubscribeDrive = runner.addInputDriveListener(renderDriveLegend);
+            if (runner && typeof runner.addAimListener === 'function') {
+                aimLabelEl = makeAimLabel();
+                container.appendChild(aimLabelEl);
+                unsubscribeAim = runner.addAimListener(renderAimLabel);
+                renderAimLabel();
             }
-            renderDriveLegend();
 
             // Wheel/pinch zoom on the mount surface (dolly), independent of the pads.
             if (wheelStep > 0) {
                 onWheel = function (e) {
-                    // F1 (architect closure condition 1 — the CAMERA LOCK): while an object is
-                    // being driven the camera pose is FROZEN, so the wheel-dolly must be inert too
-                    // (a mid-drive scroll would move the camera → the accumulated drive offset's
-                    // basis diverges from the live basis → the object jumps). The rAF frame() loop
-                    // already honors the lock; this handler is a SEPARATE input path and must honor
-                    // it identically. Suppress (the object's z is driven by the MOVE stick, §2b).
-                    if (runner && typeof runner.getInputDriveTarget === 'function' && runner.getInputDriveTarget()) {
-                        if (e.preventDefault) { e.preventDefault(); }
-                        return;
-                    }
                     var o = cam.getOrbit();
                     var di = clamp(o.distance + (e.deltaY > 0 ? 1 : -1) * wheelStep, minDist, maxDist);
                     cam.setOrbit({ distance: di });
@@ -678,8 +616,8 @@
                 if (onWheel && mountEl && mountEl.removeEventListener) {
                     mountEl.removeEventListener('wheel', onWheel);
                 }
-                if (unsubscribeDrive) { unsubscribeDrive(); unsubscribeDrive = null; }
-                legendEl = null;
+                if (unsubscribeAim) { unsubscribeAim(); unsubscribeAim = null; }
+                aimLabelEl = null;
                 if (container && container.parentNode) { container.parentNode.removeChild(container); }
                 if (restoreMountPosition !== null && mountEl) { mountEl.style.position = restoreMountPosition; }
                 padEls = [];

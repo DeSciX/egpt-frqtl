@@ -238,6 +238,18 @@
             if (!_pose) { _pose = _resolveCamera2dGeometry().defaultPose2d(_width, _height); }
             return _pose;
         }
+        // The whole 2D pose bag, COPIED — never the live object (a captured pose must not keep
+        // tracking the camera; the still-provenance aliasing discipline): what getOrbit()
+        // returns and what every pose-change listener receives.
+        function _poseBag() {
+            var p = _poseOrDefault();
+            return { distance: p.distance, target: p.target ? { x: p.target.x, y: p.target.y } : null };
+        }
+        // The pose-change listener list (OrbitBag.makePoseNotice), provider-scoped so every
+        // handle getCameraControl() returns shares it. Created on the first subscription; a
+        // pose write (setOrbit, setPreset, a resize) notifies it.
+        var _poseNotice = null;
+        function _notifyPose() { if (_poseNotice) { _poseNotice.notify(_poseBag()); } }
 
         // ── Layer helpers ───────────────────────────────────────────────────
         //
@@ -736,6 +748,7 @@
             setSize: function (w, h) {
                 _width = w; _height = h;
                 if (_initialized && typeof resizeCanvas === 'function') { resizeCanvas(w, h); }
+                _notifyPose();   // the 2D map changes with the canvas (target null = its centre)
             },
 
             // Loop is owned by FrqtlApp — these are intentional no-ops.
@@ -836,15 +849,14 @@
                                     'cameraControl.poseFields rather than assuming a mode. (FAIL-LOUD.)');
                             }
                         }
+                        _notifyPose();
                     },
-                    getOrbit: function () {
-                        var p = _poseOrDefault();
-                        return {
-                            distance: p.distance,
-                            // COPIED, never the live object — a captured pose must not keep
-                            // tracking the camera (the still-provenance aliasing discipline).
-                            target: p.target ? { x: p.target.x, y: p.target.y } : null
-                        };
+                    getOrbit: function () { return _poseBag(); },
+                    // addPoseListener(fn) → unsubscribe — the POSE-CHANGE NOTICE: `fn(bag)` runs
+                    // after EVERY pose write, with the getOrbit() bag (RENDERER_CONTRACT §1a.2).
+                    addPoseListener: function (fn) {
+                        if (!_poseNotice) { _poseNotice = _resolveOrbitBag().makePoseNotice(); }
+                        return _poseNotice.add(fn);
                     },
                     setPreset: function (name) {
                         // A preset is a FULL framing reset — the reliable way back.

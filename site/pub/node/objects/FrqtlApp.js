@@ -163,8 +163,20 @@
             '(renderer-layer-manifest.js). Fail-loud, not a fallback.');
     }
 
+    /** THE pose-vocabulary owner (compat/renderer/orbit-bag.js) — the 3D-ness predicate the aim
+     *  arms on. FAIL-LOUD. */
+    function _resolveOrbitBag() {
+        if (typeof module !== 'undefined' && module.exports) {
+            return require('../compat/renderer/orbit-bag.js');
+        }
+        if (typeof window !== 'undefined' && window.OrbitBag) { return window.OrbitBag; }
+        throw new Error('[FrqtlApp] canonical contract OrbitBag (lib/frqtl/compat/renderer/orbit-bag.js) ' +
+            'is unreachable (load order) — it owns the 3D-ness predicate hasAngularPose and rides the ' +
+            'RENDERER phase (renderer-layer-manifest.js). Fail-loud, not a fallback.');
+    }
+
     /** THE LO drawn-center authority (compat/renderer/lo-drawn-center.js) — where the renderer
-     *  draws an LO rect; the pick and the drive feedback aim at the same point. FAIL-LOUD. */
+     *  draws an LO rect and its volume; the pick, the aim ray and the shadow-surround all read it. FAIL-LOUD. */
     function _resolveLoDrawnCenter() {
         if (typeof module !== 'undefined' && module.exports) {
             return require('../compat/renderer/lo-drawn-center.js');
@@ -278,11 +290,11 @@
         // draggable even when its circle is suppressed (the "grab mid-run" oracle uses
         // the overlay handles).
         this._designMode   = false;
-        // STAGE 3 camera-locked input-drive (Q-A5-DRIVE spec §2): { target, off } while an
-        // object is being camera-driven (the sticks move the object, the camera is LOCKED), else
-        // null. The runner is the ONE drive authority (it owns updateObjectProperty, the universe
-        // bounds, and cameraControl) — see setInputDriveTarget/getInputDriveTarget/driveInput.
-        this._inputDrive   = null;
+        // The aim surface (setAimArmed): null while disarmed, else the stationary-reticle state —
+        // the centre-ray hover and, while grabbed, the held camera-relative pose. `_selected` is
+        // the host's selection, handed down for its shadow-surround (setSelectHighlight).
+        this._aim          = null;
+        this._selected     = null;
         // F5: optional host callback fired on a position write (center/rect) so an overlay can
         // REPAINT event-driven (Studio sets it; a headless game leaves it null → no-op).
         this._onObjectMoved = null;
@@ -428,15 +440,6 @@
         return !!this._designMode;   // 'design'
     };
 
-    // The key the runner merges into the render bag while an object is camera-driven.
-    var DRIVE_FEEDBACK_KEY = 'driveFeedback';
-
-    /**
-     * The render-option keys this RUNNER merges into the bag per render — never a provider
-     * capability, never user-writable. The read-set conformance test FERRIES this list as its
-     * one exemption.
-     */
-    FrqtlApp.RUNNER_INJECTED_RENDER_KEYS = Object.freeze([DRIVE_FEEDBACK_KEY]);
 
     var FILTER_KEY_PREFIX = 'filter.';
 
@@ -1169,7 +1172,7 @@
 
             if (kind === 'SphereEmitter') {
                 if (typeof lo.applyProp === 'function') { lo.applyProp(prop, value); }
-                // F5: a position write (drive / carry / programmatic center or rect-adapter)
+                // F5: a position write (a grab carry / programmatic center or rect-adapter)
                 // fires the object-moved event so a host (Studio's overlay) can REPAINT — PR-1
                 // made the bbox DATA fresh, but the flat overlay only redraws on discrete events;
                 // this EXTENDS the event set (never a poll). rect/center are the position props.
@@ -1310,16 +1313,6 @@
         }
     };
 
-    // ── STAGE 3: camera-locked input-drive (Q-A5-DRIVE spec §2) ──────────────────
-    // Selecting an object in 3D LOCKS the camera and re-points the MOVE/LOOK sticks at
-    // the OBJECT, driving its `center` in the camera basis CAPTURED at selection. The A5
-    // change-of-basis pair (cameraOffsetFromWorld/worldFromCameraOffset) is reused verbatim
-    // — the lock (CameraControls emits zero camera output while a target is set) is what
-    // makes that reuse exact: worldFromCameraOffset reads the LIVE (frozen) pose = the
-    // captured basis. ONE drive authority (this runner, which already owns
-    // updateObjectProperty + the universe bounds + cameraControl); CameraControls stays a
-    // dumb forwarder; a game gets programmatic parity for free (same three methods).
-
     /** Resolve the center-bearing target: a marker's `_emitter` (the SphereEmitter facade —
      *  the marker LO has no `center`; the facade's setCenter moves the emission source the
      *  user sees follow the view), else the handle itself. */
@@ -1331,9 +1324,9 @@
     };
     /**
      * Resolve the ROTATION target (B7): the first of the selected object, its emitter/wall
-     * facade, or the resolved center-target that exposes setOrientation. Null ⇒ no rotation
-     * affordance (the LOOK-drive rotate term is ignored). Separate from the center-target so a
-     * wall (rotate-capable, LO-backed) and an emitter (rotate-capable, marker-backed) both work.
+     * facade, or the resolved center-target that exposes setOrientation. Null ⇒ no heading to
+     * carry or show. Separate from the center-target so a wall (orientation-bearing, LO-backed)
+     * and an emitter (orientation-bearing, marker-backed) both work.
      */
     FrqtlApp.prototype._resolveOrientationTarget = function (object, target) {
         var cands = [object, target, (object && object._emitter), (object && object._wall),
@@ -1350,8 +1343,7 @@
         return null;
     };
     /**
-     * _objectCentroid(object) → [x,y,z] | null — where an object SITS, for the pick and the drive
-     * feedback alike (one resolver, so the pick aims at the same point the cue is drawn at). A
+     * _objectCentroid(object) → [x,y,z] | null — where an object SITS, for the mouse pick. A
      * center-bearing object answers with its drive center; any other LO with its rect's drawn
      * center (lo-drawn-center.js — the point the renderer draws its box at).
      */
@@ -1367,7 +1359,7 @@
      * getUniverseBounds() → { width, height, zHalf } (engine px). The 2D canvas is
      * width×height; the "canvas cube" adds a z-extent — a named convention parameter
      * (spec §2c): zHalf = min(width,height)/2 (a cube-ish volume centered on the z=0
-     * target). Used by the drive clamp; a game may read it too.
+     * target). Used by the grab-carry clamp; a game may read it too.
      */
     FrqtlApp.prototype.getUniverseBounds = function () {
         var r = this.canvas_rect || {};
@@ -1375,7 +1367,7 @@
         var h = (typeof r.h === 'number') ? r.h : (r.height || 0);
         return { width: w, height: h, zHalf: Math.min(w, h) / 2 };
     };
-    /** Clamp a driven center to the canvas cube (spec §2c — confinement in the DRIVE path,
+    /** Clamp a carried center to the canvas cube (spec §2c — confinement in the CARRY path,
      *  NEVER in the updateObjectProperty accessor, which stays throw-or-apply against the
      *  schema; the engine/emitter/programmatic placement set `center` freely). */
     FrqtlApp.prototype._clampToUniverseCube = function (c) {
@@ -1386,215 +1378,293 @@
         return [x, y, z];
     };
 
+    // ── THE AIM: a stationary reticle, a center-ray hover, a SPACEBAR grab ──────────────────
+    // (docs/internal/engine/AIM_GRAB_FEEDBACK_CONTRACT.md.) The reticle sits at screen centre
+    // and the sticks fly the CAMERA in every state. The first visible object on the camera's
+    // centre ray is GRAB-READY; SPACE grabs it; a grabbed object HOLDS its camera-relative pose
+    // (position + heading) under every camera motion, so it is placed by moving the world and
+    // re-oriented by turning it; SPACE places it. The runner owns the state machine and the
+    // carry; the camera owns motion (and says when it moved: addPoseListener); the provider
+    // owns the paint. No stick ever routes to an object.
+
+    /** World px added on every side of a volume before the centre-ray test, so a thin wall
+     *  (a plate of depth ~0) is aimable. */
+    FrqtlApp.HOVER_MARGIN = 6;
+    /** Below this world-xy length of a carried unit heading, the heading is not expressible
+     *  in the 1-DOF orientation model (it points along world z) and HOLDS its last value. */
+    FrqtlApp.HEADING_HOLD_EPS = 0.05;
+
+    var AIM_OFF = 'off', AIM_ROAMING = 'roaming', AIM_READY = 'grab-ready', AIM_GRABBED = 'grabbed';
+
     /**
-     * setInputDriveTarget(object | null) — arm/disarm camera-locked object drive.
-     * Called by the host (Studio's selection effect) on select (object) / deselect (null).
-     * Resolves the center-bearing target + captures the LOCKED camera-local offset once.
-     * FAIL-SOFT: no object / no cameraControl / no cameraOffsetFromWorld (the 2D camera has
-     * none) / no center ⇒ stores null ⇒ drive inert (the sticks orbit the camera as today).
+     * setAimArmed(on) — arm/disarm the aim surface. The host arms it in STUDIO Design with a
+     * tool active; Run, the no-tool view and a scene reset disarm it (a disarm RELEASES a grab
+     * where the object stands). Arming needs an ANGULAR camera (`OrbitBag.hasAngularPose`) —
+     * a flat camera has no centre ray to aim with, so arming there leaves the aim off (the same
+     * predicate that keeps the joysticks out of 2D). An angular camera whose handle lacks the
+     * pose notice or the offset pair breaks RENDERER_CONTRACT §1a.2 and THROWS.
      */
-    FrqtlApp.prototype.setInputDriveTarget = function (object) {
-        this._inputDrive = this._armInputDrive(object);
-        this._notifyInputDriveListeners();
-    };
-    /** The drive bag for `object`, or null when it cannot be driven (see setInputDriveTarget). */
-    FrqtlApp.prototype._armInputDrive = function (object) {
-        if (!object) { return null; }
+    FrqtlApp.prototype.setAimArmed = function (on) {
+        if (!on) {
+            if (!this._aim) { return; }
+            this._aim.unsubscribePose();
+            this._aim = null;
+            this._notifyAim();
+            return;
+        }
+        if (this._aim) { return; }
         var cam = this.cameraControl;
-        if (!cam || typeof cam.cameraOffsetFromWorld !== 'function' ||
-            typeof cam.worldFromCameraOffset !== 'function') { return null; }
-        var target = this._resolveDriveTarget(object);
-        var orientationTarget = this._resolveOrientationTarget(object, target);
-        var center = this._readDriveCenter(target);
-        // Arm if we can drive EITHER position (center) OR orientation (rotate-capable target).
-        // A rotate-only target (e.g. a wall selected for LOOK-spin) still LOCKS the camera so
-        // the LOOK stick rotates it; positional terms are simply inert (no captured offset).
-        if (!center && !orientationTarget) { return null; }
-        // SCREEN-NORMALIZED DRIVE (CEO ruled): capture the LOCKED orbit distance so driveInput can
-        // scale a stick deflection to the same APPARENT screen motion at any zoom. A perspective
-        // camera subtends a world displacement δ over screen-pixels ∝ δ/distance — so to hold the
-        // on-screen amount constant, the WORLD delta must scale ∝ distance. This is the root fix
-        // for the CEO's rung-8 "flip" FEEL: at the telephoto framing (dist 2873) the old fixed
-        // world-px rate barely moved the projected object while the flat marker raced (two
-        // displacement scales — docs/internal/engine/DRIVE_FEEDBACK_CONTRACT.md); scaling by
-        // distance/ref puts the drive on the render's own scale. lockedDist is invariant during a
-        // drive (camera locked).
-        var lockedDist = (typeof cam.getOrbit === 'function') ? cam.getOrbit().distance : null;
+        if (!_resolveOrbitBag().hasAngularPose(cam)) { return; }
+        if (typeof cam.addPoseListener !== 'function' || typeof cam.cameraOffsetFromWorld !== 'function' ||
+            typeof cam.worldFromCameraOffset !== 'function') {
+            throw new Error('[FrqtlApp.setAimArmed] the angular camera handle lacks addPoseListener / ' +
+                'cameraOffsetFromWorld / worldFromCameraOffset — the aim follows the camera through its ' +
+                'pose notice and reads the ray off the offset pair (RENDERER_CONTRACT §1a.2). (FAIL-LOUD.)');
+        }
+        var self = this;
+        this._aim = { cam: cam, hover: null, grab: null, atEdge: false, headingHeld: false, error: null,
+                      last: null, unsubscribePose: null };
+        this._aim.unsubscribePose = cam.addPoseListener(function () { self._onAimPose(); });
+        this._refreshHover();
+        this._notifyAim();
+    };
+    FrqtlApp.prototype.isAimArmed = function () { return !!this._aim; };
+
+    /**
+     * getAimState() → `{ state, hover, grabbed, atEdge, headingHeld, error }` — `state` ∈
+     * off|roaming|grab-ready|grabbed; `hover`/`grabbed` are object NAMES (or null); `atEdge` is
+     * true while the carried pose is clamped to the universe cube; `headingHeld` while the carried
+     * heading points along world z (not expressible, held); `error` is the message of a carry write
+     * that threw (the grab was released).
+     */
+    FrqtlApp.prototype.getAimState = function () {
+        var a = this._aim;
+        if (!a) { return { state: AIM_OFF, hover: null, grabbed: null, atEdge: false, headingHeld: false, error: null }; }
         return {
-            object: object,
-            target: target,
-            off: center ? cam.cameraOffsetFromWorld(center) : null,
-            lockedDist: lockedDist,
-            orientationTarget: orientationTarget
+            state: a.grab ? AIM_GRABBED : (a.hover ? AIM_READY : AIM_ROAMING),
+            hover: a.hover ? (a.hover.name || '') : null,
+            grabbed: a.grab ? (a.grab.object.name || '') : null,
+            atEdge: !!(a.grab && a.atEdge),
+            headingHeld: !!(a.grab && a.headingHeld),
+            error: a.error
         };
     };
+    /** The grabbed object (a `largeObjects` entry) or null — the host selects it. */
+    FrqtlApp.prototype.getGrabbedObject = function () {
+        return (this._aim && this._aim.grab) ? this._aim.grab.object : null;
+    };
+
     /**
-     * addInputDriveListener(fn) → unsubscribe. `fn()` is called after every setInputDriveTarget
-     * (arm, re-arm, disarm) — the drive's own change notice, for a consumer that presents the
-     * drive (CameraControls' axis legend) and must not wait for a stick push to learn of it.
+     * addAimListener(fn) → unsubscribe. `fn(state)` runs after every change of the aim state
+     * (arm, disarm, hover, grab, release, clamp, heading hold, a carry error) with getAimState().
      */
-    FrqtlApp.prototype.addInputDriveListener = function (fn) {
-        var ls = this._inputDriveListeners || (this._inputDriveListeners = []);
+    FrqtlApp.prototype.addAimListener = function (fn) {
+        var ls = this._aimListeners || (this._aimListeners = []);
         if (ls.indexOf(fn) === -1) { ls.push(fn); }
         return function () { var i = ls.indexOf(fn); if (i !== -1) { ls.splice(i, 1); } };
     };
-    FrqtlApp.prototype._notifyInputDriveListeners = function () {
-        var ls = (this._inputDriveListeners || []).slice();
-        for (var i = 0; i < ls.length; i++) { ls[i](); }
+    FrqtlApp.prototype._notifyAim = function () {
+        var st = this.getAimState();
+        if (this._aim) { this._aim.last = JSON.stringify(st); }
+        var ls = (this._aimListeners || []).slice();
+        for (var i = 0; i < ls.length; i++) { ls[i](st); }
+    };
+    /** Notify only when the published state actually changed (a carry step usually does not). */
+    FrqtlApp.prototype._notifyAimIfChanged = function () {
+        if (this._aim && JSON.stringify(this.getAimState()) === this._aim.last) { return; }
+        this._notifyAim();
     };
 
     /**
-     * What each stick axis does for a drive role — the ONE label table; consumers render
-     * `getInputDriveAxes()` and never re-enumerate it.
+     * grabToggle() — THE spacebar. At GRAB-READY it grabs the hovered object, capturing its full
+     * camera-relative pose; while GRABBED it places the object where it stands; at ROAMING (or
+     * disarmed) it is a no-op. Returns the new state name.
      */
-    var DRIVE_AXIS_LABELS = Object.freeze({
-        slide:  'slide left / right',
-        push:   'push away / pull near',
-        lift:   'lift up / down',
-        rotate: 'rotate',
-        none:   'no effect'
-    });
-    /**
-     * The drive's axis map, derived from the TARGET's capabilities (a positional center, an
-     * orientation) — never a per-part table. driveInput routes by it and the legend reads it, so
-     * what the legend says IS what the stick does.
-     *   MOVE-x → slide along camera-right (position-capable)
-     *   MOVE-y → push/pull along camera-forward (position-capable)
-     *   LOOK-x → rotate (rotate-capable), else slide along camera-right (position-capable)
-     *   LOOK-y → lift along camera-up (position-capable)
-     */
-    FrqtlApp.prototype._driveAxisRoles = function (d) {
-        var pos = !!d.off, rot = !!d.orientationTarget;
-        return {
-            moveX: pos ? 'slide' : 'none',
-            moveY: pos ? 'push' : 'none',
-            lookX: rot ? 'rotate' : (pos ? 'slide' : 'none'),
-            lookY: pos ? 'lift' : 'none'
-        };
+    FrqtlApp.prototype.grabToggle = function () {
+        var a = this._aim;
+        if (!a) { return AIM_OFF; }
+        if (a.grab) {
+            this._releaseGrab();
+        } else {
+            this._refreshHover();
+            if (a.hover) { a.grab = this._captureGrab(a.hover); a.atEdge = false; a.headingHeld = false; a.error = null; }
+        }
+        this._notifyAim();
+        return this.getAimState().state;
     };
+    FrqtlApp.prototype._releaseGrab = function () {
+        if (this._aim) { this._aim.grab = null; this._aim.atEdge = false; this._aim.headingHeld = false; }
+    };
+
     /**
-     * getInputDriveAxes() → null when nothing is driven, else
-     * `{ name, kind: 'position'|'rotate'|'position+rotate', axes: { moveX, moveY, lookX, lookY } }`
-     * with each axis `{ action, label }` (action ∈ slide|push|lift|rotate|none).
+     * setSelectHighlight(object | null) — the host's selection, handed down so its shadow-surround
+     * paints (the same highlight geometry as the aim's). Selection never grabs; a selection that
+     * is not the grabbed object (a deselect, another pick) RELEASES the grab.
      */
-    FrqtlApp.prototype.getInputDriveAxes = function () {
-        var d = this._inputDrive;
-        if (!d) { return null; }
-        var roles = this._driveAxisRoles(d);
-        var axes = {};
-        for (var k in roles) {
-            if (Object.prototype.hasOwnProperty.call(roles, k)) {
-                axes[k] = { action: roles[k], label: DRIVE_AXIS_LABELS[roles[k]] };
+    FrqtlApp.prototype.setSelectHighlight = function (object) {
+        this._selected = object || null;
+        var a = this._aim;
+        if (a && a.grab && a.grab.object !== this._selected) {
+            this._releaseGrab();
+            this._notifyAim();
+        }
+    };
+
+    /** The full camera-relative pose of `lo` at grab: the position offset (a centre-bearing
+     *  target) and the heading's camera-frame components (an orientation-bearing target). */
+    FrqtlApp.prototype._captureGrab = function (lo) {
+        var cam = this._aim.cam;
+        var target = this._resolveDriveTarget(lo);
+        var center = this._readDriveCenter(target);
+        var oriTarget = this._resolveOrientationTarget(lo, target);
+        var g = { object: lo, target: target, off: center ? cam.cameraOffsetFromWorld(center) : null,
+                  oriTarget: oriTarget, hCam: null };
+        if (oriTarget && typeof oriTarget.getOrientation === 'function') {
+            var r = (oriTarget.getOrientation() || 0) * Math.PI / 180;
+            var o0 = cam.cameraOffsetFromWorld([0, 0, 0]);
+            var o1 = cam.cameraOffsetFromWorld([Math.cos(r), Math.sin(r), 0]);
+            g.hCam = { right: o1.right - o0.right, up: o1.up - o0.up, forward: o1.forward - o0.forward };
+        }
+        return g;
+    };
+
+    /** The pose notice: carry the grabbed object, then re-aim the centre ray. */
+    FrqtlApp.prototype._onAimPose = function () {
+        if (this._aim && this._aim.grab) { this._carryGrab(); }
+        this._refreshHover();
+        this._notifyAimIfChanged();
+    };
+
+    /**
+     * Re-place the grabbed object at its held camera-relative pose in the LIVE basis: the centre
+     * through worldFromCameraOffset → the universe-cube clamp → the canonical center write, then
+     * the offset re-captured from the clamped centre (glued at the wall, no invisible over-travel);
+     * the heading re-expressed in the live basis, projected onto world-xy, written through
+     * setOrientation. A write that throws RELEASES the grab and publishes the error.
+     */
+    FrqtlApp.prototype._carryGrab = function () {
+        var a = this._aim, g = a.grab, cam = a.cam;
+        try {
+            if (g.off) {
+                var c = cam.worldFromCameraOffset(g.off);
+                var k = this._clampToUniverseCube(c);
+                a.atEdge = (Math.abs(k[0] - c[0]) + Math.abs(k[1] - c[1]) + Math.abs(k[2] - c[2])) > 1e-6;
+                this.updateObjectProperty(g.target, 'center', k);
+                g.off = cam.cameraOffsetFromWorld(k);
             }
+            if (g.hCam) {
+                var w0 = cam.worldFromCameraOffset({ right: 0, up: 0, forward: 0 });
+                var w1 = cam.worldFromCameraOffset(g.hCam);
+                var hx = w1[0] - w0[0], hy = w1[1] - w0[1];
+                a.headingHeld = Math.hypot(hx, hy) < FrqtlApp.HEADING_HOLD_EPS;
+                if (!a.headingHeld) { g.oriTarget.setOrientation(Math.atan2(hy, hx) * 180 / Math.PI); }
+            }
+        } catch (e) {
+            this._releaseGrab();
+            a.error = 'the grabbed object could not follow the camera: ' + (e && e.message ? e.message : e);
+            this._notifyAim();
         }
-        var kind = (d.off && d.orientationTarget) ? 'position+rotate' : (d.off ? 'position' : 'rotate');
-        return { name: (d.object && d.object.name) || '', kind: kind, axes: axes };
     };
-    /**
-     * DRIVE_DISTANCE_REF — the reference orbit distance at which the screen-normalized drive rate
-     * is 1:1 with the pre-normalization rate (so the DEFAULT framing feels unchanged). Matches the
-     * provider's own default-framing distance (`Math.max(w,h)*1.6`, three-provider `_init`) — a UX
-     * feel constant, not a physics coupling. Farther than this ⇒ faster world motion (same screen
-     * motion); closer ⇒ slower world motion (same screen motion).
-     */
-    FrqtlApp.prototype._driveDistanceRef = function () {
-        var b = this.getUniverseBounds();
-        return Math.max(b.width, b.height) * 1.6;
-    };
-    /** getInputDriveTarget() → the driven object (or null). CameraControls reads this at the
-     *  top of each frame; its non-null value IS the camera lock (§2b). */
-    FrqtlApp.prototype.getInputDriveTarget = function () {
-        return this._inputDrive ? this._inputDrive.target : null;
-    };
-    FrqtlApp.prototype.isInputDriveActive = function () { return !!this._inputDrive; };
 
     /**
-     * driveInput({ right, up, forward, strafe, rotate }) — apply ONE drive step (engine px in the
-     * camera basis; `rotate` in degrees). `right` is LOOK-x's slide and `strafe` is MOVE-x's; each
-     * applies only when the axis map (_driveAxisRoles) gives that axis the slide role. Accumulate
-     * the deltas into the captured offset, map back to world via worldFromCameraOffset (reads
-     * the LOCKED pose), clamp to the canvas cube, write via the canonical
-     * `updateObjectProperty(target,'center',…)` accessor, then RE-PROJECT the offset
-     * from the clamped center so a clamped axis "sticks" at the wall (no invisible over-travel).
+     * The volume `lo` is aimed at by (compat/renderer/lo-drawn-center.js — the SAME volume the
+     * shadow-surround paints): a centre-bearing object's drive centre as a sphere the size of its
+     * drawn marker, else the rect's drawn box turned by its shell rotation. null when it has neither.
      */
-    FrqtlApp.prototype.driveInput = function (delta) {
-        var d = this._inputDrive;
-        if (!d || !delta) { return; }
-        // ── ROTATION (B7b) — LOOK's HORIZONTAL axis repurposed for a rotate-capable target.
-        //   `delta.rotate` is a per-frame degree increment (deg/sec × dt, from CameraControls'
-        //   lookX). It is NOT distance-scaled: an angle is zoom-invariant (unlike a positional
-        //   world delta, which IS distance-scaled below to hold the on-screen amount constant).
-        //   When a rotate target is present, LOOK-x is CONSUMED by rotation, so the positional
-        //   `right` term (also lookX-derived) is dropped — MOVE is unchanged, camera-drive
-        //   (no target) is untouched. Walls re-aim their directional cone; emitters sweep (pulsar).
-        var roles = this._driveAxisRoles(d);
-        if (roles.lookX === 'rotate' && typeof delta.rotate === 'number' && delta.rotate) {
-            var cur = (typeof d.orientationTarget.getOrientation === 'function')
-                ? (d.orientationTarget.getOrientation() || 0) : 0;
-            try { d.orientationTarget.setOrientation(cur + delta.rotate); } catch (e) { /* fail-soft */ }
+    FrqtlApp.prototype._aimVolume = function (lo) {
+        var L = _resolveLoDrawnCenter();
+        var c = this._readDriveCenter(this._resolveDriveTarget(lo));
+        if (c) {
+            var r = lo.rect ? Math.max(lo.rect.w || 0, lo.rect.h || 0) / 2 : 0;
+            return L.drawnVolume({ center: c, radius: r });
         }
-        // Positional drive requires a captured offset (a center-bearing target). A rotate-only
-        // target (no center) drives orientation exclusively.
-        if (!d.off) { return; }
-        var cam = this.cameraControl;
-        if (!cam || typeof cam.worldFromCameraOffset !== 'function') { return; }
-        // Screen-normalize: scale the incoming (world-px) delta by lockedDistance / referenceDistance
-        // so the apparent on-screen motion is the same at any zoom (CEO ruled). scale=1 at the default
-        // framing (backward-compatible); >1 when zoomed out (telephoto), <1 when zoomed in. No lock
-        // distance (older provider / 2D) ⇒ scale 1 (unchanged).
-        var ref = this._driveDistanceRef();
-        var scale = (typeof d.lockedDist === 'number' && d.lockedDist > 0 && ref > 0) ? (d.lockedDist / ref) : 1;
-        // Camera-right slide: LOOK-x's `right` only when LOOK-x is not claimed by rotation (else it
-        // would both rotate AND slide), plus MOVE-x's `strafe`.
-        var rightDelta = ((roles.lookX === 'slide') ? (delta.right || 0) : 0) +
-                         ((roles.moveX === 'slide') ? (delta.strafe || 0) : 0);
-        d.off.right   += rightDelta * scale;
-        d.off.up      += (delta.up      || 0) * scale;
-        d.off.forward += (delta.forward || 0) * scale;
-        var c = cam.worldFromCameraOffset(d.off);
-        if (!c) { return; }
-        c = this._clampToUniverseCube(c);
-        try { this.updateObjectProperty(d.target, 'center', c); } catch (e) { return; }
-        d.off = cam.cameraOffsetFromWorld(c);   // re-project (glue to the wall on clamp)
+        return lo.rect ? L.drawnVolume(lo) : null;
     };
 
-    // ── Target-UX: drive-feedback bag threaded to the provider via the renderTick opts channel ──
-    // (spec §1). While driving, the provider draws a universe-cube wireframe + a crosshair reticle
-    // at the target center — projected by the REAL camera, so feedback and object are the SAME
-    // projected thing (dissolves the flat-marker-vs-projection decoupling). This is LIVE per-frame
-    // state (the target moved via driveInput), NOT a persistent user knob — so it rides a fresh
-    // opts bag each render, never setRenderOption. Arrow-legal: runner(objects) → provider(renderer)
-    // over the EXISTING renderTick(…, opts) path (no new RendererProvider method, no signature
-    // change). A provider that ignores opts.driveFeedback draws nothing (capability-checked, R4/R5).
+    /** Whether the frame DRAWS `lo` — the runner's own render view, never the provider's:
+     *  not a backdrop, `visible` not false, and its shell shown in the current mode. */
+    FrqtlApp.prototype._isAimable = function (lo) {
+        return !!lo && !lo.backdrop && lo.visible !== false && this._isShellVisible(lo);
+    };
 
     /**
-     * The live drive-feedback, or null when not driving:
-     *   `{ bounds, center?, orientation?: { pivot:[x,y,z], deg } }`
-     * `center` (the crosshair) is present for a position-capable target; `orientation` (the
-     * rotation cue, drawn at `pivot` and aimed at `deg`) for a rotate-capable one — so a
-     * rotate-only wall is as visibly selected as an emitter. The cue's presence follows the same
-     * capabilities the axis map does.
+     * _centerRay() → `{ origin, dir }` — the camera's screen-centre ray, read off the OFFSET pair:
+     * the eye is the offset origin, the direction the unit forward offset. (The screen pair —
+     * screenToWorld / screenPointOf — answers point-on-plane questions and is not used for rays.)
      */
-    FrqtlApp.prototype._computeDriveFeedback = function () {
-        var d = this._inputDrive;
-        if (!d) { return null; }
-        var fb = { bounds: this.getUniverseBounds() };
-        var center = this._readDriveCenter(d.target);
-        if (center) { fb.center = center; }
-        if (d.orientationTarget) {
-            var pivot = center || this._objectCentroid(d.object);
-            var deg = (typeof d.orientationTarget.getOrientation === 'function')
-                ? (d.orientationTarget.getOrientation() || 0) : 0;
-            if (pivot) { fb.orientation = { pivot: pivot, deg: deg }; }
-        }
-        return (fb.center || fb.orientation) ? fb : null;
+    FrqtlApp.prototype._centerRay = function () {
+        var cam = this._aim.cam;
+        var o = cam.worldFromCameraOffset({ right: 0, up: 0, forward: 0 });
+        var f = cam.worldFromCameraOffset({ right: 0, up: 0, forward: 1 });
+        return { origin: o, dir: [f[0] - o[0], f[1] - o[1], f[2] - o[2]] };
     };
-    /** The render options for a frame: the persistent user options plus the live drive-feedback (if any). */
+
+    /** Recompute which visible object the centre ray hits first (lo-drawn-center firstHit). */
+    FrqtlApp.prototype._refreshHover = function () {
+        var a = this._aim;
+        if (!a) { return; }
+        var los = this.largeObjects, cands = [], vols = [];
+        for (var i = 0; i < los.length; i++) {
+            if (!this._isAimable(los[i])) { continue; }
+            var v = this._aimVolume(los[i]);
+            if (v) { cands.push(los[i]); vols.push(v); }
+        }
+        var ray = this._centerRay();
+        var hit = _resolveLoDrawnCenter().firstHit(ray.origin, ray.dir, vols, FrqtlApp.HOVER_MARGIN);
+        a.hover = hit ? cands[hit.index] : null;
+    };
+
+    // ── The aim feedback bag, threaded to the provider via the renderTick opts channel ──────
+    // LIVE per-frame state (never setRenderOption), under ONE runner-injected key. A provider
+    // that ignores it draws nothing (capability-checked).
+    var AIM_FEEDBACK_KEY = 'aimFeedback';
+
+    /**
+     * The render-option keys this RUNNER merges into the bag per render — never a provider
+     * capability, never user-writable. The read-set conformance test FERRIES this list as its
+     * one exemption.
+     */
+    FrqtlApp.RUNNER_INJECTED_RENDER_KEYS = Object.freeze([AIM_FEEDBACK_KEY]);
+
+    /**
+     * The live aim feedback, or null when the aim is disarmed:
+     *   `{ bounds, state, hover?: {name, volume}, selected?: {name, volume}, grabbed?: {name, volume},
+     *      orientation?: {pivot, deg} }`
+     * `hover` is the grab-ready (or grabbed) object's shadow-surround, `selected` the host
+     * selection's, `grabbed` marks the grabbed one (its lock glyph), and `orientation` the passive
+     * heading of the grabbed (else selected) orientation-bearing object. Every volume is the
+     * lo-drawn-center volume the ray tested.
+     */
+    FrqtlApp.prototype._computeAimFeedback = function () {
+        var a = this._aim;
+        if (!a) { return null; }
+        this._refreshHover();
+        this._notifyAimIfChanged();
+        var self = this;
+        function mark(lo) {
+            var v = lo && self._aimVolume(lo);
+            return v ? { name: lo.name || '', volume: v } : null;
+        }
+        var fb = { bounds: this.getUniverseBounds(), state: this.getAimState().state };
+        var hov = mark(a.grab ? a.grab.object : a.hover);
+        if (hov) { fb.hover = hov; }
+        var sel = (this._selected && this._isAimable(this._selected)) ? mark(this._selected) : null;
+        if (sel) { fb.selected = sel; }
+        if (a.grab && hov) { fb.grabbed = hov; }
+        var headed = a.grab ? a.grab.object : this._selected;
+        var oriT = headed ? this._resolveOrientationTarget(headed, this._resolveDriveTarget(headed)) : null;
+        var headVol = headed ? this._aimVolume(headed) : null;
+        if (oriT && headVol && typeof oriT.getOrientation === 'function') {
+            fb.orientation = { pivot: headVol.center, deg: oriT.getOrientation() || 0 };
+        }
+        return fb;
+    };
+    /** The render options for a frame: the persistent user options plus the live aim feedback (if any). */
     FrqtlApp.prototype._renderOptsWithFeedback = function () {
-        var fb = this._computeDriveFeedback();
+        var fb = this._computeAimFeedback();
         if (!fb) { return this._renderOptions; }
         var bag = Object.assign({}, this._renderOptions);
-        bag[DRIVE_FEEDBACK_KEY] = fb;
+        bag[AIM_FEEDBACK_KEY] = fb;
         return bag;
     };
 
@@ -1847,6 +1917,9 @@
      */
     FrqtlApp.prototype.setup = function (setupFn, opts) {
         opts = opts || {};
+        // A scene reset disarms the aim: a grabbed or selected object is about to be disposed.
+        if (this._aim) { this.setAimArmed(false); }
+        this._selected = null;
         if (this._setupResult && typeof this._setupResult.dispose === 'function') {
             this._setupResult.dispose();
         }

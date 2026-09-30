@@ -104,7 +104,9 @@ var DEV_CORE_PROFILE = {
     // M4: Math backend selection authority — the single source of truth for which
     // MathBackendProvider id is selected at startup. Runtime.ensureMath().then
     // calls MathBackendRegistry.select(mathBackend) if non-empty.
-    // 'js-reference' = default (JS canonical). 'wasm-math' = WASM provider.
+    // Dev consumes source, so its default is 'js-reference' (registered by the dev
+    // math SDK entry). Every distribution profile defaults to 'wasm-math' — compute
+    // is WASM in every distribution, and js-reference is not registrable there.
     // Normalisation: 'wasm' → 'wasm-math' (same alias as ?mathBackend=wasm URL param).
     '__mathBackend':          'js-reference',
     // Curated native notebooks (lib/notebooks/) — dev is the lib/server static
@@ -177,8 +179,8 @@ var DIST_PROFILE = {
     // so the dynamic import resolves page-relative, not bundle-relative.
     '__mathWasmUrl':          '../../../egpt-math-sdk/wasm/egpt_math_sdk_wasm_bg.wasm',
     '__mathWasmModuleUrl':    '../../../egpt-math-sdk/wasm/egpt_math_sdk_wasm.js',
-    // M4: Math backend default for dist. Same semantics as DEV_CORE_PROFILE.__mathBackend.
-    '__mathBackend':          'js-reference',
+    // M4: Math backend default for dist — WASM (a distribution carries no JS math core).
+    '__mathBackend':          'wasm-math',
     // Curated native notebooks relative to dist/ide/shell/ — same base shape as
     // __mathSdkUrl (sdk/frqtl-sdk/dist/ide/shell/ → ../../../egpt-math-sdk/notebooks/).
     // The sdk build copies lib/notebooks/ → dist/notebooks/ (build.mjs copyDirFromAbs).
@@ -283,7 +285,7 @@ function buildCdnProfile(base) {
         '__mathSdkUrl':           CDN_MATH_BASE + '/index.js',
         '__mathWasmUrl':          CDN_MATH_BASE + '/wasm/egpt_math_sdk_wasm_bg.wasm',
         '__mathWasmModuleUrl':    CDN_MATH_BASE + '/wasm/egpt_math_sdk_wasm.js',
-        '__mathBackend':          'js-reference',
+        '__mathBackend':          'wasm-math',
         '__notebookBase':         CDN_MATH_BASE + '/notebooks',
         // Vendor import-map root — frqtl-sdk's OWN dist/vendor/ (manifest-driven
         // copy, build.js copyVendorManifestToDist()). Unlike DIST_PROFILE.__vendorBase
@@ -366,7 +368,7 @@ function buildStaticProfile(base) {
         '__mathSdkUrl':           base + '/egpt-math-sdk/index.js',
         '__mathWasmUrl':          base + '/egpt-math-sdk/wasm/egpt_math_sdk_wasm_bg.wasm',
         '__mathWasmModuleUrl':    base + '/egpt-math-sdk/wasm/egpt_math_sdk_wasm.js',
-        '__mathBackend':          'js-reference',
+        '__mathBackend':          'wasm-math',
         // Notebooks come from the frqtl-sdk dist's OWN copy (build.js copyDir
         // lib/notebooks → dist/notebooks) — NOT under egpt-math-sdk (architect §A.3/§B.1).
         '__notebookBase':         base + '/notebooks',
@@ -483,7 +485,8 @@ var _assertProfileParity = (function () {
  *   Override the WASM math bridge glue module URL.
  * @param {string} [opts.mathBackend]
  *   Override the math backend id. `'wasm'` is normalized to `'wasm-math'`. Falls
- *   back to `?mathBackend=` URL param then the profile default (`'js-reference'`).
+ *   back to `?mathBackend=` URL param then the profile default (`__mathBackend`:
+ *   `'js-reference'` for DEV_CORE_PROFILE, `'wasm-math'` for every distribution profile).
  * @param {boolean} [opts.documentRelative]
  *   **`mode:'static'` ONLY.** Resolve against STATIC_PROFILE's DOCUMENT-RELATIVE values
  *   (`./pub/...`) instead of anchoring at a document — for a build-time consumer whose output
@@ -692,8 +695,7 @@ export function engineRouter(opts) {
     }
     var mathBackend = opts.mathBackend
         || _urlMathBackend
-        || profile.__mathBackend
-        || 'js-reference';
+        || profile.__mathBackend;
     // Normalise friendly alias: 'wasm' → 'wasm-math'.
     if (mathBackend === 'wasm') { mathBackend = 'wasm-math'; }
 

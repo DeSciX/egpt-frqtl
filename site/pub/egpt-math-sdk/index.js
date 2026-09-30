@@ -134,13 +134,13 @@ function callWasm(op, ...args) {
 __name(callWasm, "callWasm");
 
 // src/browser/wasm-math-provider.js
-var MathBackendRegistrationError = class extends Error {
+var WasmMathProviderError = class extends Error {
   static {
-    __name(this, "MathBackendRegistrationError");
+    __name(this, "WasmMathProviderError");
   }
   constructor(message) {
     super(message);
-    this.name = "MathBackendRegistrationError";
+    this.name = "WasmMathProviderError";
   }
 };
 function unwrap(result, opName) {
@@ -235,7 +235,7 @@ var WASM_PROVIDER_EXTRAS = Object.freeze([
 ]);
 function buildWasmMathProvider(wasmFacade) {
   if (!wasmFacade || typeof wasmFacade !== "object") {
-    throw new MathBackendRegistrationError(
+    throw new WasmMathProviderError(
       "buildWasmMathProvider: wasmFacade must be a non-null object (from buildWasmFacade)."
     );
   }
@@ -252,7 +252,7 @@ function buildWasmMathProvider(wasmFacade) {
   ];
   const missingArena = requiredArena.filter((fn) => typeof wasmFacade[fn] !== "function");
   if (missingArena.length > 0) {
-    throw new MathBackendRegistrationError(
+    throw new WasmMathProviderError(
       `buildWasmMathProvider: WASM facade missing V3 arena exports: ${missingArena.join(", ")}. Rebuild the WASM bridge (npm run build:wasm-bridge in sdk/egpt-math-sdk).`
     );
   }
@@ -1068,6 +1068,82 @@ function createEGPTLogger(numberKey) {
   return new DebugLogger(numberKey.toString(), "EGPT");
 }
 __name(createEGPTLogger, "createEGPTLogger");
+function setupWebAppDebugger() {
+  if (typeof window !== "undefined" && window.document) {
+    let updateDebugPanel = function() {
+      const summary = DebugLogger.getGlobalSummary();
+      debugPanel.innerHTML = `
+                <div>\u{1F527} Debug Logger Control</div>
+                <div>Console: ${summary.consoleEnabled ? "\u2705 ON" : "\u274C OFF"}</div>
+                <div>Active Loggers: ${summary.totalActiveLoggers}</div>
+                <div>Total Messages: ${summary.totalMessages}</div>
+                <div>Errors: ${summary.totalErrors} | Warnings: ${summary.totalWarnings}</div>
+                <button onclick="toggleDebugConsole(!${summary.consoleEnabled})" style="margin-top: 5px;">
+                    ${summary.consoleEnabled ? "Disable" : "Enable"} Console
+                </button>
+                <button onclick="hideDebugPanel()" style="margin-left: 5px;">Hide</button>
+            `;
+    };
+    __name(updateDebugPanel, "updateDebugPanel");
+    let debugPanel = document.getElementById("debug-panel");
+    if (!debugPanel) {
+      debugPanel = document.createElement("div");
+      debugPanel.id = "debug-panel";
+      debugPanel.style.cssText = `
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                font-family: monospace;
+                font-size: 12px;
+                z-index: 10000;
+                max-width: 300px;
+                display: none;
+            `;
+      document.body.appendChild(debugPanel);
+    }
+    window.toggleDebugConsole = (enabled) => {
+      DebugLogger.setConsoleEnabled(enabled);
+      updateDebugPanel();
+    };
+    window.showDebugPanel = () => {
+      debugPanel.style.display = "block";
+      updateDebugPanel();
+    };
+    window.hideDebugPanel = () => {
+      debugPanel.style.display = "none";
+    };
+    document.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === "D") {
+        e.preventDefault();
+        if (debugPanel.style.display === "none") {
+          window.showDebugPanel();
+        } else {
+          window.hideDebugPanel();
+        }
+      }
+    });
+  }
+  DebugLogger.addCallback((logEntry, logger) => {
+    if (logEntry.level === "ERROR") {
+    }
+  });
+  console.log(
+    "%cDebugLogger Web App Integration Ready! Press Ctrl+Shift+D to toggle debug panel",
+    "color: #2ecc71; font-weight: bold;"
+  );
+}
+__name(setupWebAppDebugger, "setupWebAppDebugger");
+if (typeof window !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupWebAppDebugger);
+  } else {
+    setupWebAppDebugger();
+  }
+}
 
 // src/browser/op-trace.js
 var _activeCounter = null;
@@ -8629,7 +8705,7 @@ async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
     // The built MathBackendProvider-conformant provider object, EXPOSED so the
     // consumer (lib/shim Runtime — the sole owner of MathBackendRegistry) can
     // register it into ITS registry. This entry deliberately never imports
-    // MathBackendProvider.js (WASM-only publish rule — see module doc + wasm-
+    // lib/egpt/js/model/backend/* (WASM-only publish rule — see module doc + wasm-
     // facade.js), so it cannot register there itself; and in a built app the
     // registry is a different module instance across the dynamic-import boundary.
     // Handing back the plain provider object lets the Runtime register + select
