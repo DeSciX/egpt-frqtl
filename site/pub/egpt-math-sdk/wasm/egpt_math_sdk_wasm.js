@@ -1,6 +1,32 @@
 /* @ts-self-types="./egpt_math_sdk_wasm.d.ts" */
 
 /**
+ * `EGPTMath.abs(a)`'s negative branch: `fromRational(-numerator, denominator)` of the
+ * projection (its records included) as a packed handle, or `""` when the reference returns
+ * `a.clone()` (the facade makes that clone — it is polymorphic).
+ * @param {bigint} h
+ * @returns {string}
+ */
+export function arenaAbsNegative(h) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ret = wasm.arenaAbsNegative(h);
+        var ptr1 = ret[0];
+        var len1 = ret[1];
+        if (ret[3]) {
+            ptr1 = 0; len1 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred2_0 = ptr1;
+        deferred2_1 = len1;
+        return getStringFromWasm0(ptr1, len1);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * @param {bigint} a
  * @param {bigint} b
  * @returns {bigint}
@@ -101,6 +127,21 @@ export function arenaCmp(a, b) {
 }
 
 /**
+ * `EGPTMath._coordinateMultiply(a, b)`'s unit-scalar fast path: 2 mul, then
+ * `fromRational(a_num·b_num, a_den·b_den)` over the projections.
+ * @param {bigint} a
+ * @param {bigint} b
+ * @returns {bigint}
+ */
+export function arenaCoordinateMultiplyUnit(a, b) {
+    const ret = wasm.arenaCoordinateMultiplyUnit(a, b);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
  * @param {bigint} a
  * @param {bigint} b
  * @returns {bigint}
@@ -171,6 +212,21 @@ export function arenaFromAtomVec(json) {
 }
 
 /**
+ * `EGPTReal.fromBigInt(n)` — `fromRational(n, 1n)`, its records included.
+ * @param {string} n
+ * @returns {bigint}
+ */
+export function arenaFromBigInt(n) {
+    const ptr0 = passStringToWasm0(n, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.arenaFromBigInt(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
  * → `{"v": "<handle>", "w": [...]}`; a zero denominator warns (if non-canonical) then throws.
  * @param {string} json
  * @returns {string}
@@ -207,6 +263,25 @@ export function arenaFromRational(num, den) {
     const ptr1 = passStringToWasm0(den, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
     const ret = wasm.arenaFromRational(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return BigInt.asUintN(64, ret[0]);
+}
+
+/**
+ * `EGPTReal.fromScaledVector(base, s_num, s_den)` — `js_from_scaled_vector` over a handle.
+ * @param {bigint} base
+ * @param {string} s_num
+ * @param {string} s_den
+ * @returns {bigint}
+ */
+export function arenaFromScaledVector(base, s_num, s_den) {
+    const ptr0 = passStringToWasm0(s_num, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(s_den, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.arenaFromScaledVector(base, ptr0, len0, ptr1, len1);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -669,6 +744,20 @@ export function arenaToPrimeAtoms(n) {
 }
 
 /**
+ * `EGPTReal#equals(other)` — the instance method (records nothing; `EGPTMath.equals` is `arenaCmp`).
+ * @param {bigint} a
+ * @param {bigint} b
+ * @returns {boolean}
+ */
+export function arenaValueEquals(a, b) {
+    const ret = wasm.arenaValueEquals(a, b);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return ret[0] !== 0;
+}
+
+/**
  * `f64ToOddDenom(f)` → `{"sign", "odd", "denomLog2"}` (odd as a decimal string).
  * @param {number} f
  * @returns {string}
@@ -748,6 +837,8 @@ export function codecDecomposeOdd(n) {
 }
 
 /**
+ * `floatToEGPT(f)._getPPFRationalParts()` — the lift is a real construction in the reference
+ * (`toEGPTReal` → `fromBigInt` / `fromRational`), so it records one gcd and one allocation.
  * @param {number} f
  * @returns {string}
  */
@@ -1085,6 +1176,67 @@ export function codecSyntheticDivide(coeffs_json, r) {
         return getStringFromWasm0(ptr3, len3);
     } finally {
         wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * core/EGPTComplex.js `_findLCM(a, b)`: 0 if either is 0, else `(a·b) / _gcd(a, b)` (|a|, |b|).
+ * @param {string} a
+ * @param {string} b
+ * @returns {string}
+ */
+export function complexFindLcm(a, b) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(a, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(b, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.complexFindLcm(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * core/EGPTComplex.js `_phaseToTwiddleIndex`'s BigInt step: `num·k / den` when exact, else `""`.
+ * @param {string} num
+ * @param {string} den
+ * @param {string} k
+ * @returns {string}
+ */
+export function complexTwiddleQuotient(num, den, k) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(num, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(den, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(k, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.complexTwiddleQuotient(ptr0, len0, ptr1, len1, ptr2, len2);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
     }
 }
 
@@ -1928,6 +2080,33 @@ export function releaseHandle(handle) {
  */
 export function resetScope() {
     wasm.resetScope();
+}
+
+/**
+ * Set both channels (called by the facade before a wasm call when either changed).
+ * @param {boolean} ops
+ * @param {boolean} lines
+ */
+export function traceConfigure(ops, lines) {
+    wasm.traceConfigure(ops, lines);
+}
+
+/**
+ * The entries pushed since the last drain, in order, as JSON — `["o", op, n]` / `["l", text]` —
+ * and an empty buffer after.
+ * @returns {string}
+ */
+export function traceDrain() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+        const ret = wasm.traceDrain();
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+    }
 }
 
 /**

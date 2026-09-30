@@ -270,7 +270,7 @@ function buildWasmMathProvider(wasmFacade) {
     },
     // ── Construction / conversion ──────────────────────────────────────────
     fromBigInt(n) {
-      return _internStr(String(n));
+      return handleFromPacked(unwrap(wasmFacade.arenaFromBigInt(String(n)), "fromBigInt"));
     },
     fromRational(num, den) {
       return handleFromPacked(unwrap(wasmFacade.arenaFromRational(String(num), String(den)), "fromRational"));
@@ -557,6 +557,13 @@ var WASM_ARENA_OPS = Object.freeze([
   "releaseHandle",
   "arenaInternUnreduced",
   "arenaFromRational",
+  "arenaFromBigInt",
+  "arenaValueEquals",
+  "arenaAbsNegative",
+  "arenaCoordinateMultiplyUnit",
+  "arenaFromScaledVector",
+  "complexFindLcm",
+  "complexTwiddleQuotient",
   // scalar arithmetic
   "arenaAdd",
   "arenaSub",
@@ -656,17 +663,21 @@ var WASM_ARENA_OPS = Object.freeze([
   "codecScaleDenominator"
 ]);
 var WASM_DIRECT_OPS = Object.freeze(["resetScope", "arenaStats"]);
-function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge") {
+function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge", tracer = null) {
   const mod = wasmModule ?? null;
   const safeCall = /* @__PURE__ */ __name((name, ...args) => {
     if (!mod || typeof mod[name] !== "function") {
       return { ok: false, error: `wasm-function-unavailable:${name}`, backend: backendTag };
     }
+    tracer?.before(mod);
+    let result;
     try {
-      return { ok: true, value: mod[name](...args), backend: backendTag };
+      result = { ok: true, value: mod[name](...args), backend: backendTag };
     } catch (error) {
-      return { ok: false, error: String(error), backend: backendTag };
+      result = { ok: false, error: String(error), backend: backendTag };
     }
+    tracer?.after(mod);
+    return result;
   }, "safeCall");
   const facade = {};
   for (const op of WASM_ARENA_OPS) {
@@ -678,6 +689,433 @@ function buildWasmCallFacade(wasmModule, backendTag = "wasm-bridge") {
   return facade;
 }
 __name(buildWasmCallFacade, "buildWasmCallFacade");
+
+// src/browser/debug-logger.js
+var DebugLogger = class _DebugLogger {
+  static {
+    __name(this, "DebugLogger");
+  }
+  static MAX_BUFFER_SIZE = 1e3;
+  // Maximum number of messages to keep in memory
+  static CONSOLE_ENABLED = false;
+  // Static flag to control console output
+  static callbacks = /* @__PURE__ */ new Set();
+  // Set of callback functions
+  constructor(invocationKey, context = "EGPT") {
+    this.invocationKey = invocationKey;
+    this.context = context;
+    this.startTime = performance.now();
+    this.messages = [];
+    this.metrics = {
+      totalMessages: 0,
+      errorCount: 0,
+      warningCount: 0,
+      timingEvents: [],
+      memorySnapshots: [],
+      performanceMarkers: {}
+    };
+    _DebugLogger.activeLoggers = _DebugLogger.activeLoggers || /* @__PURE__ */ new Map();
+    _DebugLogger.activeLoggers.set(invocationKey, this);
+    this.log("INIT", `Debug logger initialized for ${invocationKey}`, { context });
+  }
+  /**
+   * Log a message with automatic categorization and performance tracking
+   * @param {string} level - Log level: INFO, DEBUG, TIMING, ERROR, WARNING, DATA, ANALYSIS
+   * @param {string} message - The message to log
+   * @param {object} data - Optional data object
+   */
+  log(level, message, data = null) {
+    const timestamp = performance.now();
+    const relativeTime = timestamp - this.startTime;
+    const logEntry = {
+      timestamp,
+      relativeTime,
+      level,
+      message,
+      data,
+      invocationKey: this.invocationKey,
+      context: this.context,
+      id: this.metrics.totalMessages++
+    };
+    this.messages.push(logEntry);
+    if (this.messages.length > _DebugLogger.MAX_BUFFER_SIZE) {
+      this.messages.shift();
+    }
+    this.updateMetrics(level, logEntry);
+    if (_DebugLogger.CONSOLE_ENABLED) {
+      this.outputToConsole(logEntry);
+    }
+    _DebugLogger.callbacks.forEach((callback) => {
+      try {
+        callback(logEntry, this);
+      } catch (error) {
+        console.warn("Debug logger callback error:", error);
+      }
+    });
+  }
+  /**
+   * Update internal metrics based on log entry
+   */
+  updateMetrics(level, logEntry) {
+    switch (level) {
+      case "ERROR":
+        this.metrics.errorCount++;
+        break;
+      case "WARNING":
+        this.metrics.warningCount++;
+        break;
+      case "TIMING":
+        this.metrics.timingEvents.push({
+          message: logEntry.message,
+          time: logEntry.relativeTime,
+          data: logEntry.data
+        });
+        break;
+    }
+    if (this.metrics.totalMessages % 100 === 0) {
+      this.metrics.memorySnapshots.push({
+        messageCount: this.metrics.totalMessages,
+        time: logEntry.relativeTime,
+        memoryUsed: this.messages.length
+      });
+    }
+  }
+  /**
+   * Output to console with appropriate formatting
+   */
+  outputToConsole(logEntry) {
+    const prefix = `[${this.context}:${this.invocationKey}:${logEntry.relativeTime.toFixed(2)}ms]`;
+    const levelStyles = {
+      "ERROR": ["color: #e74c3c; font-weight: bold", "\u274C"],
+      "WARNING": ["color: #f39c12; font-weight: bold", "\u26A0\uFE0F"],
+      "TIMING": ["color: #3498db", "\u23F1\uFE0F"],
+      "DATA": ["color: #9b59b6", "\u{1F4CA}"],
+      "ANALYSIS": ["color: #2ecc71", "\u{1F52C}"],
+      "DEBUG": ["color: #95a5a6", "\u{1F527}"],
+      "INFO": ["color: #34495e", "\u2139\uFE0F"],
+      "INIT": ["color: #e67e22; font-weight: bold", "\u{1F680}"]
+    };
+    const [style, emoji] = levelStyles[logEntry.level] || levelStyles["DEBUG"];
+    if (logEntry.data) {
+      console.log(`%c${prefix} ${emoji} ${logEntry.message}`, style, logEntry.data);
+    } else {
+      console.log(`%c${prefix} ${emoji} ${logEntry.message}`, style);
+    }
+  }
+  /**
+   * Convenience methods for different log levels
+   */
+  info(message, data) {
+    this.log("INFO", message, data);
+  }
+  debug(message, data) {
+    this.log("DEBUG", message, data);
+  }
+  timing(message, data) {
+    this.log("TIMING", message, data);
+  }
+  error(message, data) {
+    this.log("ERROR", message, data);
+  }
+  warning(message, data) {
+    this.log("WARNING", message, data);
+  }
+  data(message, data) {
+    this.log("DATA", message, data);
+  }
+  analysis(message, data) {
+    this.log("ANALYSIS", message, data);
+  }
+  /**
+   * Mark a performance checkpoint
+   */
+  mark(label) {
+    const time = performance.now() - this.startTime;
+    this.metrics.performanceMarkers[label] = time;
+    this.timing(`Performance marker: ${label}`, { time });
+    return time;
+  }
+  /**
+   * Measure time between two marks
+   */
+  measure(startLabel, endLabel) {
+    const startTime = this.metrics.performanceMarkers[startLabel];
+    const endTime = this.metrics.performanceMarkers[endLabel];
+    if (startTime !== void 0 && endTime !== void 0) {
+      const duration = endTime - startTime;
+      this.timing(`Measure ${startLabel} \u2192 ${endLabel}`, { duration, startTime, endTime });
+      return duration;
+    }
+    return null;
+  }
+  /**
+   * Get summary of this logger's activity
+   */
+  getSummary() {
+    const duration = performance.now() - this.startTime;
+    return {
+      invocationKey: this.invocationKey,
+      context: this.context,
+      duration,
+      totalMessages: this.metrics.totalMessages,
+      errorCount: this.metrics.errorCount,
+      warningCount: this.metrics.warningCount,
+      timingEvents: this.metrics.timingEvents.length,
+      memorySnapshots: this.metrics.memorySnapshots.length,
+      performanceMarkers: Object.keys(this.metrics.performanceMarkers).length,
+      messagesInBuffer: this.messages.length
+    };
+  }
+  /**
+   * Get all messages (or filtered subset)
+   */
+  getMessages(filter = null) {
+    if (!filter) return [...this.messages];
+    return this.messages.filter((msg) => {
+      if (filter.level && msg.level !== filter.level) return false;
+      if (filter.timeRange && (msg.relativeTime < filter.timeRange[0] || msg.relativeTime > filter.timeRange[1])) return false;
+      if (filter.searchText && !msg.message.toLowerCase().includes(filter.searchText.toLowerCase())) return false;
+      return true;
+    });
+  }
+  /**
+   * Clean up this logger
+   */
+  finalize() {
+    const summary = this.getSummary();
+    this.info("Logger finalized", summary);
+    if (_DebugLogger.activeLoggers) {
+      _DebugLogger.activeLoggers.delete(this.invocationKey);
+    }
+    return summary;
+  }
+  // =============================================================================
+  // STATIC METHODS FOR GLOBAL CONTROL
+  // =============================================================================
+  /**
+   * Enable/disable console output globally
+   */
+  static setConsoleEnabled(enabled) {
+    _DebugLogger.CONSOLE_ENABLED = enabled;
+    console.log(
+      `%cDebugLogger console output ${enabled ? "ENABLED" : "DISABLED"}`,
+      `color: ${enabled ? "#2ecc71" : "#e74c3c"}; font-weight: bold;`
+    );
+  }
+  /**
+   * Add a callback function to receive log messages
+   */
+  static addCallback(callback) {
+    _DebugLogger.callbacks.add(callback);
+  }
+  /**
+   * Remove a callback function
+   */
+  static removeCallback(callback) {
+    _DebugLogger.callbacks.delete(callback);
+  }
+  /**
+   * Clear all callbacks
+   */
+  static clearCallbacks() {
+    _DebugLogger.callbacks.clear();
+  }
+  /**
+   * Get logger for specific invocation
+   */
+  static getLogger(invocationKey) {
+    return _DebugLogger.activeLoggers?.get(invocationKey) || null;
+  }
+  /**
+   * Get all active loggers
+   */
+  static getAllLoggers() {
+    return _DebugLogger.activeLoggers ? Array.from(_DebugLogger.activeLoggers.values()) : [];
+  }
+  /**
+   * Get summary of all active loggers
+   */
+  static getGlobalSummary() {
+    const loggers = _DebugLogger.getAllLoggers();
+    return {
+      totalActiveLoggers: loggers.length,
+      totalMessages: loggers.reduce((sum, logger) => sum + logger.metrics.totalMessages, 0),
+      totalErrors: loggers.reduce((sum, logger) => sum + logger.metrics.errorCount, 0),
+      totalWarnings: loggers.reduce((sum, logger) => sum + logger.metrics.warningCount, 0),
+      consoleEnabled: _DebugLogger.CONSOLE_ENABLED,
+      callbackCount: _DebugLogger.callbacks.size,
+      loggers: loggers.map((logger) => logger.getSummary())
+    };
+  }
+  /**
+   * Clean up old/completed loggers (keep last N)
+   */
+  static cleanupOldLoggers(keepLast = 10) {
+    if (!_DebugLogger.activeLoggers) return;
+    const loggers = Array.from(_DebugLogger.activeLoggers.entries());
+    if (loggers.length <= keepLast) return;
+    loggers.sort((a, b) => a[1].startTime - b[1].startTime);
+    const toRemove = loggers.slice(0, loggers.length - keepLast);
+    toRemove.forEach(([key, logger]) => {
+      logger.finalize();
+    });
+    console.log(
+      `%cDebugLogger: Cleaned up ${toRemove.length} old loggers, keeping ${keepLast} most recent`,
+      "color: #f39c12;"
+    );
+  }
+};
+var SimpleLogger = class _SimpleLogger {
+  static {
+    __name(this, "SimpleLogger");
+  }
+  static DEBUG_ENABLED = false;
+  // Static flag for global debug control
+  /**
+   * SimpleLogger provides global mute/unmute control for debug output.
+   * It overrides the global console methods to allow only the active SimpleLogger instance
+   * to output to the console. All other console.log/warn/error calls are suppressed unless
+   * allowed by the active SimpleLogger.
+   *
+   * Usage:
+   *   const logger = new SimpleLogger();
+   *   logger.activate(); // Only this logger's log/warn/error will show in console
+   *   logger.log("This will appear");
+   *   console.log("This will NOT appear");
+   *   logger.deactivate(); // Restores normal console behavior
+   */
+  static _originalConsole = {
+    log: console.log,
+    warn: console.warn,
+    error: console.error
+  };
+  static _activeInstance = null;
+  /**
+   * Create a new SimpleLogger instance
+   * @param {boolean} suppressGlobalConsoleMessages - Automatically attach to global console methods. This will suppress all other console output.
+   *                                  If false, you must call attachGlobal() manually to enable global control.
+   */
+  constructor(suppressGlobalConsoleMessages) {
+    this.enabled = true;
+    if (suppressGlobalConsoleMessages) {
+      this.supressGlobalConsole();
+    }
+  }
+  supressGlobalConsole() {
+    _SimpleLogger._activeInstance = this;
+    console.log = (...args) => {
+      if (_SimpleLogger._activeInstance === this && this.enabled) {
+        _SimpleLogger._originalConsole.log.apply(console, args);
+      }
+    };
+    console.warn = (...args) => {
+      if (_SimpleLogger._activeInstance === this && this.enabled) {
+        _SimpleLogger._originalConsole.warn.apply(console, args);
+      }
+    };
+    console.error = (...args) => {
+      if (_SimpleLogger._activeInstance === this && this.enabled) {
+        _SimpleLogger._originalConsole.error.apply(console, args);
+      }
+    };
+  }
+  unsupressGlobalConsole() {
+    if (_SimpleLogger._activeInstance === this) {
+      console.log = _SimpleLogger._originalConsole.log;
+      console.warn = _SimpleLogger._originalConsole.warn;
+      console.error = _SimpleLogger._originalConsole.error;
+      _SimpleLogger._activeInstance = null;
+    }
+  }
+  mute() {
+    this.enabled = false;
+  }
+  unmute() {
+    this.enabled = true;
+  }
+  log(...args) {
+    if (_SimpleLogger._activeInstance === this && this.enabled) {
+      _SimpleLogger._originalConsole.log.apply(console, args);
+    }
+  }
+  warn(...args) {
+    if (_SimpleLogger._activeInstance === this && this.enabled) {
+      _SimpleLogger._originalConsole.warn.apply(console, args);
+    }
+  }
+  error(...args) {
+    if (_SimpleLogger._activeInstance === this && this.enabled) {
+      _SimpleLogger._originalConsole.error.apply(console, args);
+    }
+  }
+  static log(...args) {
+    if (_SimpleLogger.DEBUG_ENABLED) {
+      console.log(...args);
+    }
+  }
+  static warn(...args) {
+    if (_SimpleLogger.DEBUG_ENABLED) {
+      console.warn(...args);
+    }
+  }
+  static error(...args) {
+    if (_SimpleLogger.DEBUG_ENABLED) {
+      console.error(...args);
+    }
+  }
+};
+function createEGPTLogger(numberKey) {
+  return new DebugLogger(numberKey.toString(), "EGPT");
+}
+__name(createEGPTLogger, "createEGPTLogger");
+
+// src/browser/op-trace.js
+var _activeCounter = null;
+var _quiet = 0;
+function getActiveOpCounter() {
+  return _activeCounter;
+}
+__name(getActiveOpCounter, "getActiveOpCounter");
+function setActiveOpCounter(counter) {
+  _activeCounter = counter;
+}
+__name(setActiveOpCounter, "setActiveOpCounter");
+function recordOp(op, n) {
+  if (_quiet === 0) _activeCounter?.record(op, n);
+}
+__name(recordOp, "recordOp");
+function quietly(fn) {
+  _quiet += 1;
+  try {
+    return fn();
+  } finally {
+    _quiet -= 1;
+  }
+}
+__name(quietly, "quietly");
+function createOpTracer() {
+  let ops = false;
+  let lines = false;
+  return {
+    before(mod) {
+      const wantOps = _quiet === 0 && _activeCounter != null;
+      const wantLines = _quiet === 0 && !!SimpleLogger.DEBUG_ENABLED;
+      if (wantOps !== ops || wantLines !== lines) {
+        mod.traceConfigure(wantOps, wantLines);
+        ops = wantOps;
+        lines = wantLines;
+      }
+    },
+    after(mod) {
+      if (!ops && !lines) return;
+      for (const e of JSON.parse(mod.traceDrain())) {
+        if (e[0] === "o") _activeCounter?.record(e[1], e[2]);
+        else SimpleLogger.log(e[1]);
+      }
+    }
+  };
+}
+__name(createOpTracer, "createOpTracer");
 
 // ../../lib/egpt/js/model/shared/matrixAlgorithm.js
 function createEGPTMatrix({ EGPTReal: EGPTReal2, EGPTMath: EGPTMath2, EGPTPolynomial: EGPTPolynomial2 }) {
@@ -1438,7 +1876,7 @@ var Multilinear = {
   ZERO: [],
   get ONE() {
     if (_oneAssigned) return _oneValue;
-    const one = EGPTReal.fromBigInt(1n);
+    const one = quietly(() => EGPTReal.fromBigInt(1n));
     if (_one === null || _one[0]?.[1]?._handle?.e !== one._handle.e) _one = [[0n, one]];
     return _one;
   },
@@ -2218,15 +2656,18 @@ var EGPTReal = class _EGPTReal {
     return _EGPTReal.fromBigInt(1n);
   }
   /**
-   * Scaled irrational vector `base^(sNum/sDen)` (ws-egpt-math-rust-ops). Routes
-   * to the provider `pow` op, which combines the base's own scalar and reduces
-   * to a plain rational when possible (16^(1/4)→2) or a Scaled value otherwise
-   * (2^(1/2)=√2). This IS the same construction path as `EGPTMath.pow(base, sNum,
-   * sDen)`; provided as a static factory to mirror the dev-core narration name.
+   * `EGPTReal.fromScaledVector(base, sNum, sDen)` — the scaled vector `base^(sNum/sDen)` with the
+   * base's own scalar combined, reduced by the constructor (16^(1/4) → 2; 2^(1/2) stays √2).
+   * Rust port (`arena.rs::js_from_scaled_vector`).
    * @param {EGPTReal} base @param {bigint|number} sNum @param {bigint|number} sDen @returns {EGPTReal}
    */
   static fromScaledVector(base, sNum, sDen) {
-    return _wrap(_p("pow").pow(_unwrap(base, "fromScaledVector"), BigInt(sNum), BigInt(sDen)));
+    return _wrap(handleFromPacked(callWasm(
+      "arenaFromScaledVector",
+      _packed(base, "fromScaledVector"),
+      String(BigInt(sNum)),
+      String(BigInt(sDen))
+    )));
   }
   /**
    * Reconstruct from full PPF `{scalar?, numerator:{N,offset}, denominator:{N,offset}}`
@@ -2288,9 +2729,9 @@ var EGPTReal = class _EGPTReal {
   mod(other) {
     return _wrap(_p("mod").mod(this._handle, _unwrap(other, "mod")));
   }
-  /** @param {EGPTReal} other @returns {boolean} */
+  /** `EGPTReal#equals` — the instance method (records nothing; `EGPTMath.equals` does). @returns {boolean} */
   equals(other) {
-    return _p("equals").equals(this._handle, _unwrap(other, "equals"));
+    return callWasm("arenaValueEquals", _packed(this, "equals"), _packed(other, "equals"));
   }
   /** @param {EGPTReal} other @returns {-1|0|1} */
   compare(other) {
@@ -2513,7 +2954,7 @@ var EGPTMath = class _EGPTMath {
     return a.mod(b);
   }
   static equals(a, b) {
-    return a.equals(b);
+    return _p("equals").equals(_unwrap(a, "equals"), _unwrap(b, "equals"));
   }
   static compare(a, b) {
     return a.compare(b);
@@ -2544,20 +2985,14 @@ var EGPTMath = class _EGPTMath {
   static negate(a) {
     return a.negate();
   }
-  // Normal-space (coordinate) multiply. Routed through the SAME shared
-  // `coordinateMultiply` dev-core mirrors (lib/egpt/js/model/shared/
-  // complexAlgorithm.js), so it is structurally 1:1 with dev-core
-  // `EGPTMath.normalMultiply → _coordinateMultiply` (EGPTMath.js:387/348):
-  // pure-rational fast path for scalar=1/1 operands, and the sign-magnitude
-  // split (extract sign → Shannon-multiply absolute values → reapply XOR sign)
-  // for negative/scaled operands. Aliasing to plain `multiply` (RS-3) skipped
-  // that split and diverged on negative-scaled operands.
-  static normalMultiply(a, b) {
-    return EGPTComplex.coordinateMultiply(a, b);
+  /** Normal-space (coordinate) multiply — the reference's `_coordinateMultiply`. */
+  static normalMultiply(a_en, b_en) {
+    return _coordinateMultiply(a_en, b_en);
   }
-  /** |a| via compare+negate — backend-agnostic sugar over provider ops. */
-  static abs(a) {
-    return a.compare(EGPTReal.ZERO) < 0 ? a.negate() : a;
+  /** `EGPTMath.abs(a)`: `fromRational(-n, d)` of a negative projection, else `a.clone()`. */
+  static abs(a_en) {
+    const neg = callWasm("arenaAbsNegative", _packed(a_en, "abs"));
+    return neg === "" ? a_en.clone() : _wrap(handleFromPacked(neg));
   }
   /**
    * Course-correction entropy (ws-egpt-math-rust-ops). Pure composition of the
@@ -2592,6 +3027,26 @@ var EGPTMath = class _EGPTMath {
     };
   }
 };
+function _coordinateMultiply(a_en, b_en) {
+  const a_scalar = a_en.getScalarParts();
+  const b_scalar = b_en.getScalarParts();
+  if (a_scalar.numerator === 1n && a_scalar.denominator === 1n && b_scalar.numerator === 1n && b_scalar.denominator === 1n) {
+    return _wrap(handleFromPacked(callWasm(
+      "arenaCoordinateMultiplyUnit",
+      _packed(a_en, "normalMultiply"),
+      _packed(b_en, "normalMultiply")
+    )));
+  }
+  const H_ZERO = EGPTReal.fromBigInt(0n);
+  const a_is_negative = EGPTMath.compare(a_en, H_ZERO) < 0;
+  const b_is_negative = EGPTMath.compare(b_en, H_ZERO) < 0;
+  const a_abs = a_is_negative ? EGPTReal.negate(a_en) : a_en;
+  const b_abs = b_is_negative ? EGPTReal.negate(b_en) : b_en;
+  const product_abs = EGPTMath.multiply(a_abs, b_abs);
+  const result_is_negative = a_is_negative !== b_is_negative;
+  return result_is_negative ? EGPTReal.negate(product_abs) : product_abs;
+}
+__name(_coordinateMultiply, "_coordinateMultiply");
 var _COMPOSITE_HANDLE = Symbol("egpt-prime-composite-handle");
 function _compositeCtorJson(records, sign) {
   const num = /* @__PURE__ */ __name((x) => typeof x === "number" && Number.isFinite(x) ? x : null, "num");
@@ -2921,7 +3376,7 @@ function _xyFromJson(obj) {
   return { x: _wrap(handleFromPacked(obj.x)), y: _wrap(handleFromPacked(obj.y)) };
 }
 __name(_xyFromJson, "_xyFromJson");
-var EGPTranscendental = class {
+var EGPTranscendental = class _EGPTranscendental {
   static {
     __name(this, "EGPTranscendental");
   }
@@ -2929,20 +3384,27 @@ var EGPTranscendental = class {
     throw new Error("EGPTranscendental is a static class and cannot be instantiated.");
   }
   /**
-   * `{H_2, H_sqrt2_over_2, init()}` — √2/2 appears once `init()` has run. Read fresh from
-   * the arena on each access (an arena value cannot outlive its scope).
+   * `{H_2, H_sqrt2_over_2, init()}` — √2/2 appears once `init()` has run. The reference builds
+   * H_2 at module load and √2/2 once, on the first `init()`; that first `init()` reports the
+   * same construction here (`fromRational(1/2)`, `sqrt`). The values are read fresh from the arena
+   * on each access (an arena value cannot outlive its scope), without reports: the reference
+   * reads a stored field.
    */
   static _circularConstants = /* @__PURE__ */ (() => {
     let inited = false;
     return {
       get H_2() {
-        return EGPTReal.fromBigInt(2n);
+        return quietly(() => EGPTReal.fromBigInt(2n));
       },
       get H_sqrt2_over_2() {
-        return inited ? EGPTMath.sqrt(EGPTReal.fromRational(1n, 2n)) : null;
+        return inited ? quietly(() => EGPTMath.sqrt(EGPTReal.fromRational(1n, 2n))) : null;
       },
       init() {
-        inited = true;
+        if (!inited) {
+          const H_half = EGPTReal.fromRational(1n, 2n);
+          EGPTMath.sqrt(H_half);
+          inited = true;
+        }
         return this;
       }
     };
@@ -2959,6 +3421,7 @@ var EGPTranscendental = class {
     return _transcendental._phaseToCartesian(H_fraction);
   }
   static _phaseToCircularCartesian(H_fraction) {
+    _EGPTranscendental._circularConstants.init();
     return _xyFromJson(JSON.parse(callWasm("transcendentalPhaseToCircular", _packed(H_fraction, "_phaseToCircularCartesian"))));
   }
   static _calcTriangularWavePosition(H_P, H_x) {
@@ -2990,7 +3453,15 @@ var EGPTranscendental = class {
 };
 var _EGPTStat;
 var EGPTStatData = createEGPTStatData({ EGPTReal, EGPTMath, getEGPTStat: /* @__PURE__ */ __name(() => _EGPTStat, "getEGPTStat") });
-var EGPTStat = createEGPTStat({ EGPTReal, EGPTMath, getEGPTStatData: /* @__PURE__ */ __name(() => EGPTStatData, "getEGPTStatData") });
+var _statAlgo = createEGPTStat({ EGPTReal, EGPTMath, getEGPTStatData: /* @__PURE__ */ __name(() => EGPTStatData, "getEGPTStatData") });
+var EGPTStat = Object.freeze({
+  ..._statAlgo,
+  comprehensiveStatisticalAnalysis(H_values, options = {}) {
+    SimpleLogger.log("\u{1F4CA} COMPREHENSIVE STATISTICAL ANALYSIS: Ultra-high precision with EGPTStatData");
+    SimpleLogger.log(`   Analyzing ${H_values.length} entropy values`);
+    return _statAlgo.comprehensiveStatisticalAnalysis(H_values, options);
+  }
+});
 _EGPTStat = EGPTStat;
 var _complex = createEGPTComplex({
   EGPTReal,
@@ -3000,6 +3471,53 @@ var _complex = createEGPTComplex({
 });
 var ComplexEGPTReal = _complex.ComplexEGPTReal;
 var TwiddleTable = _complex.TwiddleTable;
+var _twiddleTableCache = /* @__PURE__ */ new Map();
+function _isUnitCircle(z) {
+  const magnitude = z.getMagnitude();
+  const H_ONE = EGPTReal.fromBigInt(1n);
+  return EGPTMath.equals(magnitude, H_ONE);
+}
+__name(_isUnitCircle, "_isUnitCircle");
+function _extractPhaseDenominator(phase) {
+  try {
+    const rational = phase._getPPFRationalParts();
+    if (rational.denominator === 0n) return null;
+    return rational.denominator;
+  } catch (error) {
+    return null;
+  }
+}
+__name(_extractPhaseDenominator, "_extractPhaseDenominator");
+var _findLCM = /* @__PURE__ */ __name((a, b) => BigInt(callWasm("complexFindLcm", String(a), String(b))), "_findLCM");
+function _phaseToTwiddleIndex(phase, k) {
+  try {
+    const rational = phase._getPPFRationalParts();
+    if (rational.denominator === 0n) return null;
+    const q = callWasm("complexTwiddleQuotient", String(rational.numerator), String(rational.denominator), String(k));
+    if (q === "") return null;
+    const j = Number(BigInt(q));
+    return (j % Number(k) + Number(k)) % Number(k);
+  } catch (error) {
+    return null;
+  }
+}
+__name(_phaseToTwiddleIndex, "_phaseToTwiddleIndex");
+function _getOrCreateTwiddleTable(k) {
+  const hit = _twiddleTableCache.get(k);
+  if (hit === void 0) {
+    const table = new TwiddleTable(k);
+    _twiddleTableCache.set(k, table);
+    return table;
+  }
+  const epoch = quietly(() => EGPTReal.fromBigInt(0n))._handle.e;
+  if (hit.getTwiddle(0).real._handle.e !== epoch) {
+    const table = quietly(() => new TwiddleTable(k));
+    _twiddleTableCache.set(k, table);
+    return table;
+  }
+  return hit;
+}
+__name(_getOrCreateTwiddleTable, "_getOrCreateTwiddleTable");
 var EGPTComplex = class {
   static {
     __name(this, "EGPTComplex");
@@ -3007,12 +3525,41 @@ var EGPTComplex = class {
   constructor() {
     throw new Error("EGPTComplex is a static class and cannot be instantiated.");
   }
+  static complexMultiply(z1, z2) {
+    const z1_is_unit = _isUnitCircle(z1);
+    const z2_is_unit = _isUnitCircle(z2);
+    if (z1_is_unit && z2_is_unit) {
+      try {
+        const phase1 = z1.getPhase();
+        const phase2 = z2.getPhase();
+        const denom1 = _extractPhaseDenominator(phase1);
+        const denom2 = _extractPhaseDenominator(phase2);
+        if (denom1 !== null && denom2 !== null) {
+          const k_bigint = _findLCM(denom1, denom2);
+          if (k_bigint <= 65536n && k_bigint > 0n) {
+            const k = Number(k_bigint);
+            const j1 = _phaseToTwiddleIndex(phase1, k_bigint);
+            const j2 = _phaseToTwiddleIndex(phase2, k_bigint);
+            if (j1 !== null && j2 !== null) {
+              const table = _getOrCreateTwiddleTable(k);
+              const result = table.multiplyByPhase(j1, j2);
+              return result.twiddle;
+            }
+          }
+        }
+      } catch (error) {
+      }
+    }
+    return _complex.EGPTComplex.complexMultiplyEuclidean(z1, z2);
+  }
   static exp(z) {
     const coords = EGPTranscendental.exp(z);
     return new ComplexEGPTReal(coords.x, coords.y);
   }
 };
-for (const [k, v] of Object.entries(_complex.EGPTComplex)) EGPTComplex[k] = v;
+for (const [k, v] of Object.entries(_complex.EGPTComplex)) {
+  if (k !== "complexMultiply") EGPTComplex[k] = v;
+}
 
 // src/browser/wasm-boundary-facade.js
 function f64ToOddDenom(f) {
@@ -3047,398 +3594,6 @@ function liftScalar(x) {
   throw new Error(`liftScalar: cannot lift ${JSON.stringify(x)}`);
 }
 __name(liftScalar, "liftScalar");
-
-// src/browser/debug-logger.js
-function _debugLinesUnported(value) {
-  return `SimpleLogger.DEBUG_ENABLED = ${String(value)} \u2014 the JS core's debug lines are not available in the WASM-only EGPT Math SDK: the flag also turns on the reference's arithmetic debug output, this build's arithmetic runs in Rust, and the channel that reports those lines is a scheduled port, so a set flag would print nothing.`;
-}
-__name(_debugLinesUnported, "_debugLinesUnported");
-var DebugLogger = class _DebugLogger {
-  static {
-    __name(this, "DebugLogger");
-  }
-  static MAX_BUFFER_SIZE = 1e3;
-  // Maximum number of messages to keep in memory
-  static CONSOLE_ENABLED = false;
-  // Static flag to control console output
-  static callbacks = /* @__PURE__ */ new Set();
-  // Set of callback functions
-  constructor(invocationKey, context = "EGPT") {
-    this.invocationKey = invocationKey;
-    this.context = context;
-    this.startTime = performance.now();
-    this.messages = [];
-    this.metrics = {
-      totalMessages: 0,
-      errorCount: 0,
-      warningCount: 0,
-      timingEvents: [],
-      memorySnapshots: [],
-      performanceMarkers: {}
-    };
-    _DebugLogger.activeLoggers = _DebugLogger.activeLoggers || /* @__PURE__ */ new Map();
-    _DebugLogger.activeLoggers.set(invocationKey, this);
-    this.log("INIT", `Debug logger initialized for ${invocationKey}`, { context });
-  }
-  /**
-   * Log a message with automatic categorization and performance tracking
-   * @param {string} level - Log level: INFO, DEBUG, TIMING, ERROR, WARNING, DATA, ANALYSIS
-   * @param {string} message - The message to log
-   * @param {object} data - Optional data object
-   */
-  log(level, message, data = null) {
-    const timestamp = performance.now();
-    const relativeTime = timestamp - this.startTime;
-    const logEntry = {
-      timestamp,
-      relativeTime,
-      level,
-      message,
-      data,
-      invocationKey: this.invocationKey,
-      context: this.context,
-      id: this.metrics.totalMessages++
-    };
-    this.messages.push(logEntry);
-    if (this.messages.length > _DebugLogger.MAX_BUFFER_SIZE) {
-      this.messages.shift();
-    }
-    this.updateMetrics(level, logEntry);
-    if (_DebugLogger.CONSOLE_ENABLED) {
-      this.outputToConsole(logEntry);
-    }
-    _DebugLogger.callbacks.forEach((callback) => {
-      try {
-        callback(logEntry, this);
-      } catch (error) {
-        console.warn("Debug logger callback error:", error);
-      }
-    });
-  }
-  /**
-   * Update internal metrics based on log entry
-   */
-  updateMetrics(level, logEntry) {
-    switch (level) {
-      case "ERROR":
-        this.metrics.errorCount++;
-        break;
-      case "WARNING":
-        this.metrics.warningCount++;
-        break;
-      case "TIMING":
-        this.metrics.timingEvents.push({
-          message: logEntry.message,
-          time: logEntry.relativeTime,
-          data: logEntry.data
-        });
-        break;
-    }
-    if (this.metrics.totalMessages % 100 === 0) {
-      this.metrics.memorySnapshots.push({
-        messageCount: this.metrics.totalMessages,
-        time: logEntry.relativeTime,
-        memoryUsed: this.messages.length
-      });
-    }
-  }
-  /**
-   * Output to console with appropriate formatting
-   */
-  outputToConsole(logEntry) {
-    const prefix = `[${this.context}:${this.invocationKey}:${logEntry.relativeTime.toFixed(2)}ms]`;
-    const levelStyles = {
-      "ERROR": ["color: #e74c3c; font-weight: bold", "\u274C"],
-      "WARNING": ["color: #f39c12; font-weight: bold", "\u26A0\uFE0F"],
-      "TIMING": ["color: #3498db", "\u23F1\uFE0F"],
-      "DATA": ["color: #9b59b6", "\u{1F4CA}"],
-      "ANALYSIS": ["color: #2ecc71", "\u{1F52C}"],
-      "DEBUG": ["color: #95a5a6", "\u{1F527}"],
-      "INFO": ["color: #34495e", "\u2139\uFE0F"],
-      "INIT": ["color: #e67e22; font-weight: bold", "\u{1F680}"]
-    };
-    const [style, emoji] = levelStyles[logEntry.level] || levelStyles["DEBUG"];
-    if (logEntry.data) {
-      console.log(`%c${prefix} ${emoji} ${logEntry.message}`, style, logEntry.data);
-    } else {
-      console.log(`%c${prefix} ${emoji} ${logEntry.message}`, style);
-    }
-  }
-  /**
-   * Convenience methods for different log levels
-   */
-  info(message, data) {
-    this.log("INFO", message, data);
-  }
-  debug(message, data) {
-    this.log("DEBUG", message, data);
-  }
-  timing(message, data) {
-    this.log("TIMING", message, data);
-  }
-  error(message, data) {
-    this.log("ERROR", message, data);
-  }
-  warning(message, data) {
-    this.log("WARNING", message, data);
-  }
-  data(message, data) {
-    this.log("DATA", message, data);
-  }
-  analysis(message, data) {
-    this.log("ANALYSIS", message, data);
-  }
-  /**
-   * Mark a performance checkpoint
-   */
-  mark(label) {
-    const time = performance.now() - this.startTime;
-    this.metrics.performanceMarkers[label] = time;
-    this.timing(`Performance marker: ${label}`, { time });
-    return time;
-  }
-  /**
-   * Measure time between two marks
-   */
-  measure(startLabel, endLabel) {
-    const startTime = this.metrics.performanceMarkers[startLabel];
-    const endTime = this.metrics.performanceMarkers[endLabel];
-    if (startTime !== void 0 && endTime !== void 0) {
-      const duration = endTime - startTime;
-      this.timing(`Measure ${startLabel} \u2192 ${endLabel}`, { duration, startTime, endTime });
-      return duration;
-    }
-    return null;
-  }
-  /**
-   * Get summary of this logger's activity
-   */
-  getSummary() {
-    const duration = performance.now() - this.startTime;
-    return {
-      invocationKey: this.invocationKey,
-      context: this.context,
-      duration,
-      totalMessages: this.metrics.totalMessages,
-      errorCount: this.metrics.errorCount,
-      warningCount: this.metrics.warningCount,
-      timingEvents: this.metrics.timingEvents.length,
-      memorySnapshots: this.metrics.memorySnapshots.length,
-      performanceMarkers: Object.keys(this.metrics.performanceMarkers).length,
-      messagesInBuffer: this.messages.length
-    };
-  }
-  /**
-   * Get all messages (or filtered subset)
-   */
-  getMessages(filter = null) {
-    if (!filter) return [...this.messages];
-    return this.messages.filter((msg) => {
-      if (filter.level && msg.level !== filter.level) return false;
-      if (filter.timeRange && (msg.relativeTime < filter.timeRange[0] || msg.relativeTime > filter.timeRange[1])) return false;
-      if (filter.searchText && !msg.message.toLowerCase().includes(filter.searchText.toLowerCase())) return false;
-      return true;
-    });
-  }
-  /**
-   * Clean up this logger
-   */
-  finalize() {
-    const summary = this.getSummary();
-    this.info("Logger finalized", summary);
-    if (_DebugLogger.activeLoggers) {
-      _DebugLogger.activeLoggers.delete(this.invocationKey);
-    }
-    return summary;
-  }
-  // =============================================================================
-  // STATIC METHODS FOR GLOBAL CONTROL
-  // =============================================================================
-  /**
-   * Enable/disable console output globally
-   */
-  static setConsoleEnabled(enabled) {
-    _DebugLogger.CONSOLE_ENABLED = enabled;
-    console.log(
-      `%cDebugLogger console output ${enabled ? "ENABLED" : "DISABLED"}`,
-      `color: ${enabled ? "#2ecc71" : "#e74c3c"}; font-weight: bold;`
-    );
-  }
-  /**
-   * Add a callback function to receive log messages
-   */
-  static addCallback(callback) {
-    _DebugLogger.callbacks.add(callback);
-  }
-  /**
-   * Remove a callback function
-   */
-  static removeCallback(callback) {
-    _DebugLogger.callbacks.delete(callback);
-  }
-  /**
-   * Clear all callbacks
-   */
-  static clearCallbacks() {
-    _DebugLogger.callbacks.clear();
-  }
-  /**
-   * Get logger for specific invocation
-   */
-  static getLogger(invocationKey) {
-    return _DebugLogger.activeLoggers?.get(invocationKey) || null;
-  }
-  /**
-   * Get all active loggers
-   */
-  static getAllLoggers() {
-    return _DebugLogger.activeLoggers ? Array.from(_DebugLogger.activeLoggers.values()) : [];
-  }
-  /**
-   * Get summary of all active loggers
-   */
-  static getGlobalSummary() {
-    const loggers = _DebugLogger.getAllLoggers();
-    return {
-      totalActiveLoggers: loggers.length,
-      totalMessages: loggers.reduce((sum, logger) => sum + logger.metrics.totalMessages, 0),
-      totalErrors: loggers.reduce((sum, logger) => sum + logger.metrics.errorCount, 0),
-      totalWarnings: loggers.reduce((sum, logger) => sum + logger.metrics.warningCount, 0),
-      consoleEnabled: _DebugLogger.CONSOLE_ENABLED,
-      callbackCount: _DebugLogger.callbacks.size,
-      loggers: loggers.map((logger) => logger.getSummary())
-    };
-  }
-  /**
-   * Clean up old/completed loggers (keep last N)
-   */
-  static cleanupOldLoggers(keepLast = 10) {
-    if (!_DebugLogger.activeLoggers) return;
-    const loggers = Array.from(_DebugLogger.activeLoggers.entries());
-    if (loggers.length <= keepLast) return;
-    loggers.sort((a, b) => a[1].startTime - b[1].startTime);
-    const toRemove = loggers.slice(0, loggers.length - keepLast);
-    toRemove.forEach(([key, logger]) => {
-      logger.finalize();
-    });
-    console.log(
-      `%cDebugLogger: Cleaned up ${toRemove.length} old loggers, keeping ${keepLast} most recent`,
-      "color: #f39c12;"
-    );
-  }
-};
-var SimpleLogger = class _SimpleLogger {
-  static {
-    __name(this, "SimpleLogger");
-  }
-  // The reference's static flag. On this dist a truthy value is REFUSED: the flag also turns on
-  // the JS core's arithmetic debug lines, which this build computes in Rust and does not yet
-  // report, so a set flag would print nothing (see _debugLinesUnported).
-  static #debugEnabled = false;
-  static get DEBUG_ENABLED() {
-    return _SimpleLogger.#debugEnabled;
-  }
-  static set DEBUG_ENABLED(value) {
-    if (value) throw new Error(_debugLinesUnported(value));
-    _SimpleLogger.#debugEnabled = value;
-  }
-  /**
-   * SimpleLogger provides global mute/unmute control for debug output.
-   * It overrides the global console methods to allow only the active SimpleLogger instance
-   * to output to the console. All other console.log/warn/error calls are suppressed unless
-   * allowed by the active SimpleLogger.
-   *
-   * Usage:
-   *   const logger = new SimpleLogger();
-   *   logger.activate(); // Only this logger's log/warn/error will show in console
-   *   logger.log("This will appear");
-   *   console.log("This will NOT appear");
-   *   logger.deactivate(); // Restores normal console behavior
-   */
-  static _originalConsole = {
-    log: console.log,
-    warn: console.warn,
-    error: console.error
-  };
-  static _activeInstance = null;
-  /**
-   * Create a new SimpleLogger instance
-   * @param {boolean} suppressGlobalConsoleMessages - Automatically attach to global console methods. This will suppress all other console output.
-   *                                  If false, you must call attachGlobal() manually to enable global control.
-   */
-  constructor(suppressGlobalConsoleMessages) {
-    this.enabled = true;
-    if (suppressGlobalConsoleMessages) {
-      this.supressGlobalConsole();
-    }
-  }
-  supressGlobalConsole() {
-    _SimpleLogger._activeInstance = this;
-    console.log = (...args) => {
-      if (_SimpleLogger._activeInstance === this && this.enabled) {
-        _SimpleLogger._originalConsole.log.apply(console, args);
-      }
-    };
-    console.warn = (...args) => {
-      if (_SimpleLogger._activeInstance === this && this.enabled) {
-        _SimpleLogger._originalConsole.warn.apply(console, args);
-      }
-    };
-    console.error = (...args) => {
-      if (_SimpleLogger._activeInstance === this && this.enabled) {
-        _SimpleLogger._originalConsole.error.apply(console, args);
-      }
-    };
-  }
-  unsupressGlobalConsole() {
-    if (_SimpleLogger._activeInstance === this) {
-      console.log = _SimpleLogger._originalConsole.log;
-      console.warn = _SimpleLogger._originalConsole.warn;
-      console.error = _SimpleLogger._originalConsole.error;
-      _SimpleLogger._activeInstance = null;
-    }
-  }
-  mute() {
-    this.enabled = false;
-  }
-  unmute() {
-    this.enabled = true;
-  }
-  log(...args) {
-    if (_SimpleLogger._activeInstance === this && this.enabled) {
-      _SimpleLogger._originalConsole.log.apply(console, args);
-    }
-  }
-  warn(...args) {
-    if (_SimpleLogger._activeInstance === this && this.enabled) {
-      _SimpleLogger._originalConsole.warn.apply(console, args);
-    }
-  }
-  error(...args) {
-    if (_SimpleLogger._activeInstance === this && this.enabled) {
-      _SimpleLogger._originalConsole.error.apply(console, args);
-    }
-  }
-  static log(...args) {
-    if (_SimpleLogger.DEBUG_ENABLED) {
-      console.log(...args);
-    }
-  }
-  static warn(...args) {
-    if (_SimpleLogger.DEBUG_ENABLED) {
-      console.warn(...args);
-    }
-  }
-  static error(...args) {
-    if (_SimpleLogger.DEBUG_ENABLED) {
-      console.error(...args);
-    }
-  }
-};
-function createEGPTLogger(numberKey) {
-  return new DebugLogger(numberKey.toString(), "EGPT");
-}
-__name(createEGPTLogger, "createEGPTLogger");
 
 // src/browser/wasm-prime-atom-facade.js
 var _big = /* @__PURE__ */ __name((x) => typeof x === "bigint" ? x : BigInt(x), "_big");
@@ -4554,10 +4709,6 @@ function formatNs(ns) {
   return `${(ns / 1e9).toFixed(2)} s`;
 }
 __name(formatNs, "formatNs");
-function _opCountUnported(what) {
-  return `${what} \u2014 op-count telemetry is not available in the WASM-only EGPT Math SDK: an OpCounter records the JS core's BigInt operations, and this build's arithmetic runs in Rust, which records none, so every count would read 0.`;
-}
-__name(_opCountUnported, "_opCountUnported");
 var FixtureWorkInRunError = class extends Error {
   static {
     __name(this, "FixtureWorkInRunError");
@@ -4669,39 +4820,56 @@ var Codec = class _Codec {
     const codebooks = /* @__PURE__ */ new Map();
     const encodedInputs = /* @__PURE__ */ new Map();
     const prepareLog = [];
-    for (const dep of this.codebookDependencies) {
-      const { name, codebookClass, lifecycle } = dep;
-      if (lifecycle === "each-decode") {
-        prepareLog.push({
-          name,
-          lifecycle,
-          codebook: null,
-          builtAtPrepare: false
-        });
-        continue;
-      }
-      if (lifecycle === "offline") {
-        const cb = codebookClass.fromPopulation(
-          this._codebookPopulation(input),
-          { source: "offline" }
+    const prevCounter = getActiveOpCounter();
+    try {
+      for (const dep of this.codebookDependencies) {
+        const { name, codebookClass, lifecycle } = dep;
+        if (lifecycle === "each-decode") {
+          prepareLog.push({
+            name,
+            lifecycle,
+            codebook: null,
+            builtAtPrepare: false
+          });
+          continue;
+        }
+        if (lifecycle === "offline") {
+          setActiveOpCounter(null);
+          const cb = codebookClass.fromPopulation(
+            this._codebookPopulation(input),
+            { source: "offline" }
+          );
+          setActiveOpCounter(prevCounter);
+          codebooks.set(name, cb);
+          prepareLog.push({
+            name,
+            lifecycle,
+            codebook: cb,
+            builtAtPrepare: true
+          });
+          continue;
+        }
+        if (lifecycle === "load-time") {
+          setActiveOpCounter(prepareCounter);
+          const cb = codebookClass.fromPopulation(
+            this._codebookPopulation(input),
+            { source: "load-time" }
+          );
+          codebooks.set(name, cb);
+          prepareLog.push({
+            name,
+            lifecycle,
+            codebook: cb,
+            builtAtPrepare: true
+          });
+          continue;
+        }
+        throw new RangeError(
+          `Codec.prepare: unknown lifecycle '${lifecycle}' on dependency '${name}'.`
         );
-        codebooks.set(name, cb);
-        prepareLog.push({
-          name,
-          lifecycle,
-          codebook: cb,
-          builtAtPrepare: true
-        });
-        continue;
       }
-      if (lifecycle === "load-time") {
-        throw new Error(_opCountUnported(
-          `Codec.prepare: codebook '${name}' has lifecycle 'load-time', whose construction the reference charges to an active OpCounter`
-        ));
-      }
-      throw new RangeError(
-        `Codec.prepare: unknown lifecycle '${lifecycle}' on dependency '${name}'.`
-      );
+    } finally {
+      setActiveOpCounter(prevCounter);
     }
     return new Fixture({
       chainLabel: this.label,
@@ -4745,9 +4913,8 @@ var Codec = class _Codec {
     const trace = new Trace(this.label);
     const snapshots = [input];
     let current = input;
-    if (counter) {
-      throw new Error(_opCountUnported("Codec.run: opts.counter is set"));
-    }
+    const prevCounter = getActiveOpCounter();
+    if (counter) setActiveOpCounter(counter);
     const codebooksUsed = [];
     for (const dep of this.codebookDependencies) {
       const { name, codebookClass, lifecycle } = dep;
@@ -4782,7 +4949,7 @@ var Codec = class _Codec {
       }
       codebooksUsed.push({ name, lifecycle, codebook, builtThisRun });
     }
-    {
+    try {
       for (const step of this.steps) {
         const opsBefore = counter ? counter.snapshot() : null;
         trace.enter({
@@ -4816,6 +4983,8 @@ var Codec = class _Codec {
           });
         }
       }
+    } finally {
+      setActiveOpCounter(prevCounter);
     }
     return new RunResult({
       input,
@@ -7327,6 +7496,8 @@ function _projectBagToNat(bag, scale) {
       );
     }
     const scaled = BigInt(callWasm("codecScaleToNat", String(numerator), String(denominator), String(scale)));
+    recordOp("bigintMul", 1);
+    recordOp("bigintDiv", 1);
     projected[i] = dispatchFromBigInt(scaled);
   }
   return new EGPTRealBag(projected);
@@ -7449,6 +7620,7 @@ var EGPTRealBagNatToRat = class extends EncodingTransform {
           numerator,
           BigInt(callWasm("codecScaleDenominator", String(denominator), String(scale)))
         );
+        recordOp("bigintMul", 1);
       }
     }
     return new EGPTRealBag(out);
@@ -8384,7 +8556,7 @@ var QFT_BENCHMARK_BASELINE = Object.freeze({
 // src/browser/dist-entry.js
 var { buildSdkCodec: buildSdkCodec2, ...codecBarrel } = codec_exports;
 function buildWasmFacade(wasmMetadata) {
-  return buildWasmCallFacade(wasmMetadata?.module ?? null, wasmMetadata?.mode);
+  return buildWasmCallFacade(wasmMetadata?.module ?? null, wasmMetadata?.mode, createOpTracer());
 }
 __name(buildWasmFacade, "buildWasmFacade");
 async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {

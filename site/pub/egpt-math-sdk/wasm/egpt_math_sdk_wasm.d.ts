@@ -1,6 +1,13 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/**
+ * `EGPTMath.abs(a)`'s negative branch: `fromRational(-numerator, denominator)` of the
+ * projection (its records included) as a packed handle, or `""` when the reference returns
+ * `a.clone()` (the facade makes that clone — it is polymorphic).
+ */
+export function arenaAbsNegative(h: bigint): string;
+
 export function arenaAdd(a: bigint, b: bigint): bigint;
 
 export function arenaBreakToBigint(n: bigint): string;
@@ -20,6 +27,12 @@ export function arenaBreakToString(n: bigint): string;
 
 export function arenaCmp(a: bigint, b: bigint): number;
 
+/**
+ * `EGPTMath._coordinateMultiply(a, b)`'s unit-scalar fast path: 2 mul, then
+ * `fromRational(a_num·b_num, a_den·b_den)` over the projections.
+ */
+export function arenaCoordinateMultiplyUnit(a: bigint, b: bigint): bigint;
+
 export function arenaDiv(a: bigint, b: bigint): bigint;
 
 export function arenaExp2(a: bigint): bigint;
@@ -37,11 +50,21 @@ export function arenaFromAtomRoot(json: string): string;
 export function arenaFromAtomVec(json: string): bigint;
 
 /**
+ * `EGPTReal.fromBigInt(n)` — `fromRational(n, 1n)`, its records included.
+ */
+export function arenaFromBigInt(n: string): bigint;
+
+/**
  * → `{"v": "<handle>", "w": [...]}`; a zero denominator warns (if non-canonical) then throws.
  */
 export function arenaFromPpfJson(json: string): string;
 
 export function arenaFromRational(num: string, den: string): bigint;
+
+/**
+ * `EGPTReal.fromScaledVector(base, s_num, s_den)` — `js_from_scaled_vector` over a handle.
+ */
+export function arenaFromScaledVector(base: bigint, s_num: string, s_den: string): bigint;
 
 export function arenaGcd(a: bigint, b: bigint): string;
 
@@ -102,6 +125,11 @@ export function arenaToPpfFull(h: bigint): string;
 export function arenaToPrimeAtoms(n: bigint): string;
 
 /**
+ * `EGPTReal#equals(other)` — the instance method (records nothing; `EGPTMath.equals` is `arenaCmp`).
+ */
+export function arenaValueEquals(a: bigint, b: bigint): boolean;
+
+/**
  * `f64ToOddDenom(f)` → `{"sign", "odd", "denomLog2"}` (odd as a decimal string).
  */
 export function boundaryF64ToOddDenom(f: number): string;
@@ -119,6 +147,10 @@ export function bridge_version(): string;
  */
 export function codecDecomposeOdd(n: string): string;
 
+/**
+ * `floatToEGPT(f)._getPPFRationalParts()` — the lift is a real construction in the reference
+ * (`toEGPTReal` → `fromBigInt` / `fromRational`), so it records one gcd and one allocation.
+ */
 export function codecF64Lift(f: number): string;
 
 export function codecIeeeEncode(num: string, den: string, format: string, policy: string, policy_json: string): number;
@@ -156,6 +188,16 @@ export function codecScaleToNat(num: string, den: string, scale: string): string
 export function codecShiftOdd(shift: number, odd: string): string;
 
 export function codecSyntheticDivide(coeffs_json: string, r: string): string;
+
+/**
+ * core/EGPTComplex.js `_findLCM(a, b)`: 0 if either is 0, else `(a·b) / _gcd(a, b)` (|a|, |b|).
+ */
+export function complexFindLcm(a: string, b: string): string;
+
+/**
+ * core/EGPTComplex.js `_phaseToTwiddleIndex`'s BigInt step: `num·k / den` when exact, else `""`.
+ */
+export function complexTwiddleQuotient(num: string, den: string, k: string): string;
 
 /**
  * Intern a canonical string ("num" or "num/den") into the arena.
@@ -297,6 +339,17 @@ export function releaseHandle(handle: bigint): void;
 export function resetScope(): void;
 
 /**
+ * Set both channels (called by the facade before a wasm call when either changed).
+ */
+export function traceConfigure(ops: boolean, lines: boolean): void;
+
+/**
+ * The entries pushed since the last drain, in order, as JSON — `["o", op, n]` / `["l", text]` —
+ * and an empty buffer after.
+ */
+export function traceDrain(): string;
+
+/**
  * `EGPTranscendental.exp({real, imag})` → `{"v": {"x": "<h>", "y": "<h>"}, "w": [...]}`.
  */
 export function transcendentalExp(re: bigint, im: bigint): string;
@@ -315,17 +368,21 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly arenaAbsNegative: (a: bigint) => [number, number, number, number];
     readonly arenaAdd: (a: bigint, b: bigint) => [bigint, number, number];
     readonly arenaBreakToBigint: (a: bigint) => [number, number, number, number];
     readonly arenaBreakToJsNumber: (a: bigint) => [number, number, number, number];
     readonly arenaBreakToString: (a: bigint) => [number, number, number, number];
     readonly arenaCmp: (a: bigint, b: bigint) => [number, number, number];
+    readonly arenaCoordinateMultiplyUnit: (a: bigint, b: bigint) => [bigint, number, number];
     readonly arenaDiv: (a: bigint, b: bigint) => [bigint, number, number];
     readonly arenaExp2: (a: bigint) => [bigint, number, number];
     readonly arenaFromAtomRoot: (a: number, b: number) => [number, number, number, number];
     readonly arenaFromAtomVec: (a: number, b: number) => [bigint, number, number];
+    readonly arenaFromBigInt: (a: number, b: number) => [bigint, number, number];
     readonly arenaFromPpfJson: (a: number, b: number) => [number, number, number, number];
     readonly arenaFromRational: (a: number, b: number, c: number, d: number) => [bigint, number, number];
+    readonly arenaFromScaledVector: (a: bigint, b: number, c: number, d: number, e: number) => [bigint, number, number];
     readonly arenaGcd: (a: bigint, b: bigint) => [number, number, number, number];
     readonly arenaGetBaseParts: (a: bigint) => [number, number, number, number];
     readonly arenaGetBitLength: (a: bigint) => [number, number, number, number];
@@ -349,13 +406,16 @@ export interface InitOutput {
     readonly arenaToAtomRoot: (a: bigint) => [number, number, number, number];
     readonly arenaToPpfFull: (a: bigint) => [number, number, number, number];
     readonly arenaToPrimeAtoms: (a: bigint) => [number, number, number, number];
+    readonly arenaValueEquals: (a: bigint, b: bigint) => [number, number, number];
+    readonly complexFindLcm: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly complexTwiddleQuotient: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly internStr: (a: number, b: number) => [bigint, number, number];
     readonly internV2: (a: number, b: number) => [bigint, number, number];
     readonly materializeStr: (a: bigint) => [number, number, number, number];
     readonly materializeV2: (a: bigint) => [number, number, number, number];
     readonly releaseHandle: (a: bigint) => [number, number];
-    readonly resetScope: () => void;
     readonly arenaToMathString: (a: bigint) => [number, number, number, number];
+    readonly resetScope: () => void;
     readonly boundaryF64ToOddDenom: (a: number) => [number, number];
     readonly boundaryToEgptRealParts: (a: number) => [number, number];
     readonly codecDecomposeOdd: (a: number, b: number) => [number, number, number, number];
@@ -392,9 +452,6 @@ export interface InitOutput {
     readonly primeAtomOmega: (a: number, b: number) => [number, number, number];
     readonly primeAtomReconstruct: (a: number, b: number) => [number, number, number, number];
     readonly primeAtomTotient: (a: number, b: number) => [number, number, number, number];
-    readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
-    readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
-    readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
     readonly primeCompositeCancelRule: (a: number, b: number) => [number, number, number, number];
     readonly primeCompositeCongruent: (a: bigint, b: bigint) => [number, number, number];
     readonly primeCompositeDivide: (a: bigint, b: bigint) => [bigint, number, number];
@@ -404,11 +461,16 @@ export interface InitOutput {
     readonly primeCompositeNew: (a: number, b: number) => [bigint, number, number];
     readonly primeCompositeRecordsKey: (a: number, b: number) => [number, number, number, number];
     readonly primeCompositeState: (a: bigint) => [number, number, number, number];
-    readonly bridge_version: () => [number, number];
     readonly multilinearMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly multilinearNextOddPrime: (a: number, b: number) => [number, number, number, number];
     readonly multilinearSplitOverCache: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly multilinearSub: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
+    readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
+    readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
+    readonly traceConfigure: (a: number, b: number) => void;
+    readonly traceDrain: () => [number, number];
+    readonly bridge_version: () => [number, number];
     readonly egpt_add: (a: number, b: number) => number;
     readonly egpt_cmp: (a: number, b: number) => number;
     readonly egpt_div: (a: number, b: number) => number;
