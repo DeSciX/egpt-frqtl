@@ -6,7 +6,8 @@
   "tree_sha256": "af6e4d6668db4b95fb8d7e3f387ce2dfce4d936a28a50d7a1c33ce15a72f4713",
   "tree_excludes": [
     "index.html",
-    "images"
+    "images",
+    "DeSciXAppSDK.js"
   ],
   "refreshed_by_script": "scripts/refresh-site.sh"
 }

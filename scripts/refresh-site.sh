@@ -5,8 +5,9 @@
 #   scripts/refresh-site.sh <path-to-.deploy-static>
 #
 # The bundle's index.html (the IDE entry) is published as site/app.html, beside its relative
-# app-assets/ and pub/. site/index.html (the front page) and site/images/ are owned OUTSIDE the
-# bundle (SITE_FOREIGN): a refresh carries them over byte-identical when present, leaves them
+# app-assets/ and pub/. site/index.html (the front page), site/images/ and site/DeSciXAppSDK.js
+# (the shell SDK shim the front page loads) are owned OUTSIDE the bundle (SITE_FOREIGN): a
+# refresh carries them over byte-identical when present, leaves them
 # absent when absent, and refuses a bundle that ships either name or an app.html of its own.
 #
 # The bundle's build sha is read from the data-frqtl-site-build attribute in its
@@ -40,7 +41,7 @@ PROVENANCE="$ROOT/.descix/site-provenance.json"
 # bundle. The provenance fingerprint and file count cover the bundle-derived set: SITE_FOREIGN
 # is excluded from both and named in the record as tree_excludes.
 APP_PAGE="app.html"
-SITE_FOREIGN=(index.html images)
+SITE_FOREIGN=(index.html images DeSciXAppSDK.js)
 
 [ $# -eq 1 ] || die "usage: scripts/refresh-site.sh <path-to-.deploy-static>"
 SRC=$1

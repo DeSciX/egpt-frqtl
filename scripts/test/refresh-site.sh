@@ -44,12 +44,14 @@ R=$(repo pre); B=$(bundle pre)
 mkdir -p "$R/site/images"
 printf '<!doctype html><html data-frqtl-site-build="fedcba9"><body>FRONT PAGE</body></html>\n' > "$R/site/index.html"
 printf 'marker\n' > "$R/site/images/marker.png"
+printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
 printf 'stale\n' > "$R/site/stale-bundle-file.js"
-cp "$R/site/index.html" "$SCRATCH/front.html"; cp "$R/site/images/marker.png" "$SCRATCH/marker.png"
+cp "$R/site/index.html" "$SCRATCH/front.html"; cp "$R/site/images/marker.png" "$SCRATCH/marker.png"; cp "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js"
 if refresh "$R" "$B"; then pass "refresh-exits-0"; else fail "refresh-exits-0" "$(cat "$SCRATCH/pre/out.txt")"; fi
 if cmp -s "$R/site/app.html" "$B/index.html"; then pass "writes-app-html-byte-identical"; else fail "writes-app-html-byte-identical" "site/app.html missing or differs from the bundle's index.html"; fi
 if cmp -s "$R/site/index.html" "$SCRATCH/front.html"; then pass "front-page-index-html-survives"; else fail "front-page-index-html-survives" "site/index.html was overwritten or deleted"; fi
 if cmp -s "$R/site/images/marker.png" "$SCRATCH/marker.png"; then pass "images-marker-survives"; else fail "images-marker-survives" "site/images/marker.png was deleted or changed"; fi
+if cmp -s "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js"; then pass "descix-app-sdk-survives"; else fail "descix-app-sdk-survives" "site/DeSciXAppSDK.js was deleted or changed"; fi
 if [ ! -e "$R/site/stale-bundle-file.js" ]; then pass "stale-bundle-file-removed"; else fail "stale-bundle-file-removed" "a file no longer in the bundle survived"; fi
 if [ -f "$R/site/pub/images/a file with spaces.png" ] && [ -f "$R/site/app-assets/index-abc.js" ]; then pass "bundle-namespaces-copied"; else fail "bundle-namespaces-copied" "app-assets/ or pub/ incomplete"; fi
 got=$(jq -r '.upstream_sha // empty' "$R/.descix/site-provenance.json" 2>/dev/null)
@@ -72,9 +74,9 @@ R=$(repo noindex); B=$(bundle noindex); rm "$B/index.html"
 mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
 if refresh "$R" "$B"; then fail "refuses-bundle-without-index-html" "accepted"; elif grep -qF "index.html is missing" "$SCRATCH/noindex/out.txt" && [ "$(cat "$R/site/index.html")" = front ]; then pass "refuses-bundle-without-index-html"; else fail "refuses-bundle-without-index-html" "$(cat "$SCRATCH/noindex/out.txt")"; fi
 
-for owned in app.html images; do
+for owned in app.html images DeSciXAppSDK.js; do
   R=$(repo "clash-$owned"); B=$(bundle "clash-$owned")
-  if [ "$owned" = images ]; then mkdir -p "$B/images"; printf x > "$B/images/x.png"; else printf x > "$B/app.html"; fi
+  if [ "$owned" = images ]; then mkdir -p "$B/images"; printf x > "$B/images/x.png"; else printf x > "$B/$owned"; fi
   if refresh "$R" "$B"; then fail "refuses-bundle-shipping-$owned" "accepted"; elif grep -qF "$owned" "$SCRATCH/clash-$owned/out.txt" && [ ! -e "$R/site" ]; then pass "refuses-bundle-shipping-$owned"; else fail "refuses-bundle-shipping-$owned" "$(cat "$SCRATCH/clash-$owned/out.txt")"; fi
 done
 
