@@ -342,6 +342,9 @@
             universe.updateObjectProperty(self.lo.handle, 'LargeObject', 'program', v2.program);
         }
         self.lo.program = v2.program || null;
+        // The program THIS wall baked — the record the re-bake guard (`_rebake`) checks, so a
+        // program another part pushed onto this LO is never silently re-baked over.
+        self._program = self.lo.program;
         // SWEPT-OBB narrow-phase region (circulation §2): a NON-cardinal wall gets the rotated
         // collision slab so the engine filters candidates by the SWEPT prev→now segment-vs-OBB
         // test AT its DRAWN face (not the fat AABB entry plane), fixing membership for EVERY
@@ -459,12 +462,11 @@
     Object.defineProperty(Wall.prototype, 'depth',       { get: function () { return (this.lo && this.lo.rect && typeof this.lo.rect.d === 'number') ? this.lo.rect.d : 0; } });
     Object.defineProperty(Wall.prototype, 'z',           { get: function () { return (this.lo && this.lo.rect && typeof this.lo.rect.z === 'number') ? this.lo.rect.z : 0; } });
 
-    // NOTE: a Wall deliberately exposes NO getCenter — its descriptor declares
-    // ux.draggable {'3d': false} (a boundary you place in 2D). A GRABBED wall (STUDIO's
-    // spacebar aim, AIM_GRAB_FEEDBACK_CONTRACT) carries its HEADING only: the runner holds
-    // the heading vector in the camera frame, re-expresses it in the live basis, projects
-    // it onto world-xy and writes it through setOrientation below. Its position does not
-    // carry. The 2D-canvas drag (draggable 2d:true) is a separate pointer surface.
+    // A Wall exposes NO getCenter: its position authority is its RECT (the TRUE slab,
+    // `_trueRect`), written ONLY through setRect below. A GRABBED wall (STUDIO's spacebar aim,
+    // AIM_GRAB_FEEDBACK_CONTRACT §The carry) holds its camera-relative pose: the runner re-places
+    // the rect's drawn centre (lo-drawn-center rectAtCenter) through updateObjectProperty(wall,
+    // 'rect') → setRect, and carries the heading through setOrientation.
 
     /** getOrientation() → the wall's current orientation in degrees (0 default). */
     Wall.prototype.getOrientation = function () {
@@ -475,14 +477,72 @@
      * setOrientation(deg) — live re-aim (B7). Normalizes to [0,360) and routes through
      * the SAME setV2Prop recompile path the Inspector slider uses (explicit re-bake of the
      * directional cone — the theorist-sanctioned "a wall that should re-aim must recompile"
-     * path; NOT a per-tick re-capture). A no-op on a legacy (non-v2) wall (no
-     * collisionBehavior) — those are wrapper walls, never orientation-driven. SU1 at deg=0.
+     * path; NOT a per-tick re-capture). SU1 at deg=0. THROWS on a wall-shaped object with no
+     * collisionBehavior: the constructor requires one, so such an object was not built by Wall
+     * and has no op-program to re-aim — turning it silently would show a turn that never happened.
      * @param {number} deg @returns {Wall} this
      */
     Wall.prototype.setOrientation = function (deg) {
-        if (this.collisionBehavior === undefined) { return this; } // legacy wall — no v2 lexicon
+        if (this.collisionBehavior === undefined) {
+            throw new Error('[Wall.setOrientation] this wall has no collisionBehavior, so it has no ' +
+                'compiled op-program to re-aim — a Wall is built only through the v2 lexicon ' +
+                '(new Wall(universe, { collisionBehavior | preset })); an object without one was not ' +
+                'built by Wall. (FAIL-LOUD.)');
+        }
         var d = ((deg % 360) + 360) % 360;
         this.setV2Prop('orientationDeg', d);
+        return this;
+    };
+
+    /**
+     * setRect(rect) — THE wall position/extent write (the rect is the one position authority).
+     * Every rect write reaches it: FrqtlApp.updateObjectProperty routes a Wall facade's `rect`, and
+     * its inner LO's, here. `rect` is the write-wire array `[l,t,w,h]` or `[l,t,z,w,h,d]`:
+     *   - on a z-slab wall (6-element) a 4-element write is PLANAR: z and d are kept;
+     *   - a 6-element write on a wall built without z THROWS — the wall's 3D-ness (the z-incidence
+     *     reflect + the closest3d eject compiled into its program) is fixed at construction.
+     * It keeps every wall-derived place in step: the true slab (`_trueRect`, which every later
+     * setV2Prop re-derives from), the LO wrapper's drawn rect, the ENGINE rect (the broad-phase
+     * rect from the ONE SlabFace authority — the rotated-slab AABB for a tilted wall; the engine
+     * moves the backing frame with it), and an absorber's re-emission exit. A changed extent
+     * re-bakes the program too (the slab dimensions are compiled in). Zero physics: placement only.
+     * @param {number[]} rect @returns {Wall} this
+     */
+    Wall.prototype.setRect = function (rect) {
+        if (!Array.isArray(rect) || (rect.length !== 4 && rect.length !== 6) ||
+            !rect.every(function (v) { return typeof v === 'number' && isFinite(v); })) {
+            throw new TypeError('[Wall.setRect] rect must be [l,t,w,h] or [l,t,z,w,h,d] of finite ' +
+                'numbers; got ' + JSON.stringify(rect) + '. (FAIL-LOUD.)');
+        }
+        var cur = this._trueRect;
+        var cur6 = Array.isArray(cur) && cur.length === 6;
+        var next;
+        if (rect.length === 6) {
+            if (!cur6) {
+                throw new Error('[Wall.setRect] "' + this.name + '" was built without a z-slab; a ' +
+                    '6-element rect would give it one, but a wall\'s 3D-ness is compiled into its ' +
+                    'op-program at construction. Remove + re-add it with z/depth. (FAIL-LOUD.)');
+            }
+            next = rect.slice();
+        } else {
+            next = cur6 ? [rect[0], rect[1], cur[2], rect[2], rect[3], cur[5]] : rect.slice();
+        }
+        var wh0 = _rectWH(cur), wh1 = _rectWH(next);
+        var resized = wh0.w !== wh1.w || wh0.h !== wh1.h || _rectDepth(cur) !== _rectDepth(next);
+        if (resized) { this.assertOwnsProgram(); }   // atomic: refuse before anything moves
+        this._trueRect = next;
+        var lr = this.lo.rect;
+        lr.w = wh1.w; lr.h = wh1.h;
+        if (cur6) { lr.z = next[2]; lr.d = next[5]; }
+        lr.left = next[0]; lr.top = next[1];
+        if (this.is3D) { this.lo.depth = _rectDepth(next); }
+        if (resized) {
+            this._rebake();   // the slab dimensions are compiled in: program + region + broad rect
+        } else if (this.universe && typeof this.universe.updateObjectProperty === 'function') {
+            var geom = _slabGeometryForWall(next, this.orientationDeg, this.pitchDeg);
+            this.universe.updateObjectProperty(this.lo.handle, 'LargeObject', 'rect', geom.broadRect);
+        }
+        if (this._radiationTickFn) { this._radiationTickFn.setRect(next); }
         return this;
     };
 
@@ -532,6 +592,23 @@
             this.emissivity = this._radiationTickFn.setEmissivity(value);
             return this;
         }
+        return this._rebake(prop, value);
+    };
+
+    /**
+     * THE re-bake (one site): re-derive the wall's program, narrow-phase region and engine broad
+     * rect from its spec + true slab through the ONE compiler, committing `prop = value` first when
+     * a lexicon prop is being edited (setV2Prop) — or with no prop, re-deriving from the current
+     * state (setRect's resize: the slab dimensions are compiled in).
+     *
+     * GUARD (FAIL-LOUD, atomic — before any mutation): a Wall re-bakes only a program IT baked.
+     * A composite may push its own program onto this wall's LO (a directed Tunnel's liner-scatter
+     * eject, a Tunnel exit gate, an OvenBox counter wall); re-baking would silently replace that
+     * part's physics with the wall's own. Such a program must be re-applied by the part that owns it.
+     * @param {string} [prop] @param {*} [value] @returns {Wall} this
+     */
+    Wall.prototype._rebake = function (prop, value) {
+        this.assertOwnsProgram();
         var nextBehavior = (prop === 'collisionBehavior') ? value : this.collisionBehavior;
         var wasAbsorb = (this.collisionBehavior === 'absorb');
         var willAbsorb = (nextBehavior === 'absorb');
@@ -570,7 +647,7 @@
         // Commit the facade prop, then push the recompiled program.
         if (prop === 'hooks') { this.hooks = nextHooks; }
         else if (prop === 'decoherence') { this.decoherence = !!value; }
-        else { this[prop] = value; }
+        else if (prop !== undefined) { this[prop] = value; }
         // Keep the ferried render orientation in sync so the shell rotation (R2) tracks a live edit.
         if (prop === 'orientationDeg' && this.lo) { this.lo.orientationDeg = value; }
         if (prop === 'pitchDeg' && this.lo) { this.lo.pitchDeg = value; }
@@ -592,7 +669,20 @@
             this.universe.updateObjectProperty(this.lo.handle, 'LargeObject', 'rect', geom2.broadRect);
         }
         this.lo.region = geom2.region;
+        this._program = this.lo.program;
         return this;
+    };
+
+    /** THROWS when this wall's LO carries a program the wall did not bake (see `_rebake`). The
+     *  STUDIO grab asks it first: such a wall belongs to the part that pushed its program (a
+     *  Tunnel member), so it is refused, never carried or turned on its own. */
+    Wall.prototype.assertOwnsProgram = function () {
+        if (this.lo && this.lo.program !== this._program) {
+            throw new Error('[Wall] "' + this.name + '": its LargeObject carries an op-program another ' +
+                'part pushed (' + (this._groupOwner ? 'owned by ' + (this._groupOwner.name || 'its group') :
+                'not baked by this wall') + '). Re-baking it here would silently replace that part\'s ' +
+                'physics — the owning part must re-apply it. (FAIL-LOUD.)');
+        }
     };
 
     /**

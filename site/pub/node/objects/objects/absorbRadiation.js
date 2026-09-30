@@ -141,6 +141,7 @@
      * Exposes:
      *   `.stats()` → { stored, absorbedTotal, radiatedTotal, byLayer[] } for tests/readouts
      *   `.emissivity()` / `.setEmissivity(v)` → the LIVE radiating-efficiency knob
+     *   `.setRect(rect)` → the wall moved: the exit follows it (Wall.setRect calls this)
      * `stored`/`absorbedTotal`/`radiatedTotal` all EXCLUDE the mass-1 backing baseline.
      */
     function buildAbsorbRadiationTickFn(cfg) {
@@ -295,6 +296,13 @@
         tick.setEmissivity = function (v) {
             emissivity = _validEmissivity(v, 'setEmissivity');
             return emissivity;
+        };
+
+        /** The wall MOVED (Wall.setRect): re-derive the right-face exit from the new rect, so a
+         *  radiated leaf leaves the wall where it now stands. A caller-stated `cfg.exit` is the
+         *  caller's own placement and is kept. */
+        tick.setRect = function (r) {
+            if (!cfg.exit) { exit = _rectRightExit(r); }
         };
 
         return tick;

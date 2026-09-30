@@ -19,6 +19,14 @@
  *
  *   drawnCenter(rect) → [left + w/2, top + h/2, (z present) ? z + (d ?? w)/2 : 0]
  *
+ * Its INVERSE places the same-sized rect at a centre (a grabbed wall carried by the camera):
+ *
+ *   rectAtCenter(rect, [cx, cy, cz]) → the WRITE-wire array, the rect's own form:
+ *     z present → [cx − w/2, cy − h/2, cz − D/2, w, h, D] with D = d ?? w STATED (so the written
+ *                 rect reads back through drawnCenter to the centre it was placed at);
+ *     z absent  → [cx − w/2, cy − h/2, w, h], and cz must be 0 — a z-less rect sits at z-centre
+ *                 0 by the rule above, so any other cz THROWS rather than being dropped.
+ *
  * ── The drawn VOLUME and the center-ray hit (STUDIO's aim) ──────────────────────
  *
  * The same rect also owns the VOLUME the aim ray tests and the shadow-surround paints, so the
@@ -57,6 +65,25 @@ function drawnCenter(rect) {
         ? rect.z + ((typeof rect.d === 'number') ? rect.d : rect.w) / 2
         : 0;
     return [rect.left + rect.w / 2, rect.top + rect.h / 2, cz];
+}
+
+/**
+ * @param {{left:number, top:number, w:number, h:number, z?:number, d?:number}} rect — the rect
+ *   being placed (its w/h and z-extent are kept).
+ * @param {number[]} center — `[cx, cy, cz]` (cz may be omitted for a z-less rect).
+ * @returns {number[]} the write-wire array `[l, t, z, w, h, d]` (z present) or `[l, t, w, h]`.
+ */
+function rectAtCenter(rect, center) {
+    var cz = (typeof center[2] === 'number') ? center[2] : 0;
+    if (typeof rect.z === 'number') {
+        var D = _zExtent(rect);
+        return [center[0] - rect.w / 2, center[1] - rect.h / 2, cz - D / 2, rect.w, rect.h, D];
+    }
+    if (cz !== 0) {
+        throw new RangeError('[LoDrawnCenter.rectAtCenter] a z-less rect sits at z-centre 0 and cannot ' +
+            'be placed at z = ' + cz + ' — place it at cz 0, or give the rect an explicit z. (FAIL-LOUD.)');
+    }
+    return [center[0] - rect.w / 2, center[1] - rect.h / 2, rect.w, rect.h];
 }
 
 var DEG = Math.PI / 180;
@@ -190,6 +217,7 @@ function firstHit(origin, dir, volumes, margin) {
 
 var LoDrawnCenter = {
     drawnCenter: drawnCenter,
+    rectAtCenter: rectAtCenter,
     drawnVolume: drawnVolume,
     rayIntersect: rayIntersect,
     volumeContains: volumeContains,

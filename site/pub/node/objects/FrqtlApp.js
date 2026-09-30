@@ -175,6 +175,26 @@
             'RENDERER phase (renderer-layer-manifest.js). Fail-loud, not a fallback.');
     }
 
+    /**
+     * The Wall-family facade (Wall, GraphingDetectorWall, …) that `lo` IS or is the inner
+     * LargeObject of, else null. Structural, never by kind: the Wall constructor stamps
+     * `this.lo._wall = this`, so a facade is `lo.lo._wall === lo` and its inner LO is
+     * `lo._wall.lo === lo`. The ONE predicate for "this rect belongs to a wall".
+     */
+    /** Whether `prop` is a WALL field — declared by the Wall descriptor every Wall-family kind
+     *  extends (read from the schema owner), as opposed to a subclass's own field. */
+    function _isWallField(schema, prop) {
+        var d = schema.get('Wall');
+        for (var i = 0; i < d.fields.length; i++) { if (d.fields[i].name === prop) { return true; } }
+        return false;
+    }
+    function _wallFacadeOf(lo) {
+        if (!lo) { return null; }
+        if (lo._wall && lo._wall.lo === lo) { return lo._wall; }
+        if (lo.lo && lo.lo._wall === lo) { return lo; }
+        return null;
+    }
+
     /** THE LO drawn-center authority (compat/renderer/lo-drawn-center.js) — where the renderer
      *  draws an LO rect and its volume; the pick, the aim ray and the shadow-surround all read it. FAIL-LOUD. */
     function _resolveLoDrawnCenter() {
@@ -1126,7 +1146,26 @@
             // Return BEFORE the generic engineVisible mirror-write below (which would
             // assign to a getter-only prop and throw). No universe delegation — the
             // sugar IS the engine-facing write.
+            // ── A WALL's rect — the wall's ONE position write (Wall.setRect) ─────────
+            // Any Wall-family facade (Wall, GraphingDetectorWall — the constructor stamps the
+            // `lo._wall = facade` back-ref) or its INNER LargeObject (the hit-tested / dragged /
+            // aimed handle): the rect IS the wall's rect, so the write lands on setRect, which keeps
+            // the true slab, the drawn rect, the engine broad rect + backing frame and an
+            // absorber's exit in step. Never the inner LO's generic path (it knows none of those).
+            var wallFacade = _wallFacadeOf(lo);
+            if (prop === 'rect' && wallFacade) {
+                wallFacade.setRect(value);
+                if (typeof this._onObjectMoved === 'function') { this._onObjectMoved(wallFacade, prop); }
+                return;
+            }
+
+            var V2_WALL_PROPS = ['collisionBehavior', 'bounceDirection', 'decoherence',
+                'hooks', 'markTag', 'countFilter', 'capacity', 'orientationDeg', 'pitchDeg'];
+
             // ── Wall (W1) — sugar facade over ONE LargeObject (lo.lo) ─────────
+            // Any Wall-family facade (_wallFacadeOf), for the fields the Wall descriptor declares. A
+            // subclass's OWN declared fields (a GraphingDetectorWall's binPx/refreshMs/heatBase)
+            // fall through to the generic path, as before.
             // A lexicon edit RECOMPILES the running op-program (the "flip a wall into a
             // detector mid-run" live path — Wall.setV2Prop). Every other
             // prop (rect/color/alpha/visible/layer/shellShape) is DELEGATED DOWN to the
@@ -1134,7 +1173,7 @@
             // push + render-only mirror logic applies UNCHANGED (the inner LO keeps its
             // own _schemaKind 'LargeObject'). Return before the generic paths below
             // (which would hit the facade's read-only rect getter and throw).
-            if (kind === 'Wall') {
+            if (wallFacade === lo && _isWallField(schema, prop)) {
                 // Collision LEXICON v2: the nested behavior/direction/modifier/hook props
                 // live on the FACADE (updated in place so the Inspector's visibleWhen re-read
                 // reveals dependent fields immediately) and recompile the running op-program
@@ -1146,8 +1185,6 @@
                 // recurses into the inner LargeObject, whose schema has no pitchDeg →
                 // a spurious "not in the schema for kind LargeObject" throw on a live
                 // edit that would otherwise land. One facade path, no schema mirror.
-                var V2_WALL_PROPS = ['collisionBehavior', 'bounceDirection', 'decoherence',
-                    'hooks', 'markTag', 'countFilter', 'capacity', 'orientationDeg', 'pitchDeg'];
                 if (V2_WALL_PROPS.indexOf(prop) !== -1) {
                     if (typeof lo.setV2Prop === 'function') { lo.setV2Prop(prop, value); }
                 } else if (lo.lo) {
@@ -1241,7 +1278,9 @@
         // Use the same dimension-first/setter order as _updateLargeObjectRectImpl:
         //   w/h raw writes first, then set left (→ x, right) and set top (→ y, bottom).
         if (prop === 'rect' && lo.rect) {
-            var r = value;   // [left, top, w, h]
+            // The write wire is [left, top, w, h] or the z-capable [left, top, z, w, h, d].
+            var r = (value.length === 6) ? [value[0], value[1], value[3], value[4]] : value;
+            if (value.length === 6) { lo.rect.z = value[2]; lo.rect.d = value[5]; }
             // PR-1 (item 4): lo.rect is now a REAL Rectangle instance (2D case) — this comment is
             // TRUE, no longer stale. Set w/h first (own fields), THEN left/top (linked setters that
             // read the updated w/h): `set left` recomputes _x = left + w/2, _right = left + w;
@@ -1336,6 +1375,13 @@
         }
         return null;
     };
+    /**
+     * Resolve the RECT-positioned target of a centre-less object: the Wall-family facade whose rect
+     * is its one position authority (Wall.setRect). Null when there is none (no position to carry).
+     */
+    FrqtlApp.prototype._resolveRectTarget = function (object) {
+        return _wallFacadeOf(object);
+    };
     FrqtlApp.prototype._readDriveCenter = function (t) {
         if (!t) { return null; }
         if (typeof t.getCenter === 'function') { var c = t.getCenter(); return Array.isArray(c) ? c : null; }
@@ -1393,6 +1439,9 @@
     /** Below this world-xy length of a carried unit heading, the heading is not expressible
      *  in the 1-DOF orientation model (it points along world z) and HOLDS its last value. */
     FrqtlApp.HEADING_HOLD_EPS = 0.05;
+    /** Beyond this |z| (world px) a carried centre is not expressible by a z-LESS rect (it sits
+     *  at z-centre 0 — lo-drawn-center): the object stays on the z = 0 plane and says Z HELD. */
+    FrqtlApp.Z_HOLD_EPS = 1e-6;
 
     var AIM_OFF = 'off', AIM_ROAMING = 'roaming', AIM_READY = 'grab-ready', AIM_GRABBED = 'grabbed';
 
@@ -1422,7 +1471,7 @@
                 'pose notice and reads the ray off the offset pair (RENDERER_CONTRACT §1a.2). (FAIL-LOUD.)');
         }
         var self = this;
-        this._aim = { cam: cam, hover: null, grab: null, atEdge: false, headingHeld: false, error: null,
+        this._aim = { cam: cam, hover: null, grab: null, atEdge: false, headingHeld: false, zHeld: false, error: null,
                       last: null, unsubscribePose: null };
         this._aim.unsubscribePose = cam.addPoseListener(function () { self._onAimPose(); });
         this._refreshHover();
@@ -1431,21 +1480,23 @@
     FrqtlApp.prototype.isAimArmed = function () { return !!this._aim; };
 
     /**
-     * getAimState() → `{ state, hover, grabbed, atEdge, headingHeld, error }` — `state` ∈
+     * getAimState() → `{ state, hover, grabbed, atEdge, headingHeld, zHeld, error }` — `state` ∈
      * off|roaming|grab-ready|grabbed; `hover`/`grabbed` are object NAMES (or null); `atEdge` is
      * true while the carried pose is clamped to the universe cube; `headingHeld` while the carried
-     * heading points along world z (not expressible, held); `error` is the message of a carry write
-     * that threw (the grab was released).
+     * heading points along world z (not expressible, held); `zHeld` while a z-less (flat) rect is
+     * carried off the z = 0 plane it is pinned to (held there); `error` is the message of a carry
+     * write that threw (the grab was released).
      */
     FrqtlApp.prototype.getAimState = function () {
         var a = this._aim;
-        if (!a) { return { state: AIM_OFF, hover: null, grabbed: null, atEdge: false, headingHeld: false, error: null }; }
+        if (!a) { return { state: AIM_OFF, hover: null, grabbed: null, atEdge: false, headingHeld: false, zHeld: false, error: null }; }
         return {
             state: a.grab ? AIM_GRABBED : (a.hover ? AIM_READY : AIM_ROAMING),
             hover: a.hover ? (a.hover.name || '') : null,
             grabbed: a.grab ? (a.grab.object.name || '') : null,
             atEdge: !!(a.grab && a.atEdge),
             headingHeld: !!(a.grab && a.headingHeld),
+            zHeld: !!(a.grab && a.zHeld),
             error: a.error
         };
     };
@@ -1478,7 +1529,8 @@
     /**
      * grabToggle() — THE spacebar. At GRAB-READY it grabs the hovered object, capturing its full
      * camera-relative pose; while GRABBED it places the object where it stands; at ROAMING (or
-     * disarmed) it is a no-op. Returns the new state name.
+     * disarmed) it is a no-op. An object that refuses the grab (a wall carrying another part's
+     * program) stays un-grabbed and the refusal is published as `error`. Returns the new state name.
      */
     FrqtlApp.prototype.grabToggle = function () {
         var a = this._aim;
@@ -1487,13 +1539,19 @@
             this._releaseGrab();
         } else {
             this._refreshHover();
-            if (a.hover) { a.grab = this._captureGrab(a.hover); a.atEdge = false; a.headingHeld = false; a.error = null; }
+            if (a.hover) {
+                try {
+                    a.grab = this._captureGrab(a.hover); a.atEdge = false; a.headingHeld = false; a.zHeld = false; a.error = null;
+                } catch (e) {
+                    a.grab = null; a.error = 'the object cannot be grabbed: ' + (e && e.message ? e.message : e);
+                }
+            }
         }
         this._notifyAim();
         return this.getAimState().state;
     };
     FrqtlApp.prototype._releaseGrab = function () {
-        if (this._aim) { this._aim.grab = null; this._aim.atEdge = false; this._aim.headingHeld = false; }
+        if (this._aim) { this._aim.grab = null; this._aim.atEdge = false; this._aim.headingHeld = false; this._aim.zHeld = false; }
     };
 
     /**
@@ -1510,14 +1568,23 @@
         }
     };
 
-    /** The full camera-relative pose of `lo` at grab: the position offset (a centre-bearing
-     *  target) and the heading's camera-frame components (an orientation-bearing target). */
+    /** The full camera-relative pose of `lo` at grab: the position offset (of a centre-bearing
+     *  target's centre, else of a rect-positioned target's DRAWN centre — lo-drawn-center) and the
+     *  heading's camera-frame components (an orientation-bearing target). */
     FrqtlApp.prototype._captureGrab = function (lo) {
         var cam = this._aim.cam;
         var target = this._resolveDriveTarget(lo);
         var center = this._readDriveCenter(target);
+        var rectTarget = center ? null : this._resolveRectTarget(lo);
+        if (rectTarget) {
+            // A wall whose program another part pushed (a Tunnel member) is that part's to move:
+            // refuse the grab loudly rather than carry or turn it on its own.
+            rectTarget.assertOwnsProgram();
+            center = _resolveLoDrawnCenter().drawnCenter(rectTarget.rect);
+        }
         var oriTarget = this._resolveOrientationTarget(lo, target);
-        var g = { object: lo, target: target, off: center ? cam.cameraOffsetFromWorld(center) : null,
+        var g = { object: lo, target: target, rectTarget: rectTarget,
+                  off: center ? cam.cameraOffsetFromWorld(center) : null,
                   oriTarget: oriTarget, hCam: null };
         if (oriTarget && typeof oriTarget.getOrientation === 'function') {
             var r = (oriTarget.getOrientation() || 0) * Math.PI / 180;
@@ -1537,10 +1604,13 @@
 
     /**
      * Re-place the grabbed object at its held camera-relative pose in the LIVE basis: the centre
-     * through worldFromCameraOffset → the universe-cube clamp → the canonical center write, then
-     * the offset re-captured from the clamped centre (glued at the wall, no invisible over-travel);
-     * the heading re-expressed in the live basis, projected onto world-xy, written through
-     * setOrientation. A write that throws RELEASES the grab and publishes the error.
+     * through worldFromCameraOffset → the universe-cube clamp → the canonical write (`center`, or
+     * for a rect-positioned target the rect placed at that centre by lo-drawn-center rectAtCenter,
+     * written as `rect`), then the offset re-captured from where the object now IS (its centre, or
+     * its written rect's drawnCenter) — glued at the wall, no invisible over-travel. A z-less rect
+     * cannot leave z = 0, so its centre is placed there and zHeld says so. The heading is
+     * re-expressed in the live basis, projected onto world-xy, written through setOrientation.
+     * A write that throws RELEASES the grab and publishes the error.
      */
     FrqtlApp.prototype._carryGrab = function () {
         var a = this._aim, g = a.grab, cam = a.cam;
@@ -1549,7 +1619,16 @@
                 var c = cam.worldFromCameraOffset(g.off);
                 var k = this._clampToUniverseCube(c);
                 a.atEdge = (Math.abs(k[0] - c[0]) + Math.abs(k[1] - c[1]) + Math.abs(k[2] - c[2])) > 1e-6;
-                this.updateObjectProperty(g.target, 'center', k);
+                if (g.rectTarget) {
+                    var L = _resolveLoDrawnCenter();
+                    var flat = (typeof g.rectTarget.rect.z !== 'number');
+                    a.zHeld = flat && Math.abs(k[2]) > FrqtlApp.Z_HOLD_EPS;
+                    if (flat) { k = [k[0], k[1], 0]; }
+                    this.updateObjectProperty(g.rectTarget, 'rect', L.rectAtCenter(g.rectTarget.rect, k));
+                    k = L.drawnCenter(g.rectTarget.rect);
+                } else {
+                    this.updateObjectProperty(g.target, 'center', k);
+                }
                 g.off = cam.cameraOffsetFromWorld(k);
             }
             if (g.hCam) {

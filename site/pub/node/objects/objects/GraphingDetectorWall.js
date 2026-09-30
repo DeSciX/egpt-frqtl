@@ -321,6 +321,23 @@
         return null;
     };
 
+    /**
+     * setRect(rect) — Wall's one position/extent write, then the FACE follows it: the face
+     * spec (the paint's world origin) is re-derived from the moved true slab, and the canvas is
+     * re-sized when the extent changed. The grid stays keyed by WORLD (y, z) — where each hit
+     * landed — so a moved face paints the hits that fall on it where they fall.
+     */
+    GraphingDetectorWall.prototype.setRect = function (rect) {
+        WallCls.prototype.setRect.call(this, rect);
+        this._faceSpec = faceSpec(this._trueRect, this.binPx);
+        var cv = this._canvas;
+        if (cv && (cv.width !== this._faceSpec.canvasW || cv.height !== this._faceSpec.canvasH)) {
+            cv.width = this._faceSpec.canvasW; cv.height = this._faceSpec.canvasH;
+        }
+        this.repaintHeatmap();
+        return this;
+    };
+
     /** The ferry canvas (or null in a headless environment). */
     GraphingDetectorWall.prototype.heatCanvas = function () { return this._canvas; };
 

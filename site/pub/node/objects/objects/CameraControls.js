@@ -436,11 +436,15 @@
             aimLabelEl.setAttribute('data-aim-target', st.grabbed || st.hover || '');
             aimLabelEl.setAttribute('data-aim-edge', st.atEdge ? 'true' : 'false');
             aimLabelEl.setAttribute('data-aim-heading-held', st.headingHeld ? 'true' : 'false');
+            aimLabelEl.setAttribute('data-aim-z-held', st.zHeld ? 'true' : 'false');
             if (st.state === 'off') { aimLabelEl.style.display = 'none'; aimLabelEl.textContent = ''; return; }
             var lines = [AIM_TEXT[st.state](st)];
             if (st.atEdge) { lines.push('AT WORLD EDGE \u2014 held at the universe boundary'); }
             if (st.headingHeld) { lines.push('HEADING HELD \u2014 it points along the depth axis'); }
-            if (st.error) { lines.push('RELEASED: ' + st.error); }
+            if (st.zHeld) { lines.push('Z HELD \u2014 a flat (z-less) wall stays on the z = 0 plane'); }
+            // The runner's message names what happened: a carry write that failed (the grab was
+            // released) or a grab the object refused (it was never grabbed).
+            if (st.error) { lines.push('NOT HELD: ' + st.error); }
             aimLabelEl.textContent = lines.join('\n');
             aimLabelEl.style.whiteSpace = 'pre-line';
             aimLabelEl.style.color = (st.state === 'grabbed') ? '#ffcc66' : 'rgba(240,240,240,0.95)';
