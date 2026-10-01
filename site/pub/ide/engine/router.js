@@ -385,6 +385,14 @@ function buildStaticProfile(base) {
 // there, and every static URL is derived from it.
 var STATIC_SDK_DIR = './pub';
 
+// The static IDE bundle's own chunk directory (vite assetsDir), relative to the document. Not
+// `assets/`: the DeSciX platform routes `/assets/` on an app subdomain to app MEDIA, not the site.
+var STATIC_APP_ASSETS_DIR = 'app-assets';
+// The ONE stable-named (unhashed) static entry: the host-view declarer, which a publisher's
+// front page beside the IDE loads by name. apps/ide/vite.config.js emits it here and the static
+// URL gate asserts it is served.
+var STATIC_HOST_VIEW_ENTRY = STATIC_APP_ASSETS_DIR + '/host-view.js';
+
 /**
  * The static profile's absolute base for a document: STATIC_SDK_DIR resolved against the
  * document's base URI (e.g. 'https://h/prod/app/site/index.html?preset=author' →
@@ -764,4 +772,4 @@ export function buildBrowserPathMap(profile) {
 }
 
 // Export profiles for the sdk build to consume.
-export { DEV_CORE_PROFILE, DIST_PROFILE, CDN_PROFILE, STATIC_PROFILE, STATIC_SDK_DIR, CDN_SDK_VERSION, CDN_MATH_SDK_VERSION, CDN_BASE, CDN_MATH_BASE, buildCdnProfile, buildStaticProfile, staticSdkBase };
+export { DEV_CORE_PROFILE, DIST_PROFILE, CDN_PROFILE, STATIC_PROFILE, STATIC_SDK_DIR, STATIC_APP_ASSETS_DIR, STATIC_HOST_VIEW_ENTRY, CDN_SDK_VERSION, CDN_MATH_SDK_VERSION, CDN_BASE, CDN_MATH_BASE, buildCdnProfile, buildStaticProfile, staticSdkBase };
