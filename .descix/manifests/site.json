@@ -10,6 +10,7 @@
         "app.html",
         "images/**",
         "DeSciXAppSDK.js",
+        "share.json",
         "app-assets/**",
         "pub/**"
       ],

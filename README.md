@@ -13,6 +13,8 @@ site/                          the ONLY directory uploaded as the site
   index.html                   front page — authored here, never written by a refresh
   images/*                     front-page images — authored here, never written by a refresh
   DeSciXAppSDK.js              DeSciX app-side SDK — vendored here, never written by a refresh
+  share.json                   share metadata the edge worker injects into the shell head; its
+                               icon and share image live in images/share/ — never written by a refresh
   app.html                     IDE entry — the bundle's index.html
   app-assets/*                 hashed React chunks (vite owns this namespace)
   app-assets/host-view.js      the bundle's one unhashed entry: asks the shell for full-screen
@@ -28,9 +30,11 @@ scripts/
   refresh-site.sh              replace site/'s bundle-derived files from a FRAQTL .deploy-static bundle
   refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
   lib/tree.sh                  the tree fingerprint both refresh scripts use
+  lib/share-contract.mjs       the site/share.json contract and its pre-upload check
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
+  test/share-contract.mjs      controls for lib/share-contract.mjs (`npm test`)
 .descix/
   manifests/site.json          site publish allowlist
   manifests/<KB>.json          one KB manifest per kb/<KB> directory
@@ -65,14 +69,15 @@ not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
 It also refuses a bundle that ships `app.html`, `index.html`'s published name, `images/`, which
-belongs to the front page, or `DeSciXAppSDK.js`, which this site vendors.
+belongs to the front page, `DeSciXAppSDK.js`, which this site vendors, or `share.json`, which
+this site authors.
 A bundle declares each site file it needs on the element that loads it — `data-frqtl-host-provided`
 (FRAQTL's IDE: `<script src="DeSciXAppSDK.js" data-frqtl-host-provided>`). The script reads those
 names from the bundle's `index.html` and refuses, changing nothing, when a declared name is not in
 the script's `SITE_FOREIGN`, or is missing from `site/`.
 On success it publishes the bundle's `index.html` byte-identical as `site/app.html`, replaces every
 other bundle-derived file in `site/` (files no longer in the bundle are removed), carries
-`site/index.html`, `site/images/` and `site/DeSciXAppSDK.js` over untouched — or leaves them absent
+`site/index.html`, `site/images/`, `site/DeSciXAppSDK.js` and `site/share.json` over untouched — or leaves them absent
 unless the bundle declares them — and writes
 `.descix/site-provenance.json`:
 
@@ -81,7 +86,7 @@ unless the bundle declares them — and writes
 ```
 
 `file_count` and `tree_sha256` cover the bundle-derived files only; `tree_excludes` names the
-entries owned outside the bundle (`index.html`, `images`, `DeSciXAppSDK.js`).
+entries owned outside the bundle (`index.html`, `images`, `DeSciXAppSDK.js`, `share.json`).
 
 A `site/` with no `.descix/site-provenance.json` beside it has no recorded provenance.
 
@@ -109,10 +114,11 @@ recorded as `host_rewrites_dev_to_prod`.
 
 `tree_sha256` is the sha256 of the sorted `sha256  ./path` listing of every file in the tree, minus
 any top-level `tree_excludes` (`scripts/lib/tree.sh::tree_sha256`). For `site/`, whose
-`tree_excludes` are the three `SITE_FOREIGN` names (`index.html`, `images`, `DeSciXAppSDK.js`):
+`tree_excludes` are the four `SITE_FOREIGN` names (`index.html`, `images`, `DeSciXAppSDK.js`,
+`share.json`):
 
 ```
-cd site && find . \( -path ./index.html -o -path ./images -o -path ./DeSciXAppSDK.js \) -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+cd site && find . \( -path ./index.html -o -path ./images -o -path ./DeSciXAppSDK.js -o -path ./share.json \) -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
 ```
 
 **`-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
@@ -128,6 +134,7 @@ workspace, API URL and environment in use). Always dry-run first.
 | What | Command |
 |---|---|
 | Site host-view gate | `node scripts/test/host-view.mjs --port <n>` against `site/` — must report 5/5 PASS before `descix site upload` |
+| Site share-contract gate | `node scripts/lib/share-contract.mjs` — `site/share.json` (the share title, description, icon and 1200×630 image the edge worker injects into the shell head) must report PASS before `descix site upload`; it reports ABSENT and exits 0 when there is none |
 | Site | `descix site upload --dry-run`, then `descix site upload` |
 | One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
 
