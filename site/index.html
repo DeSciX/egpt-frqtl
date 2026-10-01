@@ -530,14 +530,6 @@ footer .legal{max-width:80ch;font-size:13px}
 </div></footer>
 
 <script src="DeSciXAppSDK.js"></script>
-<script>
-(function(){
-  if(!(window.DeSciX&&typeof DeSciX.ready==='function'))return;
-  DeSciX.ready().then(function(r){
-    if(!r||r.mode!=='shell')return;
-    var v=DeSciX.view; if(v&&typeof v.set==='function')v.set('CodeSite');
-  });
-})();
-</script>
+<script type="module" src="app-assets/host-view.js"></script>
 </body>
 </html>

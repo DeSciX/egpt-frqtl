@@ -108,10 +108,11 @@ recorded as `host_rewrites_dev_to_prod`.
 ### Tree fingerprint
 
 `tree_sha256` is the sha256 of the sorted `sha256  ./path` listing of every file in the tree, minus
-any top-level `tree_excludes` (`scripts/lib/tree.sh::tree_sha256`). For `site/`:
+any top-level `tree_excludes` (`scripts/lib/tree.sh::tree_sha256`). For `site/`, whose
+`tree_excludes` are the three `SITE_FOREIGN` names (`index.html`, `images`, `DeSciXAppSDK.js`):
 
 ```
-cd site && find . \( -path ./index.html -o -path ./images \) -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+cd site && find . \( -path ./index.html -o -path ./images -o -path ./DeSciXAppSDK.js \) -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
 ```
 
 **`-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
@@ -126,6 +127,7 @@ workspace, API URL and environment in use). Always dry-run first.
 
 | What | Command |
 |---|---|
+| Site host-view gate | `node scripts/test/host-view.mjs --port <n>` against `site/` — must report 5/5 PASS before `descix site upload` |
 | Site | `descix site upload --dry-run`, then `descix site upload` |
 | One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
 
