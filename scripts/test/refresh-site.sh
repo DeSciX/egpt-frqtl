@@ -7,6 +7,9 @@
 # The contract under test: the bundle's index.html is published as site/app.html; site/index.html
 # (the front page) and site/images/ are owned outside the bundle and survive a refresh untouched,
 # present or absent; the provenance stamp and fingerprint describe the bundle-derived set only.
+# A name the bundle DECLARES host-provided (data-frqtl-host-provided on the consuming element,
+# read from the bundle's own bytes) must be a SITE_FOREIGN name present in site/, or the
+# refresh is refused and site/ is left untouched.
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -26,11 +29,12 @@ repo() {
   echo "$r"
 }
 
-# A minimal assembled bundle at $SCRATCH/<name>/bundle, stamped <build>.
+# A minimal assembled bundle at $SCRATCH/<name>/bundle, stamped <build>. Optional third argument:
+# extra <head> markup (the host-provided declarations under test).
 bundle() {
-  local b="$SCRATCH/$1/bundle" build=${2:-$BUILD}
+  local b="$SCRATCH/$1/bundle" build=${2:-$BUILD} head=${3:-}
   mkdir -p "$b/app-assets" "$b/pub/images"
-  printf '<!doctype html><html data-frqtl-site-build="%s"><body>IDE</body></html>\n' "$build" > "$b/index.html"
+  printf '<!doctype html><html data-frqtl-site-build="%s"><head>%s</head><body>IDE</body></html>\n' "$build" "$head" > "$b/index.html"
   printf 'console.log("chunk")\n' > "$b/app-assets/index-abc.js"
   printf 'png' > "$b/pub/images/a file with spaces.png"
   printf '{"build":"%s","phases":{"root":"GREEN","prefix":"GREEN"}}' "$build" > "$b/VERIFICATION.json"
@@ -79,5 +83,28 @@ for owned in app.html images DeSciXAppSDK.js; do
   if [ "$owned" = images ]; then mkdir -p "$B/images"; printf x > "$B/images/x.png"; else printf x > "$B/$owned"; fi
   if refresh "$R" "$B"; then fail "refuses-bundle-shipping-$owned" "accepted"; elif grep -qF "$owned" "$SCRATCH/clash-$owned/out.txt" && [ ! -e "$R/site" ]; then pass "refuses-bundle-shipping-$owned"; else fail "refuses-bundle-shipping-$owned" "$(cat "$SCRATCH/clash-$owned/out.txt")"; fi
 done
+
+# --- Host-provided declarations, read from the bundle's bytes.
+SDK_TAG='<script src="DeSciXAppSDK.js" data-frqtl-host-provided></script>'
+
+# Declared and present: accepted, the publisher's file carried over byte-identical.
+R=$(repo hp-ok); B=$(bundle hp-ok "$BUILD" "$SDK_TAG")
+mkdir -p "$R/site"; printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
+if refresh "$R" "$B" && cmp -s "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js" && cmp -s "$R/site/app.html" "$B/index.html"; then pass "accepts-declared-host-provided-present"; else fail "accepts-declared-host-provided-present" "$(cat "$SCRATCH/hp-ok/out.txt")"; fi
+
+# Declared and MISSING from site/: refused by name, site/ untouched.
+R=$(repo hp-missing); B=$(bundle hp-missing "$BUILD" "$SDK_TAG")
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-declared-host-provided-missing" "accepted a bundle whose declared DeSciXAppSDK.js is not in site/"; elif grep -qF "DeSciXAppSDK.js" "$SCRATCH/hp-missing/out.txt" && grep -qF "data-frqtl-host-provided" "$SCRATCH/hp-missing/out.txt" && [ "$(cat "$R/site/index.html")" = front ] && [ ! -e "$R/site/app.html" ]; then pass "refuses-declared-host-provided-missing"; else fail "refuses-declared-host-provided-missing" "$(cat "$SCRATCH/hp-missing/out.txt")"; fi
+
+# Declared, but not a name the publisher owns (not in SITE_FOREIGN): refused, site/ untouched.
+R=$(repo hp-foreign); B=$(bundle hp-foreign "$BUILD" '<script src="other-host.js" data-frqtl-host-provided></script>')
+mkdir -p "$R/site"; printf 'x\n' > "$R/site/other-host.js"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-declared-name-not-site-foreign" "accepted"; elif grep -qF "other-host.js" "$SCRATCH/hp-foreign/out.txt" && grep -qF "SITE_FOREIGN" "$SCRATCH/hp-foreign/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-declared-name-not-site-foreign"; else fail "refuses-declared-name-not-site-foreign" "$(cat "$SCRATCH/hp-foreign/out.txt")"; fi
+
+# The attribute on an element that names no file: refused — a declaration that names nothing.
+R=$(repo hp-noref); B=$(bundle hp-noref "$BUILD" '<script data-frqtl-host-provided></script>')
+mkdir -p "$R/site"; printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
+if refresh "$R" "$B"; then fail "refuses-declaration-naming-no-file" "accepted"; elif grep -qF "names no src" "$SCRATCH/hp-noref/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-declaration-naming-no-file"; else fail "refuses-declaration-naming-no-file" "$(cat "$SCRATCH/hp-noref/out.txt")"; fi
 
 exit "$FAIL"

@@ -4,5 +4,8 @@
   },
   "dependencies": {
     "@descix/cli": "^1.0.9"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.0"
   }
 }
