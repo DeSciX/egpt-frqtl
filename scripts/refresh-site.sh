@@ -6,9 +6,16 @@
 #
 # The bundle's index.html (the IDE entry) is published as site/app.html, beside its relative
 # app-assets/ and pub/. site/index.html (the front page), site/images/ and site/DeSciXAppSDK.js
-# (the shell SDK shim the front page loads) are owned OUTSIDE the bundle (SITE_FOREIGN): a
-# refresh carries them over byte-identical when present, leaves them
-# absent when absent, and refuses a bundle that ships either name or an app.html of its own.
+# (the shell SDK shim the front page and the IDE load) are owned OUTSIDE the bundle (SITE_FOREIGN):
+# a refresh carries them over byte-identical when present, leaves them absent when absent, and
+# refuses a bundle that ships either name or an app.html of its own.
+#
+# HOST-PROVIDED: a bundle declares each publisher file it NEEDS on the element that consumes it —
+# `data-frqtl-host-provided` on a src/href in its index.html (FRAQTL's static build splices
+# <script src="DeSciXAppSDK.js" data-frqtl-host-provided>). The set is read from those bytes, never
+# typed here. Each declared name must be a SITE_FOREIGN name present in site/, or the refresh is
+# refused with site/ untouched: "absent stays absent" does not hold for a declared name, because
+# the published app.html would load a file the site does not serve.
 #
 # The bundle's build sha is read from the data-frqtl-site-build attribute in its
 # index.html — the bytes published as site/app.html. A bundle without it is refused: provenance
@@ -61,6 +68,22 @@ UPSTREAM_SHA=$builds
 # The verification record must exist, belong to THIS build, and be GREEN in every phase.
 check_verification "$SRC/VERIFICATION.json" "$UPSTREAM_SHA"
 
+# The host-provided set, from the bundle's own bytes: every element carrying the attribute.
+HOST_ATTR="data-frqtl-host-provided"
+HOST_PROVIDED=()
+while IFS= read -r tag; do
+  [ -n "$tag" ] || continue
+  ref=$(printf '%s' "$tag" | sed -nE 's/.*[[:space:]](src|href)="([^"]*)".*/\2/p')
+  [ -n "$ref" ] || die "$SRC/index.html: an element carries $HOST_ATTR but names no src or href: $tag"
+  HOST_PROVIDED+=("$ref")
+done < <(grep -oE "<[A-Za-z][^>]*[[:space:]]$HOST_ATTR([[:space:]=/>])[^>]*>?" "$SRC/index.html" || true)
+for name in ${HOST_PROVIDED[@]+"${HOST_PROVIDED[@]}"}; do
+  owned=0
+  for foreign in "${SITE_FOREIGN[@]}"; do [ "$name" != "$foreign" ] || owned=1; done
+  [ "$owned" -eq 1 ] || die "$SRC/index.html declares \"$name\" $HOST_ATTR, but it is not a name this site owns outside the bundle (SITE_FOREIGN: ${SITE_FOREIGN[*]}) — refusing to publish an app page that loads a file nobody publishes"
+  [ -e "$SITE/$name" ] || die "$SRC/index.html declares \"$name\" $HOST_ATTR, and site/$name is missing — the published $APP_PAGE would load a file the site does not serve; vendor it into site/ first"
+done
+
 [ ! -e "$SRC/$APP_PAGE" ] || die "$SRC/$APP_PAGE is present — the bundle's index.html is published as $APP_PAGE, so the bundle may not ship one"
 
 # The bundle as published: its index.html renamed to the app page, nothing else changed.
@@ -71,6 +94,9 @@ mv "$BUNDLE/index.html" "$BUNDLE/$APP_PAGE"
 
 replace_tree "$BUNDLE" "$SITE" "${SITE_FOREIGN[@]}"
 cmp -s "$SRC/index.html" "$SITE/$APP_PAGE" || die "site/$APP_PAGE is not byte-identical to $SRC/index.html after refresh"
+for name in ${HOST_PROVIDED[@]+"${HOST_PROVIDED[@]}"}; do
+  [ -e "$SITE/$name" ] || die "site/$name, declared $HOST_ATTR by $APP_PAGE, did not survive the refresh"
+done
 
 FILE_COUNT=$(tree_file_count "$SITE" "${SITE_FOREIGN[@]}")
 TREE_SHA=$(tree_sha256 "$SITE" "${SITE_FOREIGN[@]}")

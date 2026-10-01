@@ -12,8 +12,10 @@ bundle. **PROD is deliberately not a mirror of DEV.**
 site/                          the ONLY directory uploaded as the site
   index.html                   front page — authored here, never written by a refresh
   images/*                     front-page images — authored here, never written by a refresh
+  DeSciXAppSDK.js              DeSciX app-side SDK — vendored here, never written by a refresh
   app.html                     IDE entry — the bundle's index.html
   app-assets/*                 hashed React chunks (vite owns this namespace)
+  app-assets/host-view.js      the bundle's one unhashed entry: asks the shell for full-screen
   pub/*                        engine, vendor, experiments, ide, notebooks, math SDK
 kb/
   General/                     adopted — FRAQTL `make publish-corpus` output, never hand-edited
@@ -26,6 +28,9 @@ scripts/
   refresh-site.sh              replace site/'s bundle-derived files from a FRAQTL .deploy-static bundle
   refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
   lib/tree.sh                  the tree fingerprint both refresh scripts use
+  test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
+  test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
+  test/host-view/              its shell-harness page — a fixture, outside site/
 .descix/
   manifests/site.json          site publish allowlist
   manifests/<KB>.json          one KB manifest per kb/<KB> directory
@@ -59,11 +64,16 @@ not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (
 `build` and `phases` only) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
-It also refuses a bundle that ships `app.html`, `index.html`'s published name, or `images/`, which
-belongs to the front page.
+It also refuses a bundle that ships `app.html`, `index.html`'s published name, `images/`, which
+belongs to the front page, or `DeSciXAppSDK.js`, which this site vendors.
+A bundle declares each site file it needs on the element that loads it — `data-frqtl-host-provided`
+(FRAQTL's IDE: `<script src="DeSciXAppSDK.js" data-frqtl-host-provided>`). The script reads those
+names from the bundle's `index.html` and refuses, changing nothing, when a declared name is not in
+the script's `SITE_FOREIGN`, or is missing from `site/`.
 On success it publishes the bundle's `index.html` byte-identical as `site/app.html`, replaces every
 other bundle-derived file in `site/` (files no longer in the bundle are removed), carries
-`site/index.html` and `site/images/` over untouched — or leaves them absent — and writes
+`site/index.html`, `site/images/` and `site/DeSciXAppSDK.js` over untouched — or leaves them absent
+unless the bundle declares them — and writes
 `.descix/site-provenance.json`:
 
 ```
@@ -71,7 +81,7 @@ other bundle-derived file in `site/` (files no longer in the bundle are removed)
 ```
 
 `file_count` and `tree_sha256` cover the bundle-derived files only; `tree_excludes` names the
-front-page entries left out (`index.html`, `images`).
+entries owned outside the bundle (`index.html`, `images`, `DeSciXAppSDK.js`).
 
 A `site/` with no `.descix/site-provenance.json` beside it has no recorded provenance.
 
@@ -120,8 +130,8 @@ workspace, API URL and environment in use). Always dry-run first.
 | One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
 
 - `descix site upload` uses `.descix/manifests/site.json`. Its only source is `site` with an
-  explicit include allowlist (`index.html`, `app.html`, `app-assets/**`, `pub/**`), so `assets/`, `kb/`,
-  `plugin/`, `scripts/` and `.descix/` are never uploaded. Site URLs are non-expiring and unsigned;
+  explicit include allowlist (the manifest's `include`), so `assets/`, `kb/`, `plugin/`, `scripts/`
+  (with the host-view shell harness) and `.descix/` are never uploaded. Site URLs are non-expiring and unsigned;
   never add a source whose path is `.` or a repo-root directory. SiteWalker traps: an empty
   `include` matches everything, `exclude` is tested **before** `include`, and a bare-name directory
   exclude matches that name at any depth.
