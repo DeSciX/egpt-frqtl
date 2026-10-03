@@ -38,10 +38,9 @@
  *
  * ── Usage ──────────────────────────────────────────────────────────────────
  *
- *   // During app boot, wire the active driver once:
- *   import { setActiveProvider } from 'lib/shim/storage';
- *   import { LocalStorageProvider } from 'lib/shim/storage/local-storage-provider.js';
- *   setActiveProvider(new LocalStorageProvider());
+ *   // During browser app boot, wire the active driver once (the ONE installer):
+ *   import { bootLocalStorage } from 'lib/shim/storage/boot.js';
+ *   bootLocalStorage();   // → { row: 'installed' | 'already-active' | 'unavailable', detail? }
  *
  *   // Then anywhere in the IDE:
  *   import { getProvider } from 'lib/shim/storage';
@@ -143,7 +142,8 @@ export function getProvider() {
   if (!_activeProvider) {
     throw new Error(
       '[StorageProvider] no active provider has been set. ' +
-      'Call setActiveProvider(new LocalStorageProvider()) during app boot.'
+      'Call bootLocalStorage() (lib/shim/storage/boot.js) during app boot, or setActiveProvider(<provider>) ' +
+      'for a non-browser driver.'
     );
   }
   return _activeProvider;

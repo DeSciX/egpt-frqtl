@@ -243,7 +243,8 @@ let _ordered = false;
  * Apply exhibit-manifest ordering to EXPERIMENTS in-place.
  * Called once from the site bootstrap after exhibits.js has loaded.
  *
- * @param {string[]} exhibitIds  — ordered ids from EXHIBITS (exhibits.js)
+ * @param {string[]} exhibitIds  — ordered EXPERIMENT ids: exhibits.js exhibitsOfKind('experiment')
+ *   (the showcase roster also holds walk-through rungs, which are not EXPERIMENTS rows)
  */
 export function applyExhibitOrdering(exhibitIds) {
     if (_ordered) return; // idempotent

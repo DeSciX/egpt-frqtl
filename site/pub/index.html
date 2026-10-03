@@ -1,28 +1,34 @@
 <!DOCTYPE html>
 <!-- Copyright 2023-2026 by Essam Abadir -->
-<!-- FRQTL SDK showcase — the WALK-THROUGH gallery.
+<!-- FRQTL SDK showcase — the full-screen PLAYER, and the WALK-THROUGH gallery.
 
-     Authored at sdk/frqtl-sdk/src/index.html; copied VERBATIM to dist/index.html by
-     sdk/frqtl-sdk/build.js (build is the sole writer of dist/).
+     Authored at sdk/frqtl-sdk/src/index.html; written to dist/index.html by
+     sdk/frqtl-sdk/build.js (build is the sole writer of dist/), which splices the lib/ module
+     placements (sdk/frqtl-sdk/scripts/lib-dist-placement.js) into the import map below. The page
+     imports every lib/ module by its lib/ identity (`lib/shim/…`, `lib/components/…`,
+     `lib/frqtl/experiments/…`) and never types a dist path.
 
-     WHAT IT SHOWS: the rungs of the WALK-THROUGH registry (lib/shim/registry/
-     walkthrough.js, shipped at dist/ide/registry/walkthrough.js by the wholesale
-     lib/shim -> dist/ide copy). That registry is the package's NEW-SUGAR content —
-     every rung is composed of the current objects (SphereEmitter, v2 Wall, Tunnel,
-     LiveChart, GraphingDetectorWall). The list, the titles, the prose, the groups,
-     the modes and the default selection are ALL READ FROM THE REGISTRY at runtime:
-     this page holds NO id list, NO per-item metadata table and NO fallback id. An
-     unknown ?rung= FAILS LOUD with a named error.
+     PLAYER (a deep link — what a front-page card opens):
+       ?rung=<id>[&mode=<id>]   a walk-through rung, played in THIS page by bootRecipe.
+       ?experiment=<id>         a canonical experiment page, NAVIGATED to after the card
+                                (experiments/<id>/index.html?engine=wasm, via the router; no iframe).
+     No editor chrome: the side columns are hidden and the canvas fills the viewport (display-only
+     CSS; the world size runner.canvas_rect is the scene's own). A run-once card comes first
+     (lib/components/run-once-card; content from lib/frqtl/experiments/exhibits.js showcaseCard —
+     the showcase roster row's title / what / why and the Move-and-Look paragraph on a 3D scene).
+     A scene with no roster row plays with NO card (recorded: not-offered-no-roster-row). Seen-state goes through the storage seam, installed by bootLocalStorage() and
+     recorded on <html> by recordStorageBoot. A rung boots behind the card and is HELD with the
+     runner's own stop() until Continue, then start()ed; a second visit skips the card.
 
-     HOW IT RUNS: `bootRecipe` (dist/esm/index.js — the standalone recipe host) boots
-     the rung's `source` in THIS page with the rung's `effectiveRenderState` bag,
-     using a PAGE-RELATIVE base, so every engine/renderer/game script loads from the
-     dist this page is served out of (no CDN, no version pin) — the same discipline
-     as artifact/sun.html. There is no iframe and no second load path.
+     GALLERY (no deep link): the WALK-THROUGH registry's rungs in a nav, each booted in place —
+     the list, titles, prose, groups, modes and default are READ FROM THE REGISTRY at runtime; an
+     unknown ?rung= / ?experiment= FAILS LOUD with a named error.
 
-     The mount div is deliberately id="canvas-wrapper": that is the id a rung's
-     `CameraControls.attach` line looks up (the same id the `empty` host page gives
-     its canvas host), so the 3D rungs' MOVE/LOOK joysticks mount here too. -->
+     HOW A RUNG RUNS: `bootRecipe` (dist/esm/index.js) boots the rung's `source` with the rung's
+     `effectiveRenderState` bag, using a PAGE-RELATIVE base, so every engine/renderer/game script
+     loads from the dist this page is served out of. The mount div is deliberately
+     id="canvas-wrapper": that is the id a rung's `CameraControls.attach` line looks up, so the 3D
+     rungs' MOVE/LOOK joysticks mount here (CameraControls is the one pad authority). -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -87,7 +93,24 @@
             align-items: center; justify-content: center;
             background: #000; position: relative; overflow: hidden;
         }
-        #canvas-wrapper { position: relative; width: 600px; height: 400px; }
+        /* The mount box is the 600x400 stage on a desktop and SHRINKS to the panel on a
+           phone (portrait or landscape); the canvas inside letterboxes into it with
+           object-fit:contain. DISPLAY-ONLY: the world size (runner.canvas_rect) is the
+           rung's own and is never touched. The MOVE/LOOK pads of a 3D rung anchor to this
+           box's bottom corners, so a box that fits the screen puts both pads in reach.
+           The status line below keeps its height (max-height reserves it). */
+        #canvas-wrapper {
+            position: relative; width: 600px; height: 400px;
+            max-width: 100%; max-height: calc(100% - 40px);
+        }
+        #canvas-wrapper > [data-role="frqtl-recipe-canvas"] {
+            width: 100%; height: 100%;
+            display: flex; align-items: center; justify-content: center;
+        }
+        #canvas-wrapper canvas {
+            max-width: 100%; max-height: 100%;
+            object-fit: contain; object-position: center;
+        }
         .center-status {
             font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace;
             color: #777; padding: 8px 0 12px;
@@ -136,6 +159,26 @@
         }
         .mode-btn.active { background: #b6161c; border-color: #fff; color: #fff; }
 
+        /* ── PLAYER mode (a deep link) ───────────────────── */
+        /* No editor chrome: the side columns go and the scene takes the whole viewport, portrait
+           or landscape. DISPLAY-ONLY: the canvas element fills the box and its bitmap letterboxes
+           (object-fit:contain); the world (runner.canvas_rect) is untouched. !important because a
+           renderer writes the canvas's own inline width/height, and the player box must win. */
+        html[data-player="on"] .left-nav, html[data-player="on"] .right-panel { display: none; }
+        html[data-player="on"] .center-panel { position: fixed; inset: 0; }
+        html[data-player="on"] #canvas-wrapper {
+            width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none;
+        }
+        html[data-player="on"] #canvas-wrapper canvas {
+            width: 100% !important; height: 100% !important; max-width: none; max-height: none;
+        }
+        html[data-player="on"] .center-status {
+            position: absolute; top: 0; left: 0; padding: 6px 10px; pointer-events: none;
+            background: rgba(0,0,0,0.45);
+        }
+        /* The run-once card's host covers the scene (and the pads) until Continue. */
+        #player-card-host { position: absolute; inset: 0; z-index: 100; pointer-events: none; }
+
         /* ── FAIL-LOUD panel ─────────────────────────────── */
         .fail-loud {
             position: absolute; inset: 0; z-index: 9999; padding: 18px;
@@ -154,6 +197,10 @@
         }
         @media (max-width: 600px) {
             .left-nav { display: none; }
+        }
+        /* a phone held in landscape: the scene gets the whole (short) screen */
+        @media (max-height: 500px) {
+            .left-nav, .right-panel { display: none; }
         }
     </style>
 </head>
@@ -186,6 +233,7 @@
     <div class="center-panel" id="center-panel">
         <div id="canvas-wrapper" data-role="frqtl-rung-mount"></div>
         <div class="center-status" id="center-status" data-role="frqtl-rung-status">booting…</div>
+        <div id="player-card-host" data-run-once-host=""></div>
     </div>
 
     <!-- ═══ RIGHT: DESCRIPTION ═══ -->
@@ -193,37 +241,43 @@
 
 </div>
 
-<!-- The ESM entry resolves page-relative to this dist's own copy. -->
-<script type="importmap">{"imports":{"@descix/frqtl-sdk":"./esm/index.js"}}</script>
+<!-- The ESM entry resolves page-relative to this dist's own copy; build.js adds the lib/ placements. -->
+<script type="importmap" data-frqtl-lib-placement>{"imports":{"@descix/frqtl-sdk":"./esm/index.js","lib/shim/":"./ide/","lib/components/":"./components/","lib/frqtl/experiments/":"./experiments/"}}</script>
 <script type="module">
 /* Copyright 2023-2026 by Essam Abadir */
 
 import { bootRecipe } from '@descix/frqtl-sdk';
-// The shipped WALK-THROUGH registry — the ONE authority for which rungs exist,
-// their order, their groups, their modes, their prose and the default selection.
-// It rides the wholesale lib/shim -> dist/ide copy (build.js copyCommon).
+// The shipped WALK-THROUGH registry — the ONE authority for which rungs exist, their order,
+// groups, modes, prose and the default selection.
 import {
-    WALKTHROUGH, walkthroughGroup, walkthroughModes, defaultWalkthroughModeId,
+    WALKTHROUGH, walkthroughById, walkthroughGroup, walkthroughModes, defaultWalkthroughModeId,
     effectiveRenderState, FIRST_CONTACT_WALKTHROUGH_ID
-} from './ide/registry/walkthrough.js';
+} from 'lib/shim/registry/walkthrough.js';
+import { engineRouter } from 'lib/shim/engine/router.js';
+import { bootLocalStorage, recordStorageBoot } from 'lib/shim/storage/boot.js';
+import { openRunOnceCard, recordRunOnceNotOffered } from 'lib/components/run-once-card/index.js';
+import { exhibitFor, showcaseCard, showcaseCardKey } from 'lib/frqtl/experiments/exhibits.js';
 
-// Page-relative dist root (no trailing slash — engineRouter({mode:'cdn', base})
-// joins base + '/js/...'). Every injected engine/renderer/game script re-anchors
-// HERE, not at jsdelivr: this page runs entirely out of the dist it ships in.
+// Page-relative dist root (no trailing slash — engineRouter({mode:'cdn', base}) joins
+// base + '/js/...'). Every engine/renderer/game script and every experiment page re-anchors HERE.
 var DIST_ROOT = new URL('.', location.href).href.replace(/\/$/, '');
+var ENGINE = 'wasm';
+var router = engineRouter({ mode: 'cdn', engine: ENGINE, base: DIST_ROOT });
 
 var statusEl = document.getElementById('center-status');
 var mountEl  = document.getElementById('canvas-wrapper');
 var navEl    = document.getElementById('nav-rungs');
 var panelEl  = document.getElementById('right-panel');
+var cardHost = document.getElementById('player-card-host');
 
-var currentRungId = null;
-var currentModeId = null;
-var bootToken     = 0;   // guards against a stale boot resolving after a re-select
+var bootToken = 0;   // guards against a stale boot resolving after a re-select (gallery)
+
+// Storage seam: the ONE installer, its outcome recorded (never discarded) on <html>.
+recordStorageBoot(document.documentElement, bootLocalStorage());
 
 // ── FAIL-LOUD ────────────────────────────────────────────────────────────────
 
-/** Paint a visible failure over the canvas area and rethrow-shaped log. */
+/** Paint a visible failure over the canvas area. */
 function failLoud(title, detail) {
     var box = document.createElement('div');
     box.className = 'fail-loud';
@@ -237,20 +291,24 @@ function failLoud(title, detail) {
 
 // ── Registry lookups (no local id list, no fallback) ──────────────────────────
 
-/**
- * Resolve a rung id against the registry. FAIL-LOUD on an unknown id — naming the
- * id and the declared set. There is deliberately no default-to-something: a stale
- * or mistyped deep link must SURFACE, never quietly load a different experiment.
- */
+/** A rung by id; FAIL-LOUD naming the declared set — never a quiet default. */
 function rungByIdOrThrow(id) {
-    for (var i = 0; i < WALKTHROUGH.length; i++) {
-        if (WALKTHROUGH[i].id === id) { return WALKTHROUGH[i]; }
+    var rung = walkthroughById(id);
+    if (!rung) {
+        throw new Error('[frqtl-showcase] unknown ?rung="' + id + '" — declared rungs: [' +
+            WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + ']. (FAIL-LOUD.)');
     }
-    throw new Error('[frqtl-showcase] unknown ?rung="' + id + '" — declared rungs: [' +
-        WALKTHROUGH.map(function (r) { return r.id; }).join(', ') + ']. (FAIL-LOUD.)');
+    return rung;
 }
 
-// ── Nav (grouped, registry order) ────────────────────────────────────────────
+/** id + optional mode → { rung, modeId, renderState }; throws on an unknown id or mode. */
+function resolveRung(id, modeId) {
+    var rung = rungByIdOrThrow(id);
+    var effModeId = (modeId !== null && modeId !== undefined) ? modeId : defaultWalkthroughModeId(rung);
+    return { rung: rung, modeId: effModeId, renderState: effectiveRenderState(rung, effModeId) };
+}
+
+// ── Nav + panel (GALLERY mode) ───────────────────────────────────────────────
 
 function esc(str) {
     if (str == null) { return ''; }
@@ -286,8 +344,6 @@ function highlightNav(id) {
         a.classList.toggle('active', a.getAttribute('data-rung') === id);
     });
 }
-
-// ── Right panel (prose + modes + the reproduce snippet) ──────────────────────
 
 function renderPanel(rung, modeId) {
     var modes = walkthroughModes(rung);
@@ -326,75 +382,128 @@ function renderPanel(rung, modeId) {
     });
 }
 
-// ── Selection + boot ─────────────────────────────────────────────────────────
-
-/**
- * Load a rung (optionally in a declared mode). `effectiveRenderState` is the ONE
- * derivation point for the mode-merged bag; `bootRecipe` translates it (renderer /
- * egpt3D / seed pick the boot path; render options + camera replay after start).
- */
-function selectRung(id, modeId) {
-    var rung;
-    try {
-        rung = rungByIdOrThrow(id);
-    } catch (e) {
-        failLoud('Unknown walk-through rung', String((e && e.message) || e));
-        return;
-    }
-
-    var modes = walkthroughModes(rung);
-    var effModeId = (modeId !== null && modeId !== undefined)
-        ? modeId : defaultWalkthroughModeId(rung);
-
-    var renderState;
-    try {
-        // FAIL-LOUD on an undeclared mode id (effectiveRenderState throws by contract).
-        renderState = effectiveRenderState(rung, effModeId);
-    } catch (e) {
-        failLoud('Unknown mode for rung "' + id + '"', String((e && e.message) || e));
-        return;
-    }
-
-    currentRungId = id;
-    currentModeId = effModeId;
-
+/** Re-state ?rung=&mode= (history.replaceState; a single-mode rung carries no mode). */
+function showRungLink(rung, modeId) {
     var url = new URL(window.location.href);
-    url.searchParams.set('rung', id);
-    if (modes.length > 1 && effModeId) { url.searchParams.set('mode', effModeId); }
+    url.searchParams.set('rung', rung.id);
+    if (walkthroughModes(rung).length > 1 && modeId) { url.searchParams.set('mode', modeId); }
     else { url.searchParams.delete('mode'); }
     history.replaceState(null, '', url.toString());
+}
 
-    highlightNav(id);
-    renderPanel(rung, effModeId);
-
+/**
+ * Boot a resolved rung into the mount. Resolves with the scene; a superseded boot (a newer
+ * selection) resolves null. bootRecipe paints its own overlay on failure; the status line says so.
+ */
+function bootRung(sel) {
     var token = ++bootToken;
-    statusEl.textContent = 'booting ' + rung.title + '…';
+    statusEl.textContent = 'booting ' + sel.rung.title + '…';
     mountEl.innerHTML = '';
+    return bootRecipe(mountEl, sel.rung.source, { base: DIST_ROOT, renderState: sel.renderState })
+        .then(function (scene) {
+            if (token !== bootToken) { return null; }
+            window.__frqtlScene = scene;           // realm-assertion handle (Playwright)
+            return scene;
+        }, function (err) {
+            if (token === bootToken) {
+                statusEl.textContent = sel.rung.title + ' — BOOT FAILED (see overlay)';
+                if (window.console && console.error) { console.error('[frqtl-showcase]', err); }
+            }
+            throw err;
+        });
+}
 
-    bootRecipe(mountEl, rung.source, {
-        base: DIST_ROOT,
-        renderState: renderState
-    }).then(function (scene) {
-        if (token !== bootToken) { return; }   // superseded by a newer selection
-        statusEl.textContent = rung.title + ' — live';
-        window.__frqtlScene = scene;           // realm-assertion handle (Playwright)
-    }).catch(function (err) {
-        if (token !== bootToken) { return; }
-        // bootRecipe already painted its own overlay inside the mount; keep the
-        // status line honest too (never a silently blank canvas).
-        statusEl.textContent = rung.title + ' — BOOT FAILED (see overlay)';
-        if (window.console && console.error) { console.error('[frqtl-showcase]', err); }
+function selectRung(id, modeId) {
+    var sel;
+    try { sel = resolveRung(id, modeId); }
+    catch (e) { failLoud('Unknown walk-through rung or mode', String((e && e.message) || e)); return; }
+    showRungLink(sel.rung, sel.modeId);
+    highlightNav(id);
+    renderPanel(sel.rung, sel.modeId);
+    bootRung(sel).then(function (scene) {
+        if (scene) { statusEl.textContent = sel.rung.title + ' — live'; }
+    }, function () { /* painted + logged by bootRung */ });
+}
+
+// ── PLAYER mode ──────────────────────────────────────────────────────────────
+
+/**
+ * The card for a scene, from its showcase-roster row; `onGo` runs on Continue, or at once when the
+ * card is not shown. A scene with no roster row has no card: the declared outcome
+ * not-offered-no-roster-row is recorded on the host and the scene goes at once.
+ */
+function openSceneCard(scene, modeId, onGo) {
+    var row = exhibitFor({ kind: scene.kind, id: scene.id, modeId: modeId });
+    if (!row) {
+        recordRunOnceNotOffered(cardHost, showcaseCardKey(scene.kind, scene.id, modeId), 'not-offered-no-roster-row',
+            scene.kind + ' "' + scene.id + '"' + (modeId ? ' mode ' + modeId : '') + ' has no showcase-roster row');
+        onGo();
+        return;
+    }
+    var card = showcaseCard(row);
+    cardHost.dataset.explainerAbsent = card.absent.join(' ');
+    openRunOnceCard(cardHost, {
+        seenKey: card.seenKey, title: card.title, paragraphs: card.paragraphs, onContinue: onGo
+    }).ready.then(function (d) { if (!d.shows) { onGo(); } });
+}
+
+/**
+ * A rung: boot it behind the card and HOLD it with the runner's own stop() until the viewer
+ * continues (or the card is not shown), then start() it. Either may happen first.
+ */
+function playRung(id, modeId) {
+    var sel;
+    try { sel = resolveRung(id, modeId); }
+    catch (e) { failLoud('Unknown walk-through rung or mode', String((e && e.message) || e)); return; }
+    showRungLink(sel.rung, sel.modeId);
+    var rosterMode = walkthroughModes(sel.rung).length > 1 ? sel.modeId : null;
+    var row = exhibitFor({ kind: 'rung', id: sel.rung.id, modeId: rosterMode });
+    var title = row ? row.title : sel.rung.title;   // the front-page title when the scene is on the roster
+    var held = true, scene = null;
+    bootRung(sel).then(function (s) {
+        scene = s;
+        if (held) { s.runner.stop(); statusEl.textContent = title; }
+        else { statusEl.textContent = title + ' — live'; }
+    }, function () { /* painted + logged by bootRung */ });
+    openSceneCard({ kind: 'rung', id: sel.rung.id }, rosterMode, function () {
+        if (!held) { return; }
+        held = false;
+        if (scene) { scene.runner.start(); statusEl.textContent = title + ' — live'; }
     });
+}
+
+/** An experiment: the card, then NAVIGATE to its canonical page (replace: Back never bounces here). */
+function playExperiment(id) {
+    var row;
+    try { row = exhibitFor({ kind: 'experiment', id: id }); }   // FAIL-LOUD on an unknown id
+    catch (e) { failLoud('Cannot play ?experiment=' + id, String((e && e.message) || e)); return; }
+    statusEl.textContent = row ? row.title : id;
+    var target = router.resolve('experiments/' + encodeURIComponent(id) + '/index.html') +
+        '?engine=' + encodeURIComponent(ENGINE);
+    openSceneCard({ kind: 'experiment', id: id }, null, function () { location.replace(target); });
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 
-renderNav();
-var params    = new URLSearchParams(window.location.search);
-var wantRung  = params.get('rung');
-var wantMode  = params.get('mode');
-// No deep link -> the registry's OWN first-contact rung (never a local literal).
-selectRung(wantRung || FIRST_CONTACT_WALKTHROUGH_ID, wantMode);
+var params   = new URLSearchParams(window.location.search);
+var wantRung = params.get('rung');
+var wantMode = params.get('mode');
+var wantExp  = params.get('experiment');
+
+if (wantRung && wantExp) {
+    document.documentElement.dataset.player = 'on';
+    failLoud('Ambiguous deep link', '?rung= and ?experiment= name two scenes; a link plays one. (FAIL-LOUD.)');
+} else if (wantExp) {
+    document.documentElement.dataset.player = 'on';
+    playExperiment(wantExp);
+} else if (wantRung) {
+    document.documentElement.dataset.player = 'on';
+    playRung(wantRung, wantMode);
+} else {
+    // No deep link: the gallery, opening on the registry's OWN first-contact rung.
+    renderNav();
+    selectRung(FIRST_CONTACT_WALKTHROUGH_ID, null);
+}
 </script>
 </body>
 </html>
