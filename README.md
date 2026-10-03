@@ -29,6 +29,7 @@ scripts/
   refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
   lib/tree.sh                  the tree fingerprint both refresh scripts use
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
+  test/frontpage.mjs           gate for site/index.html: the #proof cards sit above the hero
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
 .descix/
