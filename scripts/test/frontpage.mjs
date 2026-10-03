@@ -5,6 +5,7 @@
 //
 // Checks:
 //   order  — section#proof (the cards) is the first element after the nav, above the hero.
+//   lede   — the #proof lede is the CEO-approved paragraph, exactly.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,5 +34,20 @@ const text = (s) => decode(s.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim(
 const proofMatch = html.match(/<section\b[^>]*\bid="proof"[^>]*>([\s\S]*?)<\/section>/);
 const proof = proofMatch ? proofMatch[1] : '';
 if (!proofMatch) fail('proof', 'no <section id="proof"> in site/index.html');
+
+// ── lede ─────────────────────────────────────────────────────────────────────
+{
+  const LEDE = 'FRQTL is an actual quantum computer that runs so efficiently it calculates what the ' +
+    'father of quantum computing called ‘absolutely impossible.’ In 1981 Feynman birthed the idea of ' +
+    'what you know as qubit based quantum computing. FRQTL takes a different approach based on the ' +
+    'Monte Carlo method and the work of Stanislaw Ulam. FRQTL’s model is inspired by the approach of ' +
+    'Stanislaw Ulam which was continued after the Manhattan Project at Los Alamos National Laboratory ' +
+    'and later pursued at Brookhaven National Laboratory Quantum Chromodynamics (QCD) and ' +
+    'super-computing projects.';
+  const m = proof.match(/<div class="sec-head">[\s\S]*?<p class="lede">([\s\S]*?)<\/p>/);
+  const got = m ? text(m[1]) : '(no lede)';
+  if (got === LEDE) pass('lede: the #proof lede is the approved paragraph');
+  else fail('lede', 'got "' + got + '"');
+}
 
 process.exit(FAIL);

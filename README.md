@@ -6,6 +6,13 @@ is served at **https://egpt-frqtl.descix.net/**; its MCP connector is **https://
 Self-contained by design: no cross-site linking, and no FRAQTL-monorepo-only route survives in the
 bundle. **PROD is deliberately not a mirror of DEV.**
 
+## Make a new impossible card
+
+Developers are encouraged to make new impossible cards — Three.js-oriented developers especially. A
+card is a scene the FRQTL engine computes live in the visitor's tab: compose it from the SDK's parts,
+render it with the renderer you already know, and propose it for the front page's "Impossible things,
+running." grid (`site/index.html`, section `#proof`).
+
 ## Layout
 
 ```
@@ -29,7 +36,7 @@ scripts/
   refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
   lib/tree.sh                  the tree fingerprint both refresh scripts use
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
-  test/frontpage.mjs           gate for site/index.html: the #proof cards sit above the hero
+  test/frontpage.mjs           gate for site/index.html: #proof cards above the hero, the approved lede
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
 .descix/
