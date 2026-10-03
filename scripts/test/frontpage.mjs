@@ -6,9 +6,11 @@
 // Checks:
 //   order  — section#proof (the cards) is the first element after the nav, above the hero.
 //   lede   — the #proof lede is the CEO-approved paragraph, exactly.
+//   hrefs  — every #proof tile opens the SDK player (pub/index.html) on a scene id the SERVED
+//            registries (site/pub/ide/registry/) declare, with a mode that rung declares.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const html = readFileSync(join(ROOT, 'site', 'index.html'), 'utf8');
@@ -48,6 +50,37 @@ if (!proofMatch) fail('proof', 'no <section id="proof"> in site/index.html');
   const got = m ? text(m[1]) : '(no lede)';
   if (got === LEDE) pass('lede: the #proof lede is the approved paragraph');
   else fail('lede', 'got "' + got + '"');
+}
+
+// ── hrefs ────────────────────────────────────────────────────────────────────
+{
+  const reg = join(ROOT, 'site', 'pub', 'ide', 'registry');
+  const W = await import(pathToFileURL(join(reg, 'walkthrough.js')).href);
+  const E = await import(pathToFileURL(join(reg, 'experiments.js')).href);
+  const tiles = [...proof.matchAll(/<a class="tile[^"]*" href="([^"]*)"[\s\S]*?<b>([^<]*)<\/b>[\s\S]*?<i>([^<]*)<\/i>/g)]
+    .map(([, href, title, cta]) => ({ href: decode(href), title, cta }));
+  if (tiles.length !== 9) fail('hrefs', 'expected 9 #proof tiles, found ' + tiles.length);
+  for (const { href, title, cta } of tiles) {
+    const n = 'hrefs: ' + title;
+    const [path, query = ''] = href.split('?');
+    if (path !== 'pub/index.html') { fail(n, href + ' is not a player URL (pub/index.html)'); continue; }
+    const q = new URLSearchParams(query);
+    const keys = [...q.keys()].sort().join(',');
+    if (keys === 'rung' || keys === 'mode,rung') {
+      const rung = W.WALKTHROUGH.find((r) => r.id === q.get('rung'));
+      if (!rung) { fail(n, 'rung "' + q.get('rung') + '" is not in the walkthrough registry'); continue; }
+      const modes = (rung.modes || []).map((m) => m.id);
+      if (q.has('mode') && !modes.includes(q.get('mode'))) {
+        fail(n, 'mode "' + q.get('mode') + '" is not declared by ' + rung.id + ' [' + modes.join(',') + ']'); continue;
+      }
+    } else if (keys === 'experiment') {
+      if (!E.EXPERIMENTS.some((x) => x.id === q.get('experiment'))) {
+        fail(n, 'experiment "' + q.get('experiment') + '" is not in the experiments registry'); continue;
+      }
+    } else { fail(n, href + ' names neither exactly one rung (+mode) nor one experiment'); continue; }
+    if (cta !== 'Open live ↗') { fail(n, 'call to action is "' + cta + '", not "Open live ↗"'); continue; }
+    pass(n + ' → ' + href);
+  }
 }
 
 process.exit(FAIL);
