@@ -20,7 +20,7 @@ CLI: `npx descix …` from this root (package.json pins @descix/cli; 1.0.9 is in
 `npx descix serve` from this root; the app is detected from cwd (the workspace maps `site.static: "site"`, port `env.gateway.port` = 5173). Open the gateway ROOT `https://localhost:5173/` — the App Shell wrapping the app; `/p/egpt-frqtl` is the bare iframe target the shell loads, not a page to hand out. Files are read from disk on every request: rebuild, refresh, no restart.
 
 ## Upload
-1. `npm test` and `node scripts/test/host-view.mjs --port <n>` pass (README).
+1. `npm test`, `node scripts/test/host-view.mjs --port <n>` and `node scripts/lib/share-contract.mjs` pass (README).
 2. `npx descix site upload -a egpt-frqtl --dry-run` — read both lists: everything uploaded, and "Would remove from the server".
 3. `npx descix site upload -a egpt-frqtl` — a full replace of the served site; the receipt ends `Site uploaded successfully!`.
 4. Served == built: `shasum -a 256 site/index.html` equals `curl -fsS https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/index.html | shasum -a 256` (equal on 2026-10-09); repeat for one changed file.

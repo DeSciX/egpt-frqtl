@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inUploadSet } from './site-manifest.mjs';
 
 export const SHARE_FILE = 'share.json';
 export const DESCRIPTION_MAX = 159; // characters (code points); the contract says < 160
@@ -57,30 +58,6 @@ export function readImageHeader(buf) {
     return { format: 'ico', width: null, height: null };
   }
   return { format: null, width: null, height: null };
-}
-
-// The manifest's upload set for <rel>: excluded when any path segment is a bare-name exclude
-// (SiteWalker tests exclude first and matches a bare directory name at any depth), included when
-// an include entry is the exact path or a `<dir>/**` prefix of it. Any other pattern shape is
-// thrown, not guessed: a matcher that silently disagrees with the uploader is worse than none.
-export function inUploadSet(manifest, rel) {
-  const src = (manifest.sources || []).find((s) => s.path === 'site');
-  if (!src) throw new Error('site manifest has no source with path "site"');
-  const segs = rel.split('/');
-  for (const ex of src.exclude || []) {
-    if (/[*?[\]/]/.test(ex)) throw new Error(`site manifest exclude "${ex}" is not a bare name; this check matches bare names only`);
-    if (segs.includes(ex)) return false;
-  }
-  for (const inc of src.include || []) {
-    if (inc.endsWith('/**') && !/[*?[\]]/.test(inc.slice(0, -3))) {
-      if (rel.startsWith(inc.slice(0, -2))) return true;
-    } else if (/[*?[\]]/.test(inc)) {
-      throw new Error(`site manifest include "${inc}" is neither an exact path nor <dir>/**; this check matches those two shapes only`);
-    } else if (rel === inc) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // Validate <siteDir>/share.json. Returns { present, errors[], facts[] }.

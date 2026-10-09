@@ -111,4 +111,18 @@ R=$(repo hp-noref); B=$(bundle hp-noref "$BUILD" '<script data-frqtl-host-provid
 mkdir -p "$R/site"; printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
 if refresh "$R" "$B"; then fail "refuses-declaration-naming-no-file" "accepted"; elif grep -qF "names no src" "$SCRATCH/hp-noref/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-declaration-naming-no-file"; else fail "refuses-declaration-naming-no-file" "$(cat "$SCRATCH/hp-noref/out.txt")"; fi
 
+# --- Every SITE_FOREIGN entry is in the site manifest's upload set: a file this repo owns outside the
+# bundle that the upload never sends is served by nobody. SITE_FOREIGN is read from the script itself
+# (the one owner of the list); the matcher is scripts/lib/site-manifest.mjs.
+line=$(grep -E '^SITE_FOREIGN=\(.*\)$' "$ROOT/scripts/refresh-site.sh" || true)
+if [ -z "$line" ]; then
+  fail "site-foreign-is-uploaded" "no single-line SITE_FOREIGN=(...) in scripts/refresh-site.sh"
+else
+  eval "$line"
+  if out=$(node "$ROOT/scripts/lib/site-manifest.mjs" --manifest "$ROOT/.descix/manifests/site.json" "${SITE_FOREIGN[@]}" 2>&1); then pass "site-foreign-is-uploaded"; else fail "site-foreign-is-uploaded" "$out"; fi
+  # Control: the same list against a manifest that dropped share.json must be refused, naming it.
+  jq '.sources[0].include -= ["share.json"]' "$ROOT/.descix/manifests/site.json" > "$SCRATCH/no-share-manifest.json"
+  if out=$(node "$ROOT/scripts/lib/site-manifest.mjs" --manifest "$SCRATCH/no-share-manifest.json" "${SITE_FOREIGN[@]}" 2>&1); then fail "site-foreign-not-uploaded-is-refused" "accepted a manifest without share.json"; elif printf '%s' "$out" | grep -qF "site/share.json"; then pass "site-foreign-not-uploaded-is-refused"; else fail "site-foreign-not-uploaded-is-refused" "$out"; fi
+fi
+
 exit "$FAIL"
