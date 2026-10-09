@@ -20,6 +20,8 @@ site/                          the ONLY directory uploaded as the site
   index.html                   front page — authored here, never written by a refresh
   images/*                     front-page images — authored here, never written by a refresh
   DeSciXAppSDK.js              DeSciX app-side SDK — vendored here, never written by a refresh
+  share.json                   share metadata the edge worker injects into the shell head; its
+                               icon and share image live in images/share/ — never written by a refresh
   app.html                     IDE entry — the bundle's index.html
   app-assets/*                 hashed React chunks (vite owns this namespace)
   app-assets/host-view.js      the bundle's one unhashed entry: asks the shell for full-screen
@@ -72,24 +74,25 @@ not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (
 `build` and `phases` only) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
-It also refuses a bundle that ships `app.html`, `index.html`'s published name, `images/`, which
-belongs to the front page, or `DeSciXAppSDK.js`, which this site vendors.
+It also refuses a bundle that ships `app.html`, `index.html`'s published name, or any name in the
+script's `SITE_FOREIGN` — the one list of top-level `site/` entries this repo owns outside the
+bundle (authored or vendored here; see Layout).
 A bundle declares each site file it needs on the element that loads it — `data-frqtl-host-provided`
 (FRAQTL's IDE: `<script src="DeSciXAppSDK.js" data-frqtl-host-provided>`). The script reads those
 names from the bundle's `index.html` and refuses, changing nothing, when a declared name is not in
 the script's `SITE_FOREIGN`, or is missing from `site/`.
 On success it publishes the bundle's `index.html` byte-identical as `site/app.html`, replaces every
 other bundle-derived file in `site/` (files no longer in the bundle are removed), carries
-`site/index.html`, `site/images/` and `site/DeSciXAppSDK.js` over untouched — or leaves them absent
-unless the bundle declares them — and writes
+every `SITE_FOREIGN` entry over untouched — or leaves it absent unless the bundle declares it — and
+writes
 `.descix/site-provenance.json`:
 
 ```
 { upstream_repo, upstream_sha, app_page, file_count, tree_sha256, tree_excludes, refreshed_by_script }
 ```
 
-`file_count` and `tree_sha256` cover the bundle-derived files only; `tree_excludes` names the
-entries owned outside the bundle (`index.html`, `images`, `DeSciXAppSDK.js`).
+`file_count` and `tree_sha256` cover the bundle-derived files only; `tree_excludes` records the
+`SITE_FOREIGN` list the refresh ran with.
 
 A `site/` with no `.descix/site-provenance.json` beside it has no recorded provenance.
 
@@ -116,14 +119,14 @@ recorded as `host_rewrites_dev_to_prod`.
 ### Tree fingerprint
 
 `tree_sha256` is the sha256 of the sorted `sha256  ./path` listing of every file in the tree, minus
-any top-level `tree_excludes` (`scripts/lib/tree.sh::tree_sha256`). For `site/`, whose
-`tree_excludes` are the three `SITE_FOREIGN` names (`index.html`, `images`, `DeSciXAppSDK.js`):
+any top-level `tree_excludes` (`scripts/lib/tree.sh::tree_sha256`). To re-check `site/` against its
+record, with the owner function and the record's own excludes:
 
 ```
-cd site && find . \( -path ./index.html -o -path ./images -o -path ./DeSciXAppSDK.js \) -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256 | shasum -a 256
+(. scripts/lib/tree.sh; tree_sha256 site $(jq -r '.tree_excludes[]' .descix/site-provenance.json))
 ```
 
-**`-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
+**Inside `tree_sha256`, `-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
 spaces (`particles which did not go through a slit at all.png`). A plain `find | xargs shasum`
 splits on whitespace, silently skips that file, and yields a fingerprint that cannot detect a change
 to it.

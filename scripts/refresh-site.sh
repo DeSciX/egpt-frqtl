@@ -5,10 +5,12 @@
 #   scripts/refresh-site.sh <path-to-.deploy-static>
 #
 # The bundle's index.html (the IDE entry) is published as site/app.html, beside its relative
-# app-assets/ and pub/. site/index.html (the front page), site/images/ and site/DeSciXAppSDK.js
-# (the shell SDK shim the front page and the IDE load) are owned OUTSIDE the bundle (SITE_FOREIGN):
+# app-assets/ and pub/. site/index.html (the front page), site/images/, site/DeSciXAppSDK.js (the
+# shell SDK shim the front page and the IDE load) and site/share.json (the share metadata the edge
+# worker injects into the shell head; its assets live under images/) are owned OUTSIDE the bundle
+# (SITE_FOREIGN):
 # a refresh carries them over byte-identical when present, leaves them absent when absent, and
-# refuses a bundle that ships either name or an app.html of its own.
+# refuses a bundle that ships any of those names or an app.html of its own.
 #
 # HOST-PROVIDED: a bundle declares each publisher file it NEEDS on the element that consumes it —
 # `data-frqtl-host-provided` on a src/href in its index.html (FRAQTL's static build splices
@@ -48,7 +50,7 @@ PROVENANCE="$ROOT/.descix/site-provenance.json"
 # bundle. The provenance fingerprint and file count cover the bundle-derived set: SITE_FOREIGN
 # is excluded from both and named in the record as tree_excludes.
 APP_PAGE="app.html"
-SITE_FOREIGN=(index.html images DeSciXAppSDK.js)
+SITE_FOREIGN=(index.html images DeSciXAppSDK.js share.json)
 
 [ $# -eq 1 ] || die "usage: scripts/refresh-site.sh <path-to-.deploy-static>"
 SRC=$1
