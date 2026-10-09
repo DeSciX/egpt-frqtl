@@ -14,6 +14,7 @@
  *     `absent` list, validated at load. No placeholder stands in for it.
  *
  *   exhibitFor({ kind, id, modeId? }) → the roster row, or null (declared: the scene has no card)
+ *   sceneKey({ kind, id, modeId? })   → the scene's run-once seen-key (the one mode normalizer)
  *   showcaseCard(row)                 → { kind, id, modeId, seenKey, title, paragraphs, is3D, absent }
  *
  * The card is the row's title, `what`, `why` (when present) and, on a 3D scene, JOYSTICK_EXPLAINER
@@ -40,6 +41,9 @@ export const EXHIBIT_KINDS = Object.freeze(['rung', 'experiment']);
 
 /** The card's copy parts; a row's `absent` lists the ones with no approved text. */
 export const EXHIBIT_PARTS = Object.freeze(['hook', 'what', 'why']);
+
+/** The copy parts a run-once CARD shows, in order (a subset of EXHIBIT_PARTS; the hook is not on a card). */
+export const CARD_PARTS = Object.freeze(['what', 'why']);
 
 // The authored roster, front-page order. `title` and `what` are the published front-page tile copy
 // (egpt-frqtl site/index.html #proof at 5d2f019: each tile's <b> and its sentence), verbatim; this
@@ -222,9 +226,20 @@ export const JOYSTICK_EXPLAINER = Object.freeze([
     ]),
 ]);
 
-/** The run-once seen-key of a scene: kind, id and (multi-mode rung) mode; never a bare id. */
-export function showcaseCardKey(kind, id, mode) {
-    return 'scene-' + kind + '-' + id + (mode ? '-' + mode : '');
+/**
+ * sceneKey — the run-once seen-key of a scene: kind, id and, for a multi-mode rung, its EFFECTIVE
+ * mode (the one normalizer, rungMode); never a bare id, so it cannot collide with a tab key.
+ * Throws for an unknown kind, id or mode.
+ * @param {{kind: 'rung'|'experiment', id: string, modeId?: string|null}} scene
+ */
+export function sceneKey(scene) {
+    const kind = scene && scene.kind;
+    if (EXHIBIT_KINDS.indexOf(kind) === -1) {
+        throw new Error('[exhibits] unknown scene kind ' + JSON.stringify(kind) + ' — EXHIBIT_KINDS: ' + EXHIBIT_KINDS.join(', ') + '.');
+    }
+    let mode = null;
+    if (kind === 'rung') { mode = rungMode(rungOrThrow(scene.id), scene.modeId); } else { experimentOrThrow(scene.id); }
+    return 'scene-' + kind + '-' + scene.id + (mode ? '-' + mode : '');
 }
 
 /**
@@ -241,14 +256,14 @@ export function showcaseCard(row) {
             JSON.stringify(row && { kind: row.kind, id: row.id }) + '.');
     }
     const is3D = row.kind === 'rung' ? walkthroughIs3D(row.id, row.mode) : experimentIs3D(row.id);
-    let paragraphs = ['what', 'why'].filter((p) => row[p] !== null).map((p) => Object.freeze([row[p]]));
+    let paragraphs = CARD_PARTS.filter((p) => row[p] !== null).map((p) => Object.freeze([row[p]]));
     if (is3D) { paragraphs = paragraphs.concat(JOYSTICK_EXPLAINER); }
     if (paragraphs.length === 0) {
         throw new Error('[exhibits] roster row "' + row.id + '" has nothing to show: no what, no why, not 3D.');
     }
     return Object.freeze({
         kind: row.kind, id: row.id, modeId: row.mode,
-        seenKey: showcaseCardKey(row.kind, row.id, row.mode),
+        seenKey: sceneKey({ kind: row.kind, id: row.id, modeId: row.mode }),
         title: row.title,
         paragraphs: Object.freeze(paragraphs),
         is3D,

@@ -12,7 +12,8 @@
  *     → { ready: Promise<{ row, shows, detail? }>, close() }
  *   recordRunOnceNotOffered(hostEl, seenKey, row, reason) → { close() }   (a host that does not offer it)
  *
- *   paragraphs: Array<Array<string | { text, href: string|null }>> — a null href renders its
+ *   paragraphs: Array<Array<string | { text, href: string|null, em?: true }>> — `em` renders the
+ *   text emphasized (inside the link when it has one); a null href renders its
  *   text unlinked (a link not yet known). Text is always set as text, never parsed as HTML.
  *
  * SEEN-STATE goes through THE storage seam (lib/shim/storage getProvider(), namespace
@@ -136,8 +137,9 @@ function assertSpec(hostEl, spec) {
         para.forEach((seg) => {
             if (typeof seg === 'string') { return; }
             if (!seg || typeof seg.text !== 'string' || !Object.prototype.hasOwnProperty.call(seg, 'href') ||
-                (seg.href !== null && typeof seg.href !== 'string')) {
-                throw new TypeError(`run-once-card: segment ${JSON.stringify(seg)} is neither a string nor { text, href: string|null } (${spec.seenKey})`);
+                (seg.href !== null && typeof seg.href !== 'string') ||
+                (Object.prototype.hasOwnProperty.call(seg, 'em') && seg.em !== true)) {
+                throw new TypeError(`run-once-card: segment ${JSON.stringify(seg)} is neither a string nor { text, href: string|null, em?: true } (${spec.seenKey})`);
             }
         });
     });
@@ -186,12 +188,14 @@ function renderCard(hostEl, spec, onContinue) {
         p.style.cssText = 'margin:0 0 12px;';
         para.forEach((seg) => {
             if (typeof seg === 'string') { p.appendChild(doc.createTextNode(seg)); return; }
-            if (seg.href === null) { p.appendChild(doc.createTextNode(seg.text)); return; }
+            let content = doc.createTextNode(seg.text);
+            if (seg.em === true) { const em = doc.createElement('em'); em.appendChild(content); content = em; }
+            if (seg.href === null) { p.appendChild(content); return; }
             const a = doc.createElement('a');
             a.href = seg.href;
             a.target = '_blank';
             a.rel = 'noopener noreferrer';
-            a.textContent = seg.text;
+            a.appendChild(content);
             a.style.cssText = 'color:#7cc4ff;';
             p.appendChild(a);
         });

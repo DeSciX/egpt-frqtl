@@ -256,7 +256,7 @@ import {
 import { engineRouter } from 'lib/shim/engine/router.js';
 import { bootLocalStorage, recordStorageBoot } from 'lib/shim/storage/boot.js';
 import { openRunOnceCard, recordRunOnceNotOffered } from 'lib/components/run-once-card/index.js';
-import { exhibitFor, showcaseCard, showcaseCardKey } from 'lib/frqtl/experiments/exhibits.js';
+import { exhibitFor, sceneKey, showcaseCard } from 'lib/frqtl/experiments/exhibits.js';
 
 // Page-relative dist root (no trailing slash — engineRouter({mode:'cdn', base}) joins
 // base + '/js/...'). Every engine/renderer/game script and every experiment page re-anchors HERE.
@@ -382,7 +382,7 @@ function renderPanel(rung, modeId) {
     });
 }
 
-/** Re-state ?rung=&mode= (history.replaceState; a single-mode rung carries no mode). */
+/** Re-state the PLAYER's ?rung=&mode= (history.replaceState; a single-mode rung carries no mode). */
 function showRungLink(rung, modeId) {
     var url = new URL(window.location.href);
     url.searchParams.set('rung', rung.id);
@@ -417,7 +417,7 @@ function selectRung(id, modeId) {
     var sel;
     try { sel = resolveRung(id, modeId); }
     catch (e) { failLoud('Unknown walk-through rung or mode', String((e && e.message) || e)); return; }
-    showRungLink(sel.rung, sel.modeId);
+    // The gallery never re-states its selection as ?rung=: that link MEANS the full-screen player.
     highlightNav(id);
     renderPanel(sel.rung, sel.modeId);
     bootRung(sel).then(function (scene) {
@@ -431,20 +431,23 @@ function selectRung(id, modeId) {
  * The card for a scene, from its showcase-roster row; `onGo` runs on Continue, or at once when the
  * card is not shown. A scene with no roster row has no card: the declared outcome
  * not-offered-no-roster-row is recorded on the host and the scene goes at once.
+ * @returns {{close: function}} the card (or the not-offered record) — close() takes it down.
  */
-function openSceneCard(scene, modeId, onGo) {
-    var row = exhibitFor({ kind: scene.kind, id: scene.id, modeId: modeId });
+function openSceneCard(scene, onGo) {
+    var row = exhibitFor(scene);
     if (!row) {
-        recordRunOnceNotOffered(cardHost, showcaseCardKey(scene.kind, scene.id, modeId), 'not-offered-no-roster-row',
-            scene.kind + ' "' + scene.id + '"' + (modeId ? ' mode ' + modeId : '') + ' has no showcase-roster row');
+        var key = sceneKey(scene);
+        var absent = recordRunOnceNotOffered(cardHost, key, 'not-offered-no-roster-row', key + ' has no showcase-roster row');
         onGo();
-        return;
+        return absent;
     }
-    var card = showcaseCard(row);
-    cardHost.dataset.explainerAbsent = card.absent.join(' ');
-    openRunOnceCard(cardHost, {
-        seenKey: card.seenKey, title: card.title, paragraphs: card.paragraphs, onContinue: onGo
-    }).ready.then(function (d) { if (!d.shows) { onGo(); } });
+    var bag = showcaseCard(row);
+    cardHost.dataset.explainerAbsent = bag.absent.join(' ');
+    var card = openRunOnceCard(cardHost, {
+        seenKey: bag.seenKey, title: bag.title, paragraphs: bag.paragraphs, onContinue: onGo
+    });
+    card.ready.then(function (d) { if (!d.shows) { onGo(); } });
+    return card;
 }
 
 /**
@@ -456,16 +459,21 @@ function playRung(id, modeId) {
     try { sel = resolveRung(id, modeId); }
     catch (e) { failLoud('Unknown walk-through rung or mode', String((e && e.message) || e)); return; }
     showRungLink(sel.rung, sel.modeId);
-    var rosterMode = walkthroughModes(sel.rung).length > 1 ? sel.modeId : null;
-    var row = exhibitFor({ kind: 'rung', id: sel.rung.id, modeId: rosterMode });
+    var sceneRef = { kind: 'rung', id: sel.rung.id, modeId: sel.modeId };
+    var row = exhibitFor(sceneRef);
     var title = row ? row.title : sel.rung.title;   // the front-page title when the scene is on the roster
-    var held = true, scene = null;
+    var held = true, scene = null, card = null;
     bootRung(sel).then(function (s) {
         scene = s;
         if (held) { s.runner.stop(); statusEl.textContent = title; }
         else { statusEl.textContent = title + ' — live'; }
-    }, function () { /* painted + logged by bootRung */ });
-    openSceneCard({ kind: 'rung', id: sel.rung.id }, rosterMode, function () {
+    }, function () {
+        // bootRung painted the failure overlay inside the mount, UNDER the card: take the card down so
+        // the failure is seen at once (unremembered — the viewer never continued).
+        held = false;
+        if (card) { card.close(); }
+    });
+    card = openSceneCard(sceneRef, function () {
         if (!held) { return; }
         held = false;
         if (scene) { scene.runner.start(); statusEl.textContent = title + ' — live'; }
@@ -480,7 +488,7 @@ function playExperiment(id) {
     statusEl.textContent = row ? row.title : id;
     var target = router.resolve('experiments/' + encodeURIComponent(id) + '/index.html') +
         '?engine=' + encodeURIComponent(ENGINE);
-    openSceneCard({ kind: 'experiment', id: id }, null, function () { location.replace(target); });
+    openSceneCard({ kind: 'experiment', id: id }, function () { location.replace(target); });
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

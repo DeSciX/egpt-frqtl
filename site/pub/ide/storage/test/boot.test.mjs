@@ -27,12 +27,16 @@ function trackedSources() {
     return out.split('\n').filter((f) => /\.(m?js|jsx|html)$/.test(f) && !/(^|\/)test\//.test(f));
 }
 
-function constructionSites(files) {
+/** The tracked sources as { rel, text } — what the gate reads. */
+function readSources(files) {
+    return files.filter((rel) => fs.existsSync(path.join(repoRoot, rel)))
+        .map((rel) => ({ rel, text: fs.readFileSync(path.join(repoRoot, rel), 'utf8') }));
+}
+
+function constructionSites(sources) {
     const sites = [];
-    for (const rel of files) {
-        const abs = path.join(repoRoot, rel);
-        if (!fs.existsSync(abs)) { continue; }
-        fs.readFileSync(abs, 'utf8').split('\n').forEach((line) => {
+    for (const { rel, text } of sources) {
+        text.split('\n').forEach((line) => {
             const code = line.replace(/\/\/.*$/, '');
             if (/^\s*\*/.test(line)) { return; }                 // JSDoc body
             if (/new\s+LocalStorageProvider\s*\(/.test(code)) { sites.push(rel); }
@@ -45,18 +49,14 @@ test('ONE construction site: only lib/shim/storage/boot.js constructs a LocalSto
     const files = trackedSources();
     assert.ok(files.some((f) => f.startsWith('apps/')), 'the walk reaches apps/');
     assert.ok(files.some((f) => f.startsWith('sdk/frqtl-sdk/src/')), 'the walk reaches sdk/frqtl-sdk/src/');
-    assert.deepEqual(constructionSites(files), ['lib/shim/storage/boot.js']);
+    assert.deepEqual(constructionSites(readSources(files)), ['lib/shim/storage/boot.js']);
 });
 
-test('NEGATIVE CONTROL: a construction site planted under sdk/frqtl-sdk/src/ is caught', function () {
-    const planted = 'sdk/frqtl-sdk/src/zz-planted-storage-site.html';
-    fs.writeFileSync(path.join(repoRoot, planted), '<script type="module">\n  setActiveProvider(new LocalStorageProvider());\n</script>\n');
-    try {
-        assert.deepEqual(constructionSites([...trackedSources(), planted]).sort(),
-            ['lib/shim/storage/boot.js', planted].sort());
-    } finally {
-        fs.unlinkSync(path.join(repoRoot, planted));
-    }
+test('NEGATIVE CONTROL: a construction site planted (in memory) under sdk/frqtl-sdk/src/ is caught', function () {
+    const planted = { rel: 'sdk/frqtl-sdk/src/zz-planted-storage-site.html',
+        text: '<script type="module">\n  setActiveProvider(new LocalStorageProvider());\n</script>\n' };
+    assert.deepEqual(constructionSites(readSources(trackedSources()).concat([planted])).sort(),
+        ['lib/shim/storage/boot.js', planted.rel].sort());
 });
 
 function fakeLocalStorage({ blocked = false } = {}) {
