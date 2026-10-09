@@ -37,9 +37,8 @@
  *
  * ── Usage ──────────────────────────────────────────────────────────────────
  *
- *   import { setActiveProvider } from 'lib/shim/storage';
- *   import { LocalStorageProvider } from 'lib/shim/storage/local-storage-provider.js';
- *   setActiveProvider(new LocalStorageProvider());
+ *   Constructed in ONE place: lib/shim/storage/boot.js bootLocalStorage(), which a browser
+ *   surface calls at boot (gated by test/boot.test.mjs). Never construct it elsewhere.
  */
 
 'use strict';
@@ -47,12 +46,13 @@
 var _PREFIX = 'frqtl';
 
 /**
- * Build the localStorage key for a given namespace + key pair.
+ * Build the localStorage key for a given namespace + key pair — the ONE owner of the
+ * key format (exported so a harness that seeds storage never re-types it).
  * @param {string} namespace
  * @param {string} key
  * @returns {string}
  */
-function _storageKey(namespace, key) {
+export function storageKeyOf(namespace, key) {
   return _PREFIX + ':' + namespace + ':' + key;
 }
 
@@ -123,7 +123,7 @@ export class LocalStorageProvider {
   get(namespace, key) {
     _assertNonEmptyString(namespace, 'namespace');
     _assertNonEmptyString(key, 'key');
-    var raw = this._ls.getItem(_storageKey(namespace, key));
+    var raw = this._ls.getItem(storageKeyOf(namespace, key));
     if (raw === null) { return null; }
     try {
       return JSON.parse(raw);
@@ -156,7 +156,7 @@ export class LocalStorageProvider {
       );
     }
     try {
-      this._ls.setItem(_storageKey(namespace, key), serialised);
+      this._ls.setItem(storageKeyOf(namespace, key), serialised);
     } catch (e) {
       throw new Error(
         '[LocalStorageProvider] localStorage.setItem failed for "' + namespace + '/' + key +
@@ -175,7 +175,7 @@ export class LocalStorageProvider {
   delete(namespace, key) {
     _assertNonEmptyString(namespace, 'namespace');
     _assertNonEmptyString(key, 'key');
-    this._ls.removeItem(_storageKey(namespace, key));
+    this._ls.removeItem(storageKeyOf(namespace, key));
   }
 
   /**

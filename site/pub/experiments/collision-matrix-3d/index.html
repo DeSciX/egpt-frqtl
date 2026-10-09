@@ -102,8 +102,9 @@
                 <span class="val" id="ctrl-angle-val">0.0</span>
             </label>
             <!-- Camera orbit sliders — shown only for an ANGULAR camera (OrbitBag.hasAngularPose
-                 on the camera handle's poseFields); zero renderer sniffing. -->
-            <span id="camera-controls" style="display:none; align-items:center; gap:16px;">
+                 on the camera handle's poseFields); zero renderer sniffing. The group WRAPS within
+                 the controls row on a narrow screen instead of clipping its last column. -->
+            <span id="camera-controls" style="display:none; align-items:center; gap:8px 16px; flex-wrap:wrap; max-width:100%;">
                 <label title="Orbit horizontally">
                     cam azimuth:
                     <input type="range" id="cam-azimuth" min="-180" max="180" step="1" value="-25">
@@ -285,7 +286,14 @@
                 var btn = document.getElementById('cam-preset-' + name);
                 if (btn) { btn.addEventListener('click', function () { cam.setPreset(name); _syncSliders(); }); }
             });
+            // The sliders FOLLOW the camera whichever surface moved it (joystick, wheel,
+            // keyboard) — the handle's own pose notice, never a forward from each writer.
+            cam.addPoseListener(_syncSliders);
         }
+
+        // MOVE/LOOK joysticks (pointer + touch) — the reusable camera sugar; FAIL-SOFT
+        // no-op on a flat camera, idempotent per mount.
+        window.CameraControls.attach(runner, document.getElementById('canvas-wrapper'));
 
         // ── Metrics ────────────────────────────────────────────────────────────
         var lanes = runner.setupResult.lanes || [];
