@@ -8,11 +8,12 @@ PLATFORM WALL: when the handbook does not answer — stop, write the question wi
 # egpt-frqtl — the FRQTL IDE and its front page: a PROD app of the egpt community
 Public URL https://egpt-frqtl.descix.net/ (frqtl.com 301-forwards to it); app id `egpt-frqtl`, community `egpt`.
 One site, one repo: this repo builds and uploads this app; nothing else uploads to it, and no other app's files live here. The front page is generated from the shared template (egpt-courantgroup `site/index.html`) and this app's content block in EGPT-Evidence `site-src/frontpage/egpt-frqtl.json`; only the built OUTPUT lives here.
+`site/share.json` and `site/images/share/` are this repo's: it authors, validates (`scripts/lib/share-contract.mjs`) and uploads them; nothing else writes them (CEO-COMMS record Unkamon 540758a).
 CLI: `npx descix …` from this root (package.json pins @descix/cli; 1.0.9 is installed). The published 1.0.20 also runs here as `npx -y -p @descix/cli@1.0.20 descix …`. Either prints `env: prod (.descix/workspace.json env.apiUrl) https://descix.net` as its first line (measured 2026-10-09) — read that line on every call.
 
 ## Layout
 - `site/` is the only directory uploaded. Authored here: `index.html` (front page, full screen via `app-assets/host-view.js`), `share.json` (title, description, icon, og_image, apple_touch_icon), `images/` with `images/share/` (favicon.ico, icon-180.png, share-1200x630.png), `DeSciXAppSDK.js` (vendored). Bundle-derived, written only by `scripts/refresh-site.sh`: `app.html` (the IDE), `app-assets/*`, `pub/*`.
-- `.descix/manifests/site.json` is an explicit include allowlist: a new file or directory under `site/` must be added to its `include` or the upload silently leaves it out (that is how share.json was missed once).
+- `.descix/manifests/site.json` is an explicit include allowlist: a new file or directory under `site/` must be added to its `include` or the upload silently leaves it out.
 - `kb/` (five KBs, one manifest each), `plugin/` (the `frqtl` Claude plugin), `scripts/` (refresh, tests): README.md owns those procedures; read it before touching any of them.
 - Nothing in `site/` may use a root-absolute path: PROD serves the bundle under `/prod/egpt-frqtl/site/`, `descix serve` under `/p/egpt-frqtl/`.
 
