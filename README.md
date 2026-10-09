@@ -37,10 +37,12 @@ scripts/
   refresh-site.sh              replace site/'s bundle-derived files from a FRAQTL .deploy-static bundle
   refresh-kb.sh                replace kb/General or kb/frqtl_sdk from a publish-corpus output dir
   lib/tree.sh                  the tree fingerprint both refresh scripts use
+  lib/share-contract.mjs       the pre-upload check of site/share.json against runbook §7.3
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
   test/frontpage.mjs           gate for site/index.html: #proof cards first, approved lede, player hrefs
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
+  test/share-contract.mjs      controls for lib/share-contract.mjs (`npm test`)
 .descix/
   manifests/site.json          site publish allowlist
   manifests/<KB>.json          one KB manifest per kb/<KB> directory
@@ -139,6 +141,7 @@ workspace, API URL and environment in use). Always dry-run first.
 | What | Command |
 |---|---|
 | Site host-view gate | `node scripts/test/host-view.mjs --port <n>` against `site/` — must report 5/5 PASS before `descix site upload` |
+| Site share-contract gate | `node scripts/lib/share-contract.mjs` — `site/share.json` (the link-preview card; contract: the app-developer runbook §7.3) must report PASS before `descix site upload`; it reports ABSENT and exits 0 when there is none |
 | Site | `descix site upload --dry-run`, then `descix site upload` |
 | One KB | `descix kb corpus sync --kb <General\|frqtl_sdk\|HowToSee\|Personas\|Recipes> --dry-run`, then without `--dry-run` |
 
