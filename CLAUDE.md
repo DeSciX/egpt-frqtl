@@ -2,7 +2,7 @@
 LANE: app          ENV: PROD (read .descix/workspace.json; `descix whoami` must print prod, chosen by env.apiUrl — never by an environment variable)
 SDK: the published @descix/cli and @descix/app-sdk only, as an external developer — the handbook below, never platform source (nothing under Unkamon/DeSciX or any DeSciX_* tree)
 INDEX: /Users/essam/Code/Unkamon/CLAUDE.md (imported at the end of this file) — repo map, runbooks, SME pointers, how modes switch
-HANDBOOK: 1 `descix tell-me-how "<question>"`  2 the docs shipped inside @descix/cli (agent-assets/) and @descix/app-sdk (README.md)  3 /Users/essam/Code/daita/site/docs  4 the canonical app-developer runbook: /Users/essam/Code/daita/site/docs/app-sdk/app-developer-runbook.md (source DeSciX/V2_docs, rebuilt into the daita dist; live URL pending the PROD docs app)
+HANDBOOK: 1 `descix tell-me-how "<question>"`  2 the docs shipped inside @descix/cli (agent-assets/) and @descix/app-sdk (README.md)  3 /Users/essam/Code/daita/site/docs  4 the canonical app-developer runbook: /Users/essam/Code/daita/site/docs/app-sdk/app-developer-runbook.md (source DeSciX/V2_docs, rebuilt into the daita dist; live at https://descix.net/prod/daita-docs/site/app-sdk/app-developer-runbook.html)
 PLATFORM WALL: when the handbook does not answer — stop, write the question with evidence (command, output, the CLI's origin line), hand it to your orchestrator; the orchestrator asks Sam to open a platform session in Unkamon (DEVPLANE). Never open platform source to answer it.
 
 # egpt-frqtl — the FRQTL IDE and its front page: a PROD app of the egpt community
