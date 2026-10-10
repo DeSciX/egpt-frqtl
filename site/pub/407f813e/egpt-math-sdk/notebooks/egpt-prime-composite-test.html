@@ -8,10 +8,6 @@ through multiplication and division — **without ever reducing**. It stores eve
 of every multiplication step as an explicit `{ prime, location }` record so that callers can
 recover the full signed-prime structure even after operations that would normally cancel.
 
-This matters for the BIPP (Boolean Interpretation Prime-Probability) CNF↔polynomial bijection:
-the literal polarity of a SAT variable is recovered from whether its prime lands in the
-`numerator` or `denominator` of the product composite — so the records must never be collapsed.
-
 This suite verifies five acceptance properties (T5 Engineering #1, Option B):
 
 | Phase | Property |
@@ -198,10 +194,6 @@ return { p2: getResults() };
 The **AP4 anti-pattern** is the bug where multiplying `(Y − 3) × (Y − 1/3)` reduces the
 constant term `(−3) × (−1/3) = 1` immediately, discarding the information that prime `3`
 appeared in both the numerator (from the factor `−3`) and the denominator (from `−1/3`).
-
-For the BIPP bijection this is fatal: the SAT witness recovery step reads back which primes
-appeared in which location to determine literal polarity. A reduced `1` carries no polarity
-information.
 
 `EGPTPolynomial.multiplyNoReduce` multiplies two `EGPTPrimeComposite[]` coefficient arrays
 without ever reducing the coefficients — the constant term of the product must carry both

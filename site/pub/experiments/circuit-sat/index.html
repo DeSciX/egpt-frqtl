@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Circuit SAT: Half-Adder (LogicGate + Trace, 2D)</title>
-    <link rel="stylesheet" href="../../90da229b/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../407f813e/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -60,8 +60,8 @@
 <body>
 
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../90da229b/js/lib/","assets/render/":"../../90da229b/js/consumers/","assets/models/":"../../90da229b/js/models/","compat/providers/":"../../90da229b/js/compat/","compat/":"../../90da229b/js/compat/","objects/":"../../90da229b/js/game/","experiments/_shared/":"../../90da229b/experiments/_shared/","experiments/":"../../90da229b/experiments/","shim/":"../../90da229b/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../90da229b/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../407f813e/js/lib/","assets/render/":"../../407f813e/js/consumers/","assets/models/":"../../407f813e/js/models/","compat/providers/":"../../407f813e/js/compat/","compat/":"../../407f813e/js/compat/","objects/":"../../407f813e/js/game/","experiments/_shared/":"../../407f813e/experiments/_shared/","experiments/":"../../407f813e/experiments/","shim/":"../../407f813e/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../407f813e/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- 2D ONLY (p5). Every net in this circuit routes on the x/y grid and the conduction
          picture is a flat x-y observable, so no ?egpt3D path is offered here on purpose.
@@ -71,9 +71,9 @@
          stack-boot's literal copy), so this line is belt-and-braces in the setupTraceCircuit
          precedent: a classic script re-executed is idempotent, and listing the page's own
          scene dependency here keeps it legible. -->
-    <script src="../../90da229b/experiments/_shared/stack-boot.js"
+    <script src="../../407f813e/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../90da229b/js/game/setup/setupHalfAdder.js
+            ../../407f813e/js/game/setup/setupHalfAdder.js
         "></script>
 
     <div class="experiment-container">
