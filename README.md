@@ -25,7 +25,12 @@ site/                          the ONLY directory uploaded as the site
   app.html                     IDE entry — the bundle's index.html
   app-assets/*                 hashed React chunks (vite owns this namespace)
   app-assets/host-view.js      the bundle's one unhashed entry: asks the shell for full-screen
-  pub/*                        engine, vendor, experiments, ide, notebooks, math SDK
+  pub/index.html, pub/sdk.html, pub/artifact/*.html, pub/experiments/<id>/index.html
+                               the bundle's HTML entries — fixed URLs (the front-page tiles open
+                               pub/index.html?…), served no-store
+  pub/<build>/*                everything those entries load: engine, vendor, experiment scripts, ide,
+                               notebooks, math SDK — <build> is the bundle's data-frqtl-site-build stamp,
+                               so a new build is a new directory and no browser-held old file is reused
 kb/
   General/                     adopted — FRAQTL `make publish-corpus` output, never hand-edited
   frqtl_sdk/                   adopted — FRAQTL `make publish-corpus` output, never hand-edited
@@ -40,6 +45,7 @@ scripts/
   lib/share-contract.mjs       the pre-upload check of site/share.json against runbook §7.3
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
   test/frontpage.mjs           gate for site/index.html: #proof cards first, approved lede, player hrefs
+                               (against the served registries under site/pub/<upstream_sha>/)
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
   test/share-contract.mjs      controls for lib/share-contract.mjs (`npm test`)
@@ -83,8 +89,11 @@ A bundle declares each site file it needs on the element that loads it — `data
 (FRAQTL's IDE: `<script src="DeSciXAppSDK.js" data-frqtl-host-provided>`). The script reads those
 names from the bundle's `index.html` and refuses, changing nothing, when a declared name is not in
 the script's `SITE_FOREIGN`, or is missing from `site/`.
+The stamp also names the bundle's graph directory: the script refuses a bundle without
+`pub/<stamp>/`, or with any other `pub/<8 hex digits>/` beside it.
 On success it publishes the bundle's `index.html` byte-identical as `site/app.html`, replaces every
-other bundle-derived file in `site/` (files no longer in the bundle are removed), carries
+other bundle-derived file in `site/` (files no longer in the bundle are removed — the previous
+build's `pub/<build>/` with them), carries
 every `SITE_FOREIGN` entry over untouched — or leaves it absent unless the bundle declares it — and
 writes
 `.descix/site-provenance.json`:

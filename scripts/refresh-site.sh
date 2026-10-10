@@ -21,7 +21,10 @@
 #
 # The bundle's build sha is read from the data-frqtl-site-build attribute in its
 # index.html — the bytes published as site/app.html. A bundle without it is refused: provenance
-# is read from the bytes, never typed by hand.
+# is read from the bytes, never typed by hand. The stamp also NAMES the bundle's graph directory:
+# every file the entry pages load sits under pub/<build>/ (the HTML entries stay at fixed URLs),
+# so the bundle must carry pub/<build>/ and no other pub/<8-hex>/ directory — derived from the
+# stamp, never a second derivation.
 #
 # TWO refusals, two facts, both read from the bundle itself:
 #   KNOWN_FAILING.json   present  → the bundle ships surfaces known to fail with no
@@ -64,8 +67,13 @@ SRC=$(cd "$SRC" && pwd)
 builds=$(grep -oE 'data-frqtl-site-build="[^"]*"' "$SRC/index.html" | sed -E 's/^data-frqtl-site-build="(.*)"$/\1/' | sort -u || true)
 [ -n "$builds" ] || die "$SRC/index.html carries no data-frqtl-site-build attribute — rebuild the bundle with FRAQTL \`make static-deploy\` at a ref that stamps it"
 [ "$(printf '%s\n' "$builds" | wc -l | tr -d ' ')" -eq 1 ] || die "$SRC/index.html carries conflicting data-frqtl-site-build values: $(echo $builds)"
-printf '%s' "$builds" | grep -qE '^[0-9a-f]{7,40}$' || die "data-frqtl-site-build=\"$builds\" is not a git sha"
+printf '%s' "$builds" | grep -qE '^[0-9a-f]{8}$' || die "data-frqtl-site-build=\"$builds\" is not a build id (8 hex digits)"
 UPSTREAM_SHA=$builds
+
+# The graph directory the stamp names, and no other build's.
+[ -d "$SRC/pub/$UPSTREAM_SHA" ] || die "$SRC/pub/$UPSTREAM_SHA/ is missing — the bundle's index.html is stamped $UPSTREAM_SHA, so its graph must sit under pub/$UPSTREAM_SHA/"
+others=$(cd "$SRC/pub" && for d in */; do d=${d%/}; printf '%s\n' "$d"; done | grep -E '^[0-9a-f]{8}$' | grep -vx "$UPSTREAM_SHA" || true)
+[ -z "$others" ] || die "$SRC/pub/ carries another build's graph directory ($(echo $others)) beside pub/$UPSTREAM_SHA/ — one bundle, one build"
 
 # The verification record must exist, belong to THIS build, and be GREEN in every phase.
 check_verification "$SRC/VERIFICATION.json" "$UPSTREAM_SHA"
