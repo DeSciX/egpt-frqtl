@@ -53,8 +53,13 @@ import {
     DEV_CORE_PROFILE,
     DIST_PROFILE,
     CDN_PROFILE,
-    STATIC_PROFILE,
     STATIC_SDK_DIR,
+    SITE_BUILD_ATTR,
+    buildDistProfile,
+    buildStaticProfile,
+    staticGraphDir,
+    staticSdkBase,
+    staticEntryBase,
     CDN_SDK_VERSION,
     CDN_MATH_SDK_VERSION,
     CDN_BASE,
@@ -80,6 +85,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // lib/shim/engine/test → repo root is four levels up.
 const ROOT = path.resolve(__dirname, '../../../..');
 
+// A sample site build id and the static profile with document-relative values for it.
+const BUILD = 'ab12cd34';
+const STATIC_DOC_REL = buildStaticProfile(staticGraphDir(BUILD), STATIC_SDK_DIR);
+
 function nonPrivateKeys(profile) {
     return Object.keys(profile).filter((k) => !k.startsWith('__')).sort();
 }
@@ -88,14 +97,14 @@ test('router: four-way profile-key parity (dev/dist/cdn/static)', () => {
     const dev = nonPrivateKeys(DEV_CORE_PROFILE);
     const dist = nonPrivateKeys(DIST_PROFILE);
     const cdn = nonPrivateKeys(CDN_PROFILE);
-    const stat = nonPrivateKeys(STATIC_PROFILE);
+    const stat = nonPrivateKeys(STATIC_DOC_REL);
     assert.deepEqual(dev, dist, 'DEV_CORE_PROFILE and DIST_PROFILE non-private keys must match');
     assert.deepEqual(dev, cdn, 'DEV_CORE_PROFILE and CDN_PROFILE non-private keys must match');
-    assert.deepEqual(dev, stat, 'DEV_CORE_PROFILE and STATIC_PROFILE non-private keys must match');
+    assert.deepEqual(dev, stat, 'DEV_CORE_PROFILE and the static profile non-private keys must match');
     assert.ok(DEV_CORE_PROFILE.__vendorBase, '__vendorBase must be defined in DEV_CORE_PROFILE');
     assert.ok(DIST_PROFILE.__vendorBase, '__vendorBase must be defined in DIST_PROFILE');
     assert.ok(CDN_PROFILE.__vendorBase, '__vendorBase must be defined in CDN_PROFILE');
-    assert.ok(STATIC_PROFILE.__vendorBase, '__vendorBase must be defined in STATIC_PROFILE');
+    assert.ok(STATIC_DOC_REL.__vendorBase, '__vendorBase must be defined in the static profile');
 });
 
 test('router: CDN pinned-version constants match sdk package.json versions', () => {
@@ -161,16 +170,19 @@ test('router: CDN_PROFILE resolves the SAME dist sub-path as DIST_PROFILE for ev
     }
 });
 
-test('router: mode=static anchors every URL at the site ./pub directory of the DOCUMENT, under any path prefix', () => {
+test('router: mode=static anchors the GRAPH at the site ./pub/<build> directory of the DOCUMENT and the experiment ENTRIES at ./pub, under any path prefix', () => {
     // The platform serves the site under /<env>/<app_id>/site/; a root host serves it at /.
     // Both anchors must yield the site's own ./pub — a root-absolute '/pub' passes the root
     // case and 404s under the prefix, so the prefix case is the one that can fail.
-    for (const [doc, BASE] of [
+    for (const [doc, ENTRY] of [
         ['https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/index.html?preset=author', 'https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/pub'],
         ['http://127.0.0.1:5583/p/egpt-frqtl/', 'http://127.0.0.1:5583/p/egpt-frqtl/pub'],
         ['http://127.0.0.1:5583/', 'http://127.0.0.1:5583/pub'],
     ]) {
-        const r = engineRouter({ mode: 'static', engine: 'wasm', documentBaseURI: doc });
+        const BASE = ENTRY + '/' + BUILD;
+        assert.equal(staticSdkBase(doc, BUILD), BASE);
+        assert.equal(staticEntryBase(doc), ENTRY);
+        const r = engineRouter({ mode: 'static', engine: 'wasm', documentBaseURI: doc, build: BUILD });
 
         assert.equal(r.wasmPkgUrl, BASE + '/fat/pkg-web/egpt_wasm.js');
         assert.equal(r.resolve('assets/vendor/monaco/vs'), BASE + '/js/lib/monaco/vs');
@@ -178,10 +190,10 @@ test('router: mode=static anchors every URL at the site ./pub directory of the D
         assert.equal(r.resolve('compat/providers/wasm-engine.js'), BASE + '/js/compat/wasm-engine.js');
         assert.equal(r.resolve('objects/setup/setupDoubleSlit.js'), BASE + '/js/game/setup/setupDoubleSlit.js');
         assert.equal(r.resolve('objects/geometry/Rectangle.js'), BASE + '/js/game/geometry/Rectangle.js');
-        // General experiments/ key; experiments/_shared/ still wins first-match.
-        assert.equal(r.resolve('experiments/empty/index.html'), BASE + '/experiments/empty/index.html');
+        // The experiment pages are ENTRIES (fixed); experiments/_shared/ is GRAPH and wins first-match.
+        assert.equal(r.resolve('experiments/empty/index.html'), ENTRY + '/experiments/empty/index.html');
         assert.equal(r.resolve('experiments/_shared/engine-boot.js'), BASE + '/experiments/_shared/engine-boot.js');
-        assert.ok(r.bootSrc().startsWith(BASE + '/'), 'bootSrc must resolve under the site ./pub');
+        assert.ok(r.bootSrc().startsWith(BASE + '/'), 'bootSrc must resolve under the stamped graph');
 
         // Math + notebook lanes are SAME-ORIGIN in the co-served tree, NOT cross-origin jsdelivr.
         assert.equal(r.mathSdkUrl, BASE + '/egpt-math-sdk/index.js');
@@ -190,49 +202,100 @@ test('router: mode=static anchors every URL at the site ./pub directory of the D
         assert.equal(r.notebookBase, BASE + '/notebooks');
         assert.equal(r.vendorBase, BASE + '/vendor');
         for (const s of [...r.engineScripts(), ...r.gameScripts()]) {
-            assert.ok(s.src.startsWith(BASE + '/'), `script not under the site ./pub: ${s.src}`);
+            assert.ok(s.src.startsWith(BASE + '/'), `script not under the stamped graph: ${s.src}`);
         }
     }
 });
 
-test('router: mode=static FAILS LOUD on a supplied base, a missing document, and an unmapped path', () => {
-    assert.throws(() => engineRouter({ mode: 'static', base: '/pub', documentBaseURI: 'http://h/' }),
+test('router: staticGraphDir is the one spelling of ./pub/<build>, and refuses a non-build id', () => {
+    assert.equal(staticGraphDir(BUILD), './pub/' + BUILD);
+    for (const bad of [undefined, '', 'AB12CD34', 'ab12cd3', 'ab12cd345', '../x', 'abcdefgh']) {
+        assert.throws(() => staticGraphDir(bad), /build id must match/, 'accepted ' + JSON.stringify(bad));
+        assert.throws(() => staticSdkBase('http://h/', bad), /build id must match/);
+    }
+});
+
+test('router: mode=static FAILS LOUD on a supplied base, a missing document, a missing build, and an unmapped path', () => {
+    assert.throws(() => engineRouter({ mode: 'static', base: '/pub', documentBaseURI: 'http://h/', build: BUILD }),
         /takes no opts\.base/);
     assert.equal(typeof document, 'undefined', 'this test runs where no document exists');
     assert.throws(() => engineRouter({ mode: 'static' }), /resolves against the document/);
-    const r = engineRouter({ mode: 'static', documentBaseURI: 'http://h/prod/app/site/' });
+    assert.throws(() => engineRouter({ mode: 'static', documentBaseURI: 'http://h/prod/app/site/' }), /needs opts\.build/);
+    assert.throws(() => engineRouter({ mode: 'static', documentRelative: true }), /needs opts\.build/);
+    assert.throws(() => engineRouter({ mode: 'dist', build: BUILD }), /opts\.build applies only to mode:"static"/);
+    const r = engineRouter({ mode: 'static', documentBaseURI: 'http://h/prod/app/site/', build: BUILD });
     assert.throws(() => r.resolve('unmapped/thing.js'), /no profile prefix for "unmapped\/thing\.js"/);
     // dev-core keeps its 1:1 /frqtl mount fallback.
     assert.equal(engineRouter({ mode: 'dev-core' }).resolve('unmapped/thing.js'), '/frqtl/unmapped/thing.js');
 });
 
-test('router: mode=static documentRelative resolves STATIC_PROFILE\'s document-relative values through resolve(), and fails loud off-contract', () => {
-    const r = engineRouter({ mode: 'static', documentRelative: true });
-    assert.equal(r.vendorBase, STATIC_PROFILE.__vendorBase);
-    assert.equal(r.resolve('objects/setup-esm/setupDoubleSlit.js'), './pub/js/game/setup-esm/setupDoubleSlit.js');
+test('router: mode=static in a browser reads the build off <html SITE_BUILD_ATTR> and THROWS without it', () => {
+    const doc = 'https://h/prod/app/site/index.html';
+    const stamp = { value: null };
+    globalThis.document = {
+        baseURI: doc,
+        documentElement: { getAttribute: (name) => (name === SITE_BUILD_ATTR ? stamp.value : null) },
+    };
+    try {
+        assert.throws(() => engineRouter({ mode: 'static' }), /carries no build stamp/);
+        stamp.value = 'not-a-sha';
+        assert.throws(() => engineRouter({ mode: 'static' }), /build id must match/);
+        stamp.value = BUILD;
+        const r = engineRouter({ mode: 'static' });
+        assert.equal(r.resolve('compat/egpt-engine.js'), 'https://h/prod/app/site/pub/' + BUILD + '/js/compat/egpt-engine.js');
+        assert.equal(r.resolve('experiments/empty/index.html'), 'https://h/prod/app/site/pub/experiments/empty/index.html');
+        assert.throws(() => engineRouter({ mode: 'static', build: BUILD }), /reads the build from <html/);
+    } finally {
+        delete globalThis.document;
+    }
+});
+
+test('router: mode=static documentRelative resolves the stamped document-relative values through resolve(), and fails loud off-contract', () => {
+    const r = engineRouter({ mode: 'static', documentRelative: true, build: BUILD });
+    assert.equal(r.vendorBase, STATIC_DOC_REL.__vendorBase);
+    assert.equal(r.resolve('objects/setup-esm/setupDoubleSlit.js'), './pub/' + BUILD + '/js/game/setup-esm/setupDoubleSlit.js');
     // The same URL the absolute static router yields once the document resolves it.
     const doc = 'https://h/prod/app/site/index.html';
     assert.equal(new URL(r.resolve('compat/providers/wasm-engine.js'), doc).href,
-        engineRouter({ mode: 'static', documentBaseURI: doc }).resolve('compat/providers/wasm-engine.js'));
+        engineRouter({ mode: 'static', documentBaseURI: doc, build: BUILD }).resolve('compat/providers/wasm-engine.js'));
     assert.throws(() => engineRouter({ mode: 'dist', documentRelative: true }), /applies only to mode:"static"/);
-    assert.throws(() => engineRouter({ mode: 'static', documentRelative: true, documentBaseURI: doc }), /are exclusive/);
+    assert.throws(() => engineRouter({ mode: 'static', documentRelative: true, documentBaseURI: doc, build: BUILD }), /are exclusive/);
 });
 
-test('router: STATIC_PROFILE resolves the SAME dist sub-path as DIST_PROFILE for every shared key', () => {
-    // STATIC_PROFILE serves the identical physical sdk/frqtl-sdk/dist/ tree as DIST_PROFILE,
-    // re-anchored at the document-relative STATIC_SDK_DIR. Strip '../../' from DIST and
-    // STATIC_SDK_DIR + '/' from STATIC: the remaining sub-path must be identical for every
-    // non-private (shared) key. (The private math/notebook lanes DIVERGE by design.)
-    assert.equal(STATIC_SDK_DIR, './pub', 'the deploy layout places the sdk payload at ./pub');
+test('router: buildStaticProfile keeps the experiments/ ENTRY key on entryBase and every other key on graphBase', () => {
+    const p = buildStaticProfile('G', 'E');
+    for (const key of nonPrivateKeys(p)) {
+        const want = key === 'experiments/' ? 'E/' : 'G/';
+        assert.ok(p[key].startsWith(want), `key '${key}' → ${p[key]} (expected under ${want})`);
+    }
+    assert.throws(() => buildStaticProfile('G'), /needs both bases/);
+});
+
+test('router: the static profile resolves the SAME dist sub-path as DIST_PROFILE for every shared key', () => {
+    // The static graph is the identical physical sdk/frqtl-sdk/dist/ tree as DIST_PROFILE, placed
+    // under ./pub/<build>; the experiment entries sit at ./pub/experiments/. Strip '../../' from
+    // DIST and the anchor from STATIC: the sub-path must be identical for every non-private key.
+    assert.equal(STATIC_SDK_DIR, './pub', 'the deploy layout places the site sdk directory at ./pub');
     for (const key of nonPrivateKeys(DIST_PROFILE)) {
         const distTarget = DIST_PROFILE[key];
-        const staticTarget = STATIC_PROFILE[key];
+        const staticTarget = STATIC_DOC_REL[key];
+        const anchor = (key === 'experiments/' ? STATIC_SDK_DIR : staticGraphDir(BUILD)) + '/';
         assert.ok(distTarget.startsWith('../../'), `DIST_PROFILE['${key}'] expected to start with '../../': ${distTarget}`);
-        assert.ok(staticTarget.startsWith(STATIC_SDK_DIR + '/'), `STATIC_PROFILE['${key}'] expected to start with '${STATIC_SDK_DIR}/': ${staticTarget}`);
-        const distSubPath = distTarget.slice('../../'.length);
-        const staticSubPath = staticTarget.slice((STATIC_SDK_DIR + '/').length);
-        assert.equal(staticSubPath, distSubPath, `dist sub-path mismatch for key '${key}': dist='${distSubPath}' static='${staticSubPath}'`);
+        assert.ok(staticTarget.startsWith(anchor), `static ['${key}'] expected to start with '${anchor}': ${staticTarget}`);
+        assert.equal(staticTarget.slice(anchor.length), distTarget.slice('../../'.length), `dist sub-path mismatch for key '${key}'`);
     }
+});
+
+test('router: buildDistProfile("../..") is the npm DIST_PROFILE — the 5c5c378a literal, byte for byte, but for the wasm pkg URL', () => {
+    // Frozen copy of DIST_PROFILE as it stood as a hand literal (5c5c378a): the npm dist's
+    // experiment pages and path maps are generated from these values, so any drift moves the
+    // published bytes. __wasmPkgUrl was the '__use_window_override' sentinel; it is now the
+    // dist's own glue path, the same shape as CDN/STATIC.
+    const FROZEN = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","__wasmPkgUrl":"../../fat/pkg-web/egpt_wasm.js","__mathSdkUrl":"../../../egpt-math-sdk/index.js","__mathWasmUrl":"../../../egpt-math-sdk/wasm/egpt_math_sdk_wasm_bg.wasm","__mathWasmModuleUrl":"../../../egpt-math-sdk/wasm/egpt_math_sdk_wasm.js","__mathBackend":"wasm-math","__notebookBase":"../../../egpt-math-sdk/notebooks","__vendorBase":"../../../egpt-math-sdk/vendor","shim/":"../../ide/"};
+    assert.equal(JSON.stringify(buildDistProfile('../..')), JSON.stringify(FROZEN));
+    assert.equal(JSON.stringify(DIST_PROFILE), JSON.stringify(FROZEN));
+    assert.equal(buildDistProfile('../../' + BUILD)['objects/'], '../../' + BUILD + '/js/game/');
+    assert.throws(() => buildDistProfile('../../'), /no trailing slash/);
 });
 
 test('router: buildImportMap(manifest, cdnRouter.vendorBase) emits absolute CDN import-map entries', () => {

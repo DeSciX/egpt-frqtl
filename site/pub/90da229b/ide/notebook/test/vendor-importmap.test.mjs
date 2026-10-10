@@ -81,10 +81,10 @@ describe('buildRealmImportMap / spliceRealmImportMap — the ONE document import
     const manifest = { libs: { 'd3-array': { entry: 'd3-array/src/index.js' } } };
 
     test('merges the vendor libs and the @frqtl/setups specifiers, all through the SAME router', () => {
-        const staticDoc = engineRouter({ mode: 'static', documentRelative: true });
+        const staticDoc = engineRouter({ mode: 'static', documentRelative: true, build: 'ab12cd34' });
         const map = buildRealmImportMap(manifest, staticDoc);
-        assert.equal(map.imports['d3-array'], './pub/vendor/d3-array/src/index.js');
-        assert.equal(map.imports['@frqtl/setups/double-slit'], './pub/js/game/setup-esm/setupDoubleSlit.js');
+        assert.equal(map.imports['d3-array'], './pub/ab12cd34/vendor/d3-array/src/index.js');
+        assert.equal(map.imports['@frqtl/setups/double-slit'], './pub/ab12cd34/js/game/setup-esm/setupDoubleSlit.js');
         const dev = buildRealmImportMap(manifest, engineRouter({ mode: 'dev-core' }));
         assert.equal(dev.imports['d3-array'], '/vendor/d3-array/src/index.js');
         assert.equal(dev.imports['@frqtl/setups/double-slit'], '/frqtl/objects/setup-esm/setupDoubleSlit.js');

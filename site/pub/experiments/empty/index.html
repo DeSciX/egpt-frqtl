@@ -5,26 +5,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Empty Universe</title>
-    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../90da229b/experiments/_shared/experiment-layout.css">
 </head>
 <body>
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../90da229b/js/lib/","assets/render/":"../../90da229b/js/consumers/","assets/models/":"../../90da229b/js/models/","compat/providers/":"../../90da229b/js/compat/","compat/":"../../90da229b/js/compat/","objects/":"../../90da229b/js/game/","experiments/_shared/":"../../90da229b/experiments/_shared/","experiments/":"../../90da229b/experiments/","shim/":"../../90da229b/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../90da229b/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendored three.js (r128) — a load-by-eval rung may request the three renderer
          (walkthrough R6, ?renderer=three&egpt3D=1). render-boot.js reads this before
          falling back to a CDN; setting it mirrors the _egptWasmPkgUrl precedent so the
          dev realm has no silent CDN dependency. Harmless for 2D/p5 loads (only read
          when three is selected). -->
-    <script>window._egptThreeUrl = new URL("../../js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../90da229b/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- Canonical shared loader. No page scripts: the universe is created via the
          RecipeContext object and populated by an eval'd buildExperiment(exp) module
          (a saved project) OR left blank (Empty Universe / palette authoring). -->
-    <script src="../_shared/stack-boot.js"></script>
+    <script src="../../90da229b/experiments/_shared/stack-boot.js"></script>
 
     <!-- Page structure -->
     <div class="experiment-container">

@@ -30,6 +30,8 @@ import path from 'node:path';
 
 const THIS_FILE = fileURLToPath(import.meta.url);
 const repoRoot  = path.resolve(path.dirname(THIS_FILE), '../../../..');
+// The router reads nothing from the environment at load, so its attribute name is read up front.
+const { SITE_BUILD_ATTR } = await import(pathToFileURL(path.join(repoRoot, 'lib/shim/engine/router.js')).href);
 const SCENARIO_ENV = 'FRQTL_MATH_BACKEND_SCENARIO';
 
 // ── scenario side (child process) ────────────────────────────────────────────
@@ -39,6 +41,8 @@ function stubBrowser(search) {
     const noop = () => {};
     globalThis.document = {
         readyState: 'complete', baseURI: 'http://127.0.0.1/site/index.html',
+        // The static site's IDE document carries its build stamp (router SITE_BUILD_ATTR).
+        documentElement: { getAttribute: (name) => (name === SITE_BUILD_ATTR ? 'ab12cd34' : null) },
         addEventListener: noop, removeEventListener: noop, getElementById: () => null,
         createElement: () => ({ setAttribute: noop, style: {}, appendChild: noop }),
         head: { appendChild: noop }, body: { appendChild: noop }

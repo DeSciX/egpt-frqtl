@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — G2: a moving LO sweeps a field</title>
-    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../90da229b/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -21,17 +21,17 @@
 </head>
 <body>
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../90da229b/js/lib/","assets/render/":"../../90da229b/js/consumers/","assets/models/":"../../90da229b/js/models/","compat/providers/":"../../90da229b/js/compat/","compat/":"../../90da229b/js/compat/","objects/":"../../90da229b/js/game/","experiments/_shared/":"../../90da229b/experiments/_shared/","experiments/":"../../90da229b/experiments/","shim/":"../../90da229b/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../90da229b/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- UNIT-TEST G2: "an LO extends Frame" by composition.
          A LargeObject is linked to a moving backing frame (setLargeObjectFrame) so it MOVES via
          the move pass + speed_prob gate; its search rect (larger than the 1px body) sweeps a
          field of stationary targets and its ABSORB trigger clears them. -->
-    <script src="../_shared/stack-boot.js"
+    <script src="../../90da229b/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../js/game/setup/setupG2Sweep.js,
-            ../_shared/experiment-metrics.js
+            ../../90da229b/js/game/setup/setupG2Sweep.js,
+            ../../90da229b/experiments/_shared/experiment-metrics.js
         "></script>
 
     <div class="experiment-container">
