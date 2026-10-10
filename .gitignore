@@ -1,7 +1,11 @@
 node_modules/
 .DS_Store
 
-# per-developer DeSciX config and credentials — never tracked (CEO ruling 2026-09-16)
-.descix/workspace.json
+# DeSciX: workspace.json (v3, repo facts only), manifests and provenance are tracked; wallet and sync-state are per-developer and never tracked.
+.descix/*
+!.descix/workspace.json
+!.descix/manifests/
+!.descix/kb-provenance.json
+!.descix/site-provenance.json
 .descix/wallet.json
 .descix/sync-state/
