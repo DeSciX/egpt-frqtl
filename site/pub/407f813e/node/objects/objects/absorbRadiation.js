@@ -176,7 +176,7 @@
          * at EACH layer in proportion to the mass it absorbed from that layer's collisions, so
          * conservation holds per layer and not merely in total.
          *
-         * PENDING CEO CONFIRM (JARVIS interpretation of the CEO's direction, 2026-08-11): the
+         * PENDING CEO CONFIRM (orchestrator's interpretation of the CEO's direction, 2026-08-11): the
          * proportion is drawn against each layer's UNRADIATED stored mass, which is what makes
          * "in proportion to what it absorbed from that layer" exactly true in the ledger rather
          * than only in expectation — a layer that has already given back everything it soaked

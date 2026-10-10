@@ -6,27 +6,7 @@ var __export = (target, all) => {
 };
 
 // src/browser/wasm-loader.js
-async function probeWasmArtifact(wasmUrl) {
-  if (!wasmUrl) {
-    return { ok: false, reason: "missing-wasm-url" };
-  }
-  try {
-    if (typeof process !== "undefined" && wasmUrl.startsWith("file://")) {
-      const fs = await import("node:fs/promises");
-      const { fileURLToPath } = await import("node:url");
-      await fs.access(fileURLToPath(wasmUrl));
-      return { ok: true };
-    }
-    const response = await fetch(wasmUrl, { method: "GET" });
-    if (!response.ok) {
-      return { ok: false, reason: `artifact-unreachable:${response.status}` };
-    }
-    return { ok: true };
-  } catch (error) {
-    return { ok: false, reason: `artifact-fetch-error:${String(error)}` };
-  }
-}
-__name(probeWasmArtifact, "probeWasmArtifact");
+var REMEDY = "Pass both wasmUrl (the egpt_math_sdk_wasm_bg.wasm binary) and wasmModuleUrl (its egpt_math_sdk_wasm.js glue): a published @descix/egpt-math-sdk carries them under dist/wasm/; a repo checkout builds them with `npm run build:wasm-bridge && npm run build` in sdk/egpt-math-sdk.";
 function normalizeBrowserUrl(url) {
   if (!url || typeof document === "undefined") return url;
   return new URL(url, document.baseURI).href;
@@ -35,52 +15,32 @@ __name(normalizeBrowserUrl, "normalizeBrowserUrl");
 async function loadEgptMathWasm({ wasmUrl, wasmModuleUrl } = {}) {
   wasmUrl = normalizeBrowserUrl(wasmUrl);
   wasmModuleUrl = normalizeBrowserUrl(wasmModuleUrl);
-  const probe = await probeWasmArtifact(wasmUrl);
-  if (!wasmModuleUrl) {
-    return {
-      mode: probe.ok ? "wasm-skeleton" : "js-compat",
-      wasmUrl: wasmUrl ?? null,
-      wasmModuleUrl: null,
-      warnings: probe.ok ? [] : [probe.reason]
-    };
+  const where = `wasmUrl=${JSON.stringify(wasmUrl ?? null)} wasmModuleUrl=${JSON.stringify(wasmModuleUrl ?? null)}`;
+  if (!wasmUrl || !wasmModuleUrl) {
+    throw new Error(`EGPT Math WASM bridge: missing ${!wasmUrl ? "wasmUrl" : "wasmModuleUrl"} (${where}). ${REMEDY}`);
   }
   try {
     const mod = await import(wasmModuleUrl);
-    let initArg = wasmUrl;
-    let initArgIsBytes = false;
-    if (typeof process !== "undefined" && wasmUrl && wasmUrl.startsWith("file://")) {
+    let initArg;
+    if (typeof process !== "undefined" && wasmUrl.startsWith("file://")) {
       const fs = await import("node:fs/promises");
       const { fileURLToPath } = await import("node:url");
       initArg = await fs.readFile(fileURLToPath(wasmUrl));
-      initArgIsBytes = true;
-    } else if (wasmUrl) {
+    } else {
       const response = await fetch(String(wasmUrl));
       if (!response.ok) {
         throw new Error(`wasm binary fetch failed: ${response.status} ${response.statusText} (${wasmUrl})`);
       }
       initArg = await response.arrayBuffer();
-      initArgIsBytes = true;
     }
-    const initPayload = initArgIsBytes ? { module_or_path: initArg } : initArg;
-    if (typeof mod.default === "function" && wasmUrl) {
-      await mod.default(initPayload);
-    } else if (typeof mod.init === "function" && wasmUrl) {
-      await mod.init(initPayload);
+    const init = typeof mod.default === "function" ? mod.default : mod.init;
+    if (typeof init !== "function") {
+      throw new Error("the glue module exports no wasm-bindgen init function (default or init)");
     }
-    return {
-      mode: "wasm-bridge",
-      wasmUrl: wasmUrl ?? null,
-      wasmModuleUrl,
-      module: mod,
-      warnings: probe.ok ? [] : [probe.reason]
-    };
+    await init({ module_or_path: initArg });
+    return { mode: "wasm-bridge", wasmUrl, wasmModuleUrl, module: mod };
   } catch (error) {
-    return {
-      mode: "js-compat",
-      wasmUrl: wasmUrl ?? null,
-      wasmModuleUrl,
-      warnings: [`module-load-failed:${String(error)}`, ...probe.ok ? [] : [probe.reason]]
-    };
+    throw new Error(`EGPT Math WASM bridge: failed to load (${where}): ${error && error.message ? error.message : String(error)}. ${REMEDY}`, { cause: error });
   }
 }
 __name(loadEgptMathWasm, "loadEgptMathWasm");
@@ -647,11 +607,6 @@ var WASM_ARENA_OPS = Object.freeze([
   // the float → EGPTReal input boundary (ppfBoundary.js / floatToEGPT.js; codec_port.rs)
   "boundaryF64ToOddDenom",
   "boundaryToEgptRealParts",
-  // EGPTPolynomial.Multilinear's value arithmetic (multilinear_port.rs)
-  "multilinearNextOddPrime",
-  "multilinearSplitOverCache",
-  "multilinearMul",
-  "multilinearSub",
   "codecPolyEvalAt",
   "codecSyntheticDivide",
   "codecMulLinear",
@@ -1892,780 +1847,6 @@ function getActiveProvider() {
 }
 __name(getActiveProvider, "getActiveProvider");
 
-// src/browser/wasm-multilinear-facade.js
-var _MIXED = "Cannot mix BigInt and other types, use explicit conversions";
-function _bigOp(op, a, b) {
-  if (typeof a !== "bigint" || typeof b !== "bigint") throw new TypeError(_MIXED);
-  return BigInt(callWasm(op, String(a), String(b)));
-}
-__name(_bigOp, "_bigOp");
-var _bigMul = /* @__PURE__ */ __name((a, b) => _bigOp("multilinearMul", a, b), "_bigMul");
-var _bigSub = /* @__PURE__ */ __name((a, b) => _bigOp("multilinearSub", a, b), "_bigSub");
-var _nextOddPrime = /* @__PURE__ */ __name((last) => BigInt(callWasm("multilinearNextOddPrime", String(last))), "_nextOddPrime");
-var _one = null;
-var _oneAssigned = false;
-var _oneValue = null;
-function _splitOverCache(numerator, denominator, cache) {
-  const r = JSON.parse(callWasm(
-    "multilinearSplitOverCache",
-    String(numerator),
-    String(denominator),
-    JSON.stringify(cache.map(String))
-  ));
-  return { n: BigInt(r.n), d: BigInt(r.d), counts: r.counts };
-}
-__name(_splitOverCache, "_splitOverCache");
-function _multilinearPrune(raw) {
-  const zeroEN = EGPTReal.fromBigInt(0n);
-  const out = [];
-  for (const [mask, c] of raw) {
-    if (!c.equals(zeroEN)) out.push([mask, c]);
-  }
-  return out;
-}
-__name(_multilinearPrune, "_multilinearPrune");
-var _multilinearPrimeCache = [3n];
-function _multilinearNthPrime(i) {
-  if (!Number.isInteger(i) || i < 0) {
-    throw new TypeError("Multilinear prime index must be a non-negative integer.");
-  }
-  while (_multilinearPrimeCache.length <= i) {
-    _multilinearPrimeCache.push(_nextOddPrime(_multilinearPrimeCache[_multilinearPrimeCache.length - 1]));
-  }
-  return _multilinearPrimeCache[i];
-}
-__name(_multilinearNthPrime, "_multilinearNthPrime");
-function _multilinearPrimeIndex(prime) {
-  let i = 0;
-  while (_multilinearNthPrime(i) < prime) i++;
-  if (_multilinearNthPrime(i) !== prime) {
-    throw new Error(`Prime ${prime} is not in the canonical variable-prime sequence.`);
-  }
-  return i;
-}
-__name(_multilinearPrimeIndex, "_multilinearPrimeIndex");
-function _multilinearRecordKey(record) {
-  return `${record.sign}:${record.prime}:${record.location}`;
-}
-__name(_multilinearRecordKey, "_multilinearRecordKey");
-var Multilinear = {
-  ZERO: [],
-  get ONE() {
-    if (_oneAssigned) return _oneValue;
-    const one = quietly(() => EGPTReal.fromBigInt(1n));
-    if (_one === null || _one[0]?.[1]?._handle?.e !== one._handle.e) _one = [[0n, one]];
-    return _one;
-  },
-  set ONE(value) {
-    _oneAssigned = _one === null || value !== _one;
-    _oneValue = _oneAssigned ? value : null;
-  },
-  primeForVariable(i) {
-    return _multilinearNthPrime(i);
-  },
-  _indexOfPrime(prime) {
-    return _multilinearPrimeIndex(prime);
-  },
-  variableProbabilityComposite(i) {
-    return EGPTPrimeComposite.fromPrimeRecords([{
-      sign: 1,
-      prime: this.primeForVariable(i),
-      location: "denominator"
-    }]);
-  },
-  quotientCompositeProduct(left, right) {
-    const lhs = left instanceof EGPTPrimeComposite ? left : EGPTPrimeComposite.fromEGPTReal(left);
-    const rhs = right instanceof EGPTPrimeComposite ? right : EGPTPrimeComposite.fromEGPTReal(right);
-    const seen = /* @__PURE__ */ new Set();
-    const records = [];
-    for (const record of lhs.records.concat(rhs.records)) {
-      const key = _multilinearRecordKey(record);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      records.push({
-        sign: record.sign,
-        prime: record.prime,
-        location: record.location
-      });
-    }
-    return EGPTPrimeComposite.fromPrimeRecords(records);
-  },
-  constant(c) {
-    if (c.equals(EGPTReal.fromBigInt(0n))) return [];
-    return [[0n, c]];
-  },
-  indeterminate(i) {
-    return [[1n << BigInt(i), EGPTReal.fromBigInt(1n)]];
-  },
-  isZero(P) {
-    return P.length === 0;
-  },
-  isOne(P) {
-    return P.length === 1 && P[0][0] === 0n && P[0][1].equals(EGPTReal.fromBigInt(1n));
-  },
-  equals(P, Q) {
-    if (P.length !== Q.length) return false;
-    for (let i = 0; i < P.length; i++) {
-      if (P[i][0] !== Q[i][0] || !P[i][1].equals(Q[i][1])) return false;
-    }
-    return true;
-  },
-  add(P, Q) {
-    let i = 0, j = 0;
-    const out = [];
-    while (i < P.length && j < Q.length) {
-      if (P[i][0] < Q[j][0]) {
-        out.push(P[i++]);
-      } else if (P[i][0] > Q[j][0]) {
-        out.push(Q[j++]);
-      } else {
-        const sum = EGPTMath.add(P[i][1], Q[j][1]);
-        if (!sum.equals(EGPTReal.fromBigInt(0n))) {
-          out.push([P[i][0], sum]);
-        }
-        i++;
-        j++;
-      }
-    }
-    while (i < P.length) out.push(P[i++]);
-    while (j < Q.length) out.push(Q[j++]);
-    return out;
-  },
-  subtract(P, Q) {
-    return this.add(P, this.negate(Q));
-  },
-  negate(P) {
-    const zeroEN = EGPTReal.fromBigInt(0n);
-    return P.map(([mask, c]) => [mask, EGPTMath.subtract(zeroEN, c)]);
-  },
-  evaluateVariables(P, evalMask) {
-    if (P.length === 0) return [];
-    if (evalMask === 0n) return P;
-    const raw = [];
-    for (const [mask, c] of P) {
-      let newMask = mask & ~evalMask;
-      let intersection = mask & evalMask;
-      let coeff = c;
-      if (intersection > 0n) {
-        let v = 0;
-        let temp = intersection;
-        while (temp > 0n) {
-          if ((temp & 1n) === 1n) {
-            const prime = this.primeForVariable(v);
-            const prob = EGPTReal.fromRational(1n, prime);
-            coeff = EGPTMath.multiply(coeff, prob);
-          }
-          temp >>= 1n;
-          v++;
-        }
-      }
-      raw.push([newMask, coeff]);
-    }
-    raw.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
-    const out = [];
-    if (raw.length === 0) return out;
-    let currentMask = raw[0][0];
-    let currentCoeff = raw[0][1];
-    for (let i = 1; i < raw.length; i++) {
-      if (raw[i][0] === currentMask) {
-        currentCoeff = EGPTMath.add(currentCoeff, raw[i][1]);
-      } else {
-        out.push([currentMask, currentCoeff]);
-        currentMask = raw[i][0];
-        currentCoeff = raw[i][1];
-      }
-    }
-    out.push([currentMask, currentCoeff]);
-    return _multilinearPrune(out);
-  },
-  evaluateAtPrimes(F) {
-    if (F.length === 0) return EGPTReal.fromBigInt(0n);
-    let allVars = 0n;
-    for (let i = 0; i < F.length; i++) {
-      allVars |= F[i][0];
-    }
-    const evaluated = this.evaluateVariables(F, allVars);
-    if (evaluated.length === 0) return EGPTReal.fromBigInt(0n);
-    return evaluated[0][1];
-  },
-  variablesOf(P) {
-    let vars = 0n;
-    for (const [mask] of P) vars |= mask;
-    return vars;
-  },
-  variableIndicesFromMask(mask) {
-    const indices = [];
-    let v = 0;
-    let temp = mask;
-    while (temp > 0n) {
-      if ((temp & 1n) === 1n) indices.push(v);
-      temp >>= 1n;
-      v++;
-    }
-    return indices;
-  },
-  _assignmentBitsForSubset(sourceVars, sourceBits, targetVars) {
-    let out = 0n;
-    for (let i = 0; i < targetVars.length; i++) {
-      const v = targetVars[i];
-      const sourceIdx = sourceVars.indexOf(v);
-      if (sourceIdx === -1) {
-        throw new Error("_assignmentBitsForSubset: target variable missing from source variables.");
-      }
-      if ((sourceBits >> BigInt(sourceIdx) & 1n) === 1n) {
-        out |= 1n << BigInt(i);
-      }
-    }
-    return out;
-  },
-  _assignmentMapFromBits(vars, bits) {
-    const roots = /* @__PURE__ */ new Map();
-    for (let i = 0; i < vars.length; i++) {
-      roots.set(vars[i], (bits >> BigInt(i) & 1n) === 1n ? 1n : 0n);
-    }
-    return roots;
-  },
-  _assignmentWeight(vars, bits) {
-    let weight = EGPTReal.fromBigInt(1n);
-    for (let i = 0; i < vars.length; i++) {
-      const p = EGPTReal.fromRational(1n, this.primeForVariable(vars[i]));
-      const bit = bits >> BigInt(i) & 1n;
-      const atomWeight = bit === 1n ? p : EGPTMath.subtract(EGPTReal.fromBigInt(1n), p);
-      weight = EGPTMath.multiply(weight, atomWeight);
-    }
-    return weight;
-  },
-  _evaluateMaskAtPrimes(mask) {
-    let value = EGPTReal.fromBigInt(1n);
-    let v = 0;
-    let temp = mask;
-    while (temp > 0n) {
-      if ((temp & 1n) === 1n) {
-        value = EGPTMath.multiply(
-          value,
-          EGPTReal.fromRational(1n, this.primeForVariable(v))
-        );
-      }
-      temp >>= 1n;
-      v++;
-    }
-    return value;
-  },
-  factorToPrimeLists(value) {
-    if (!(value instanceof EGPTReal)) {
-      throw new TypeError("factorToPrimeLists expects an EGPTReal-compatible value.");
-    }
-    if (value instanceof EGPTPrimeComposite) {
-      const numeratorPrimes2 = [];
-      const denominatorPrimes2 = [];
-      const exponentMap2 = /* @__PURE__ */ new Map();
-      for (const [p, e] of value.getPrimesInNumerator()) {
-        exponentMap2.set(p, (exponentMap2.get(p) || 0n) + e);
-        for (let i = 0n; i < e; i++) numeratorPrimes2.push(p);
-      }
-      for (const [p, e] of value.getPrimesInDenominator()) {
-        exponentMap2.set(p, (exponentMap2.get(p) || 0n) - e);
-        for (let i = 0n; i < e; i++) denominatorPrimes2.push(p);
-      }
-      numeratorPrimes2.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-      denominatorPrimes2.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-      return { numeratorPrimes: numeratorPrimes2, denominatorPrimes: denominatorPrimes2, exponentMap: exponentMap2, composite: value };
-    }
-    const { numerator, denominator } = value._getPPFRationalParts();
-    const numeratorPrimes = [];
-    const denominatorPrimes = [];
-    const exponentMap = /* @__PURE__ */ new Map();
-    const split = _splitOverCache(numerator, denominator, _multilinearPrimeCache);
-    const n = split.n;
-    const d = split.d;
-    _multilinearPrimeCache.forEach((p, i) => {
-      for (let c = 0; c < split.counts[i][0]; c++) {
-        numeratorPrimes.push(p);
-        exponentMap.set(p, (exponentMap.get(p) || 0n) + 1n);
-      }
-      for (let c = 0; c < split.counts[i][1]; c++) {
-        denominatorPrimes.push(p);
-        exponentMap.set(p, (exponentMap.get(p) || 0n) - 1n);
-      }
-    });
-    if (d !== 1n) {
-      throw new Error(
-        `factorToPrimeLists: residue outside preassigned prime cache (numeratorResidue=${n}, denominatorResidue=${d}).`
-      );
-    }
-    numeratorPrimes.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-    denominatorPrimes.sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-    return { numeratorPrimes, denominatorPrimes, exponentMap, composite: value };
-  },
-  primeListsToEGPTReal(lists) {
-    if (!lists || !(lists.exponentMap instanceof Map)) {
-      throw new TypeError("primeListsToEGPTReal expects a prime-list object.");
-    }
-    if (lists.composite instanceof EGPTReal) return lists.composite;
-    let numerator = 1n;
-    let denominator = 1n;
-    for (const [p, e] of lists.exponentMap) {
-      if (e > 0n) {
-        for (let i = 0n; i < e; i++) numerator = _bigMul(numerator, p);
-      } else if (e < 0n) {
-        for (let i = 0n; i < -e; i++) denominator = _bigMul(denominator, p);
-      }
-    }
-    return EGPTReal.fromRational(numerator, denominator);
-  },
-  _sharedPrimeValue(sharedPrimeAtom) {
-    const lists = this.factorToPrimeLists(sharedPrimeAtom);
-    if (lists.denominatorPrimes.length > 0) return lists.denominatorPrimes[0];
-    if (lists.numeratorPrimes.length > 0) return lists.numeratorPrimes[0];
-    throw new Error("shared prime atom has no prime factor.");
-  },
-  sharedPrimeInLists(stateLists, factorLists, sharedPrimeAtom, location = "denominator") {
-    const prime = typeof sharedPrimeAtom === "bigint" ? sharedPrimeAtom : this._sharedPrimeValue(sharedPrimeAtom);
-    const stateList = location === "numerator" ? stateLists.numeratorPrimes : stateLists.denominatorPrimes;
-    const factorList = location === "numerator" ? factorLists.numeratorPrimes : factorLists.denominatorPrimes;
-    return stateList.includes(prime) && factorList.includes(prime);
-  },
-  conditionalEntropyZero(stateValueOrLists, factorValueOrLists, sharedPrimeAtom, location = "denominator") {
-    const stateLists = stateValueOrLists && stateValueOrLists.exponentMap instanceof Map ? stateValueOrLists : this.factorToPrimeLists(stateValueOrLists);
-    const factorLists = factorValueOrLists && factorValueOrLists.exponentMap instanceof Map ? factorValueOrLists : this.factorToPrimeLists(factorValueOrLists);
-    return this.sharedPrimeInLists(stateLists, factorLists, sharedPrimeAtom, location);
-  },
-  compressedOrFactor(atoms) {
-    if (!Array.isArray(atoms)) {
-      throw new TypeError("compressedOrFactor expects an array of atoms.");
-    }
-    const M = EGPTPolynomial.Multilinear;
-    let supportMask = 0n;
-    const normalized = atoms.map((atom) => {
-      if (!Number.isInteger(atom.varIdx) || atom.varIdx < 0) {
-        throw new TypeError("compressedOrFactor atom.varIdx must be a non-negative integer.");
-      }
-      if (typeof atom.polarity !== "boolean") {
-        throw new TypeError("compressedOrFactor atom.polarity must be boolean.");
-      }
-      supportMask |= 1n << BigInt(atom.varIdx);
-      return { varIdx: atom.varIdx, polarity: atom.polarity };
-    });
-    const supportVars = M.variableIndicesFromMask(supportMask);
-    return {
-      kind: "or-factor",
-      atoms: normalized,
-      supportMask,
-      supportVars,
-      evaluate(roots = /* @__PURE__ */ new Map()) {
-        let allComplements = EGPTReal.fromBigInt(1n);
-        for (const atom of normalized) {
-          let atomValue;
-          if (roots.has(atom.varIdx)) {
-            const bit = roots.get(atom.varIdx);
-            const truth = atom.polarity ? bit : _bigSub(1n, bit);
-            atomValue = EGPTReal.fromBigInt(truth);
-          } else {
-            const p = EGPTReal.fromRational(1n, M.primeForVariable(atom.varIdx));
-            atomValue = atom.polarity ? p : EGPTMath.subtract(EGPTReal.fromBigInt(1n), p);
-          }
-          allComplements = EGPTMath.multiply(
-            allComplements,
-            EGPTMath.subtract(EGPTReal.fromBigInt(1n), atomValue)
-          );
-        }
-        return EGPTMath.subtract(EGPTReal.fromBigInt(1n), allComplements);
-      }
-    };
-  },
-  _falseRequirementsForOrFactor(factor) {
-    const req = /* @__PURE__ */ new Map();
-    for (const atom of factor.atoms) {
-      const required = atom.polarity ? 0n : 1n;
-      if (req.has(atom.varIdx) && req.get(atom.varIdx) !== required) return null;
-      req.set(atom.varIdx, required);
-    }
-    return req;
-  },
-  _mergeRequirements(left, right) {
-    if (left === null || right === null) return null;
-    const out = new Map(left);
-    for (const [v, bit] of right) {
-      if (out.has(v) && out.get(v) !== bit) return null;
-      out.set(v, bit);
-    }
-    return out;
-  },
-  _requirementsProbability(req) {
-    if (req === null) return EGPTReal.fromBigInt(0n);
-    let out = EGPTReal.fromBigInt(1n);
-    for (const [v, bit] of req) {
-      const p = EGPTReal.fromRational(1n, this.primeForVariable(v));
-      const atom = bit === 1n ? p : EGPTMath.subtract(EGPTReal.fromBigInt(1n), p);
-      out = EGPTMath.multiply(out, atom);
-    }
-    return out;
-  },
-  _orFactorPairValue(leftFactor, rightFactor) {
-    const leftFalse = this._falseRequirementsForOrFactor(leftFactor);
-    const rightFalse = this._falseRequirementsForOrFactor(rightFactor);
-    const bothFalse = this._mergeRequirements(leftFalse, rightFalse);
-    const one = EGPTReal.fromBigInt(1n);
-    return EGPTMath.add(
-      EGPTMath.subtract(
-        EGPTMath.subtract(one, this._requirementsProbability(leftFalse)),
-        this._requirementsProbability(rightFalse)
-      ),
-      this._requirementsProbability(bothFalse)
-    );
-  },
-  _requirementsKey(req) {
-    if (req === null) return "contradiction";
-    return [...req.entries()].sort((a, b) => a[0] - b[0]).map(([v, bit]) => `${v}:${bit}`).join("|");
-  },
-  primeAtom(indeterminateIndex) {
-    if (!Number.isInteger(indeterminateIndex) || indeterminateIndex < 0) {
-      throw new TypeError("primeAtom expects a non-negative indeterminate index.");
-    }
-    return {
-      kind: "prime-atom",
-      varIdx: indeterminateIndex,
-      prime: this.primeForVariable(indeterminateIndex),
-      complement: false
-    };
-  },
-  complementPrimeAtom(indeterminateIndex) {
-    if (!Number.isInteger(indeterminateIndex) || indeterminateIndex < 0) {
-      throw new TypeError("complementPrimeAtom expects a non-negative indeterminate index.");
-    }
-    return {
-      kind: "prime-atom",
-      varIdx: indeterminateIndex,
-      prime: this.primeForVariable(indeterminateIndex),
-      complement: true
-    };
-  },
-  _primeAtomKey(atom) {
-    return `${atom.complement ? "c" : "p"}:${atom.prime}`;
-  },
-  primeAtomFactor(atoms) {
-    if (!Array.isArray(atoms)) {
-      throw new TypeError("primeAtomFactor expects an array of prime atoms.");
-    }
-    const normalized = atoms.map((atom) => {
-      if (!atom || atom.kind !== "prime-atom") {
-        throw new TypeError("primeAtomFactor accepts only primeAtom/complementPrimeAtom values.");
-      }
-      return {
-        kind: "prime-atom",
-        varIdx: atom.varIdx,
-        prime: atom.prime,
-        complement: atom.complement
-      };
-    });
-    return {
-      kind: "prime-atom-factor",
-      atoms: normalized,
-      atomKeys: new Set(normalized.map((atom) => this._primeAtomKey(atom)))
-    };
-  },
-  accumulatedPrimeState() {
-    const M = EGPTPolynomial.Multilinear;
-    const rootContributions = [];
-    const jointContributions = [];
-    const one = EGPTPrimeComposite.fromEGPTReal(EGPTReal.fromBigInt(1n));
-    const contributions = [{ value: one, killable: false }];
-    const stats = {
-      atomMerges: 0n,
-      conditioningUpdates: 0n,
-      branchEvaluations: 0n,
-      assignmentTableEntries: 0n,
-      expandedPolynomialTerms: 0n,
-      termPairEvaluations: 0n,
-      fallbackCount: 0n,
-      stateTerms: 0,
-      maxStateTerms: 0
-    };
-    return {
-      kind: "accumulated-prime-state",
-      rootContributions,
-      jointContributions,
-      primeLists: M.factorToPrimeLists(one),
-      conditionalPrimeLists: M.factorToPrimeLists(one),
-      contributions,
-      stats,
-      absorbFactor(factor) {
-        if (!factor || factor.kind !== "or-factor") {
-          throw new TypeError("accumulatedPrimeState.absorbFactor expects a compressed or-factor.");
-        }
-        const factorValue = factor.evaluate(/* @__PURE__ */ new Map());
-        const sharedBefore = this.sharedPrimesForValue(factorValue);
-        if (this.factorKilledByContributions(factorValue)) {
-          this.primeLists = M.factorToPrimeLists(EGPTReal.fromBigInt(0n));
-          this.conditionalPrimeLists = this.primeLists;
-          return this;
-        }
-        stats.atomMerges += BigInt(factor.supportVars.length);
-        stats.stateTerms = 1;
-        stats.maxStateTerms = 1;
-        this.absorbValue(factorValue);
-        this.recordJointRoot(factor, sharedBefore, factorValue);
-        return this;
-      },
-      sharedPrimesForValue(factorValue) {
-        const factorLists = M.factorToPrimeLists(factorValue);
-        const seen = /* @__PURE__ */ new Set();
-        const out = [];
-        for (const p of this.conditionalPrimeLists.denominatorPrimes) {
-          if (!seen.has(p) && factorLists.denominatorPrimes.includes(p)) {
-            seen.add(p);
-            out.push(M.variableProbabilityComposite(M._indexOfPrime(p)));
-          }
-        }
-        return out;
-      },
-      factorKilledByContributions(factorValue) {
-        if (!(factorValue instanceof EGPTReal)) return false;
-        const factorLists = M.factorToPrimeLists(factorValue);
-        const candidateContributions = this.contributions.filter((contribution) => contribution.killable).map((contribution) => contribution.value).concat(this.jointContributions);
-        for (const contributionValue of candidateContributions) {
-          const contributionLists = M.factorToPrimeLists(contributionValue);
-          let allFactorDenominatorsShared = factorLists.denominatorPrimes.length > 0;
-          for (const prime of factorLists.denominatorPrimes) {
-            if (!contributionLists.denominatorPrimes.includes(prime)) {
-              allFactorDenominatorsShared = false;
-              break;
-            }
-          }
-          if (allFactorDenominatorsShared) return true;
-        }
-        return false;
-      },
-      recordRoot(sharedPrime) {
-        const composite = sharedPrime instanceof EGPTPrimeComposite ? sharedPrime : EGPTPrimeComposite.fromEGPTReal(sharedPrime);
-        if (!this.rootContributions.some((root) => root.congruentTo(composite))) {
-          this.rootContributions.push(composite);
-        }
-        return this;
-      },
-      recordJointRoot(factor, sharedPrimes, factorValue) {
-        if (!factor || factor.kind !== "or-factor" || factor.atoms.length < 2) return this;
-        const primeValues = (sharedPrimes.length > 0 ? sharedPrimes.map((sp) => M._sharedPrimeValue(sp)) : factor.atoms.map((atom) => M.primeForVariable(atom.varIdx))).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-        const fullLists = M.factorToPrimeLists(factorValue);
-        const records = [];
-        for (const prime of fullLists.numeratorPrimes) {
-          records.push({ sign: 1, prime, location: "numerator" });
-        }
-        for (const prime of fullLists.denominatorPrimes) {
-          records.push({ sign: 1, prime, location: "denominator" });
-        }
-        const composite = EGPTPrimeComposite.fromPrimeRecords(records);
-        if (!this.jointContributions.some((root) => root.congruentTo(composite))) {
-          this.jointContributions.push(composite);
-        }
-        if (!this.rootContributions.some((root) => root.congruentTo(composite))) {
-          this.rootContributions.push(composite);
-        }
-        return this;
-      },
-      absorbValue(factorValue) {
-        if (!(factorValue instanceof EGPTReal)) {
-          throw new TypeError("accumulatedPrimeState.absorbValue expects an EGPTReal-compatible value.");
-        }
-        const reduced = M.reduceAccumulatedProduct(M.primeListsToEGPTReal(this.primeLists), factorValue);
-        const shared = reduced.shared;
-        for (const sharedPrime of shared) {
-          stats.conditioningUpdates += 1n;
-          if (!M.conditionalEntropyZero(this.conditionalPrimeLists, reduced.factorLists, sharedPrime)) {
-            throw new Error("accumulatedPrimeState.absorbValue: conditional entropy disagreement.");
-          }
-          this.recordRoot(sharedPrime);
-        }
-        this.primeLists = M.factorToPrimeLists(reduced.value);
-        this.contributions.length = 0;
-        const isSingleAtomOrComplement = (() => {
-          for (let i = 0; i < _multilinearPrimeCache.length; i++) {
-            const p = M.primeForVariable(i);
-            if (factorValue.equals(M.variableProbabilityComposite(i))) return true;
-            if (factorValue.equals(EGPTReal.fromRational(_bigSub(p, 1n), p))) return true;
-          }
-          return false;
-        })();
-        this.contributions.push({
-          value: reduced.value,
-          killable: isSingleAtomOrComplement || reduced.shared.length > 0
-        });
-        const denominatorPrimes = [
-          .../* @__PURE__ */ new Set([
-            ...this.conditionalPrimeLists.denominatorPrimes.map(String),
-            ...reduced.factorLists.denominatorPrimes.map(String),
-            ...this.primeLists.denominatorPrimes.map(String)
-          ])
-        ].map((p) => BigInt(p)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
-        const exponentMap = new Map(this.primeLists.exponentMap);
-        for (const p of denominatorPrimes) {
-          if (!exponentMap.has(p) || exponentMap.get(p) >= 0n) exponentMap.set(p, -1n);
-        }
-        this.conditionalPrimeLists = {
-          numeratorPrimes: this.primeLists.numeratorPrimes.slice(),
-          denominatorPrimes,
-          exponentMap,
-          composite: this.primeLists.composite
-        };
-        stats.stateTerms = 1;
-        stats.maxStateTerms = 1;
-        return this;
-      },
-      projectToEGPTReal() {
-        return M.primeListsToEGPTReal(this.primeLists);
-      }
-    };
-  },
-  linearOverlapConditioning(left, right, overlapVars) {
-    if (!Array.isArray(overlapVars)) {
-      throw new TypeError("linearOverlapConditioning expects an array of overlap variable indices.");
-    }
-    const stats = {
-      conditioningUpdates: 0n,
-      branchEvaluations: 0n,
-      conditionalEvaluations: 0n,
-      polynomialEvaluations: 0n,
-      factorEvaluations: 0n,
-      eliminations: 0n,
-      maxFactorSupport: 0,
-      maxLiveFactors: 0,
-      termPairEvaluations: 0n
-    };
-    for (const variableIndex of overlapVars) {
-      stats.conditioningUpdates += 1n;
-    }
-    const M = this;
-    if (!left || !right || left.kind !== "or-factor" || right.kind !== "or-factor") {
-      throw new TypeError("linearOverlapConditioning accepts only compressed OR factors on the golden path.");
-    }
-    const leftFactor = left;
-    const rightFactor = right;
-    const state = {
-      kind: "linear-overlap-conditioned-state",
-      supportMask: leftFactor.supportMask | rightFactor.supportMask,
-      projectToEGPTReal() {
-        return M._orFactorPairValue(leftFactor, rightFactor);
-      }
-    };
-    return { state, stats };
-  },
-  conditionalPrimeMergeOne(currentValue, nextValue, sharedPrimeAtom) {
-    if (!(currentValue instanceof EGPTReal) || !(nextValue instanceof EGPTReal)) {
-      throw new TypeError("conditionalPrimeMergeOne expects EGPTReal-compatible current and next values.");
-    }
-    if (!(sharedPrimeAtom instanceof EGPTReal)) {
-      throw new TypeError("conditionalPrimeMergeOne shared atom must be EGPTReal-compatible.");
-    }
-    const p = this._sharedPrimeValue(sharedPrimeAtom);
-    const complement = EGPTReal.fromRational(_bigSub(p, 1n), p);
-    const currentIsAtom = currentValue.equals(sharedPrimeAtom);
-    const nextIsAtom = nextValue.equals(sharedPrimeAtom);
-    const currentIsComplement = currentValue.equals(complement);
-    const nextIsComplement = nextValue.equals(complement);
-    if (currentIsAtom && nextIsComplement || currentIsComplement && nextIsAtom) {
-      return EGPTReal.fromBigInt(0n);
-    }
-    if (currentIsComplement && nextIsComplement) return currentValue;
-    if (currentValue.equals(sharedPrimeAtom)) return currentValue;
-    return EGPTMath.subtract(currentValue, sharedPrimeAtom);
-  },
-  conditionalPrimeMerge(currentValue, nextValue, sharedPrimeAtoms) {
-    if (!(currentValue instanceof EGPTReal) || !(nextValue instanceof EGPTReal)) {
-      throw new TypeError("conditionalPrimeMerge expects EGPTReal-compatible current and next values.");
-    }
-    if (!Array.isArray(sharedPrimeAtoms) || sharedPrimeAtoms.length === 0) {
-      throw new TypeError("conditionalPrimeMerge expects a non-empty array of shared prime atoms.");
-    }
-    const stats = {
-      conditioningUpdates: 0n,
-      branchEvaluations: 0n,
-      termPairEvaluations: 0n,
-      fallbackCount: 0n
-    };
-    let value = currentValue;
-    for (const shared of sharedPrimeAtoms) {
-      if (!(shared instanceof EGPTReal)) {
-        throw new TypeError("conditionalPrimeMerge shared atoms must be EGPTReal-compatible.");
-      }
-      stats.conditioningUpdates += 1n;
-      value = this.conditionalPrimeMergeOne(value, nextValue, shared);
-    }
-    return {
-      value,
-      stats
-    };
-  },
-  reduceAccumulatedProduct(stateValue, factorValue) {
-    if (!(stateValue instanceof EGPTReal) || !(factorValue instanceof EGPTReal)) {
-      throw new TypeError("reduceAccumulatedProduct expects EGPTReal-compatible values.");
-    }
-    const stateLists = this.factorToPrimeLists(stateValue);
-    const factorLists = this.factorToPrimeLists(factorValue);
-    const seen = /* @__PURE__ */ new Set();
-    const shared = [];
-    for (const p of stateLists.denominatorPrimes) {
-      if (!seen.has(p) && factorLists.denominatorPrimes.includes(p)) {
-        seen.add(p);
-        shared.push(this.variableProbabilityComposite(this._indexOfPrime(p)));
-      }
-    }
-    for (const sharedPrime of shared) {
-      if (!this.conditionalEntropyZero(stateLists, factorLists, sharedPrime)) {
-        throw new Error("reduceAccumulatedProduct: conditional entropy disagreement.");
-      }
-    }
-    const value = shared.length > 0 ? this.conditionalPrimeMerge(stateValue, factorValue, shared).value : EGPTMath.multiply(stateValue, factorValue);
-    return { value, shared, stateLists, factorLists };
-  },
-  solveCompressedOrGolden(compressedSystem) {
-    if (!Array.isArray(compressedSystem)) {
-      throw new TypeError("Multilinear.solveCompressedOrGolden expects an array of compressed factors.");
-    }
-    const state = this.accumulatedPrimeState();
-    for (const factor of compressedSystem) {
-      if (!factor || factor.kind !== "or-factor") {
-        throw new TypeError("solveCompressedOrGolden accepts only compressed OR factors.");
-      }
-      try {
-        state.absorbFactor(factor);
-        if (state.conflict) {
-          return {
-            roots: /* @__PURE__ */ new Map(),
-            residual: /* @__PURE__ */ new Map(),
-            rootContributions: state.rootContributions.slice(),
-            jointContributions: state.jointContributions.slice(),
-            stats: { ...state.stats, conflict: true }
-          };
-        }
-      } catch (err) {
-        if (/residue outside preassigned prime cache/.test(err.message)) {
-          return {
-            roots: /* @__PURE__ */ new Map(),
-            residual: /* @__PURE__ */ new Map(),
-            rootContributions: state.rootContributions.slice(),
-            jointContributions: state.jointContributions.slice(),
-            stats: { ...state.stats, unresolvedResidue: true }
-          };
-        }
-        throw err;
-      }
-    }
-    const forbidden = state.stats.branchEvaluations !== 0n || state.stats.assignmentTableEntries !== 0n || state.stats.expandedPolynomialTerms !== 0n || state.stats.termPairEvaluations !== 0n || state.stats.fallbackCount !== 0n;
-    if (forbidden) {
-      throw new Error("solveCompressedOrGolden: drift counter violation.");
-    }
-    const residualValue = state.projectToEGPTReal();
-    const residual = residualValue.equals(EGPTReal.fromBigInt(0n)) ? /* @__PURE__ */ new Map() : /* @__PURE__ */ new Map([["0", residualValue]]);
-    return {
-      roots: /* @__PURE__ */ new Map(),
-      residual,
-      rootContributions: state.rootContributions.slice(),
-      jointContributions: state.jointContributions.slice(),
-      stats: { ...state.stats }
-    };
-  }
-};
-
 // src/browser/wasm-facade.js
 function _p(opName) {
   if (!hasActiveProvider()) {
@@ -3130,7 +2311,7 @@ function _compositeCtorJson(records, sign) {
     sign: num(sign),
     signIsNum: typeof sign === "number",
     records: records.map((r) => {
-      const o = {
+      return {
         s: num(r.sign),
         sNum: typeof r.sign === "number",
         sRaw: `${r.sign}`,
@@ -3139,11 +2320,6 @@ function _compositeCtorJson(records, sign) {
         l: typeof r.location === "string" ? r.location : null,
         lRaw: `${r.location}`
       };
-      if (r.clauseIdx !== void 0) {
-        o.hc = true;
-        o.c = r.clauseIdx;
-      }
-      return o;
     })
   });
 }
@@ -3182,12 +2358,7 @@ var EGPTPrimeComposite = class _EGPTPrimeComposite extends EGPTReal {
     }
     super(_CONSTRUCT_TOKEN, handle);
     const st = JSON.parse(callWasm("primeCompositeState", _packed(this, "EGPTPrimeComposite")));
-    this.records = st.records.map((r) => ({
-      sign: r.sign,
-      prime: BigInt(r.prime),
-      location: r.location,
-      ...r.clauseIdx !== void 0 ? { clauseIdx: r.clauseIdx } : {}
-    }));
+    this.records = st.records.map((r) => ({ sign: r.sign, prime: BigInt(r.prime), location: r.location }));
     this.primes = new Map(st.primes.map(([p, e]) => [BigInt(p), BigInt(e)]));
     this.sign = st.sign;
   }
@@ -3250,8 +2421,7 @@ var EGPTPrimeComposite = class _EGPTPrimeComposite extends EGPTReal {
       prime: r.prime,
       location: r.location,
       sign: r.sign,
-      exponent: 1n,
-      ...r.clauseIdx !== void 0 ? { clauseIdx: r.clauseIdx } : {}
+      exponent: 1n
     }));
   }
   getSign() {
@@ -3412,9 +2582,7 @@ var EGPTPolynomial = Object.freeze({
   /** The prime-atom multiset of the u-roots, as an EGPTPrimeComposite. */
   toNat(P) {
     return _fromTag(_polyPort("toNat", P)[0], [P]);
-  },
-  /** The multilinear-polynomial namespace (wasm-multilinear-facade.js); the barrel's `Multilinear`. */
-  Multilinear
+  }
 });
 function polyGCD(a, b) {
   return _fromTags(_polyPort("polyGCD", a, b), [a, b]);
@@ -8637,12 +7805,6 @@ function buildWasmFacade(wasmMetadata) {
 __name(buildWasmFacade, "buildWasmFacade");
 async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
   const wasmMetadata = await loadEgptMathWasm({ wasmUrl, wasmModuleUrl });
-  if (wasmMetadata.mode !== "wasm-bridge") {
-    const warnings = (wasmMetadata.warnings || []).join("; ") || "(no diagnostic warnings captured)";
-    throw new Error(
-      `EGPT Math SDK: the WASM engine failed to load (mode='${wasmMetadata.mode}'). This build ships no JS math-core fallback (CEO 2026-07-10 standing rule: WASM-only publish surface). wasmUrl=${JSON.stringify(wasmUrl ?? null)} wasmModuleUrl=${JSON.stringify(wasmModuleUrl ?? null)}. Diagnostics: ${warnings}`
-    );
-  }
   const wasmFacade = buildWasmFacade(wasmMetadata);
   const wasmProvider = buildWasmMathProvider(wasmFacade);
   setActiveProviderResolver(() => wasmProvider);
@@ -8672,7 +7834,6 @@ async function createEgptMathSdk({ wasmUrl, wasmModuleUrl } = {}) {
     matMul,
     matMulDense,
     detectToeplitzStencil,
-    Multilinear: EGPTPolynomial.Multilinear,
     f64ToOddDenom,
     toEGPTReal,
     floatToEGPT,

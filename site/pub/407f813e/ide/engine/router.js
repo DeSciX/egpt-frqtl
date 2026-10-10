@@ -204,7 +204,7 @@ var DIST_PROFILE = buildDistProfile('../..');
 // package.json#version fields so a forgotten bump fails `make verify`, not a
 // silent stale-CDN-URL bug.
 var CDN_SDK_VERSION = '0.3.0';       // sdk/frqtl-sdk/package.json#version — bound by router.test.mjs; bumped with each npm publish (0.3.0 ships FrqtlVision.record and dimension-on-demand)
-var CDN_MATH_SDK_VERSION = '0.2.0';  // sdk/egpt-math-sdk/package.json#version — bound by router.test.mjs; bumped with each npm publish (0.2.0 ships the notebook-scoped arena)
+var CDN_MATH_SDK_VERSION = '0.3.1';  // sdk/egpt-math-sdk/package.json#version — bound by router.test.mjs; bumped with each npm publish
 
 var CDN_BASE = 'https://cdn.jsdelivr.net/npm/@descix/frqtl-sdk@' + CDN_SDK_VERSION + '/dist';
 var CDN_MATH_BASE = 'https://cdn.jsdelivr.net/npm/@descix/egpt-math-sdk@' + CDN_MATH_SDK_VERSION + '/dist';

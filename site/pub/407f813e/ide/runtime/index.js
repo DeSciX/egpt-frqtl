@@ -980,22 +980,13 @@ function _applyBackendSelection(sdk) {
         MathBackendRegistry.select(id);
         console.log('[Runtime] Math backend selected: ' + id);
     } catch (err) {
-        // FAIL-LOUD with a PRECISE diagnosis. For wasm-math the sdk's loader
-        // metadata (sdk.metadata = loadEgptMathWasm result) tells us exactly why
-        // the provider never registered: missing router URLs vs unbuilt bridge.
+        // FAIL-LOUD with a PRECISE diagnosis. A bridge that was named but did not load
+        // already rejected createEgptMathSdk (loadEgptMathWasm throws), so the one way
+        // wasm-math is missing here is that no bridge URL reached the sdk.
         var detail = '';
-        if (id === 'wasm-math') {
-            var meta = sdk && sdk.metadata;
-            if (!_mathWasmModuleUrl) {
-                detail = ' No wasmModuleUrl was configured — the engineRouter profile ' +
-                    '__mathWasmModuleUrl is empty or was not threaded into Runtime.';
-            } else if (meta && meta.mode !== 'wasm-bridge') {
-                detail = ' WASM bridge load failed (mode="' + (meta.mode || 'unknown') + '"' +
-                    (meta.warnings && meta.warnings.length ? ', warnings: ' + meta.warnings.join('; ') : '') +
-                    '). The bridge artifacts are a gitignored build output — run ' +
-                    '`npm run build:wasm-bridge` in sdk/egpt-math-sdk to produce ' +
-                    'src/browser/generated/egpt_math_wasm/, then reload.';
-            }
+        if (id === 'wasm-math' && !_mathWasmModuleUrl) {
+            detail = ' No wasmModuleUrl was configured — the engineRouter profile ' +
+                '__mathWasmModuleUrl is empty or was not threaded into Runtime.';
         }
         var msg = '[Runtime] Math backend selection FAILED for id="' + id + '": ' +
             (err && err.message ? err.message : String(err)) + '.' + detail +

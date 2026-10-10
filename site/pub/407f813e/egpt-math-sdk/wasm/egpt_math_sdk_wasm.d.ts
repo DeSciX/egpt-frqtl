@@ -221,23 +221,6 @@ export function materializeStr(handle: bigint): string;
  */
 export function materializeV2(handle: bigint): Uint8Array;
 
-/**
- * `a * b` over BigInts.
- */
-export function multilinearMul(a: string, b: string): string;
-
-export function multilinearNextOddPrime(last: string): string;
-
-/**
- * `{"n", "d", "counts": [[numeratorCount, denominatorCount], …]}` (residues as decimal strings).
- */
-export function multilinearSplitOverCache(numerator: string, denominator: string, cache_json: string): string;
-
-/**
- * `a - b` over BigInts.
- */
-export function multilinearSub(a: string, b: string): string;
-
 export function orderFinderCalculateSampleSize(n: string): number;
 
 export function orderFinderFindOrder(a: string, n: string, a_disp: string, n_disp: string): string;
@@ -452,6 +435,11 @@ export interface InitOutput {
     readonly primeAtomOmega: (a: number, b: number) => [number, number, number];
     readonly primeAtomReconstruct: (a: number, b: number) => [number, number, number, number];
     readonly primeAtomTotient: (a: number, b: number) => [number, number, number, number];
+    readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
+    readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
+    readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
+    readonly traceConfigure: (a: number, b: number) => void;
+    readonly traceDrain: () => [number, number];
     readonly primeCompositeCancelRule: (a: number, b: number) => [number, number, number, number];
     readonly primeCompositeCongruent: (a: bigint, b: bigint) => [number, number, number];
     readonly primeCompositeDivide: (a: bigint, b: bigint) => [bigint, number, number];
@@ -461,15 +449,6 @@ export interface InitOutput {
     readonly primeCompositeNew: (a: number, b: number) => [bigint, number, number];
     readonly primeCompositeRecordsKey: (a: number, b: number) => [number, number, number, number];
     readonly primeCompositeState: (a: bigint) => [number, number, number, number];
-    readonly multilinearMul: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly multilinearNextOddPrime: (a: number, b: number) => [number, number, number, number];
-    readonly multilinearSplitOverCache: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
-    readonly multilinearSub: (a: number, b: number, c: number, d: number) => [number, number, number, number];
-    readonly transcendentalExp: (a: bigint, b: bigint) => [number, number, number, number];
-    readonly transcendentalFactorial: (a: number, b: number) => [number, number, number, number];
-    readonly transcendentalPhaseToCircular: (a: bigint) => [number, number, number, number];
-    readonly traceConfigure: (a: number, b: number) => void;
-    readonly traceDrain: () => [number, number];
     readonly bridge_version: () => [number, number];
     readonly egpt_add: (a: number, b: number) => number;
     readonly egpt_cmp: (a: number, b: number) => number;

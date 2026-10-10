@@ -171,8 +171,6 @@ return { comp12over5: { numStr, denStr } };
 The core discipline of `EGPTPrimeComposite` is that multiplication **concatenates** the prime-record lists — no cancellation. Multiplying `(12/5) × (7/12)` normally reduces to `7/5`, discarding the shared factor of `12`. The composite type keeps all four record lists (2², 3¹ from the first numerator; 5¹ from the first denominator; 7¹ from the second numerator; 2², 3¹ from the second denominator).
 
 The *value* of the result is still `7/5` (the composite inherits from `EGPTReal` and reports the correct rational). But `getPrimesInNumerator()` exposes the net exponents: the `2^2` and `3^1` that appeared in both numerator and denominator show up with *zero net exponent*, visible in the underlying `primes` map.
-
-This provenance record is what the CNF→polynomial SAT decoding step uses: each literal's polarity is reconstructed from whether its prime landed in the numerator or denominator of the product composite.
 </cell>
 
 <cell type="js" lane="math" id="multiply-preserves">
@@ -216,9 +214,9 @@ display(`Multiplication preserves record count and rational value ✓`);
 </cell>
 
 <cell type="markdown">
-## 6. Division flips provenance — the SAT literal recovery
+## 6. Division flips provenance
 
-Division in `EGPTPrimeComposite` is multiplication by the reciprocal: the divisor's records have their `location` field *flipped* (`numerator ↔ denominator`) before concatenation. This is exactly the operation that converts a positive literal (prime in numerator) to a negative literal (prime in denominator) in the BIPP CNF→polynomial decoding.
+Division in `EGPTPrimeComposite` is multiplication by the reciprocal: the divisor's records have their `location` field *flipped* (`numerator ↔ denominator`) before concatenation.
 
 Dividing `12/5` by itself must yield value `1`. The prime records for `12` cancel exactly — but only the *net* exponent goes to zero; the raw records list still holds both the numerator copies and the flipped denominator copies.
 </cell>
@@ -259,8 +257,8 @@ This notebook demonstrated two interoperable views of the same EGPT bijection:
 | `PrimeAtomPolynomial.omega / bigOmega / totient / divisorsOf` | Classical number theory, O(log N) once the factorization vector is in hand. |
 | `EGPTPrimeComposite.fromEGPTReal(r)` | Wraps any `EGPTReal` rational, trial-dividing its un-reduced numerator and denominator into provenance records. |
 | `comp.multiply(other)` | Concatenates record lists — no cancellation, no reduction. Value is correct; provenance is intact. |
-| `comp.divide(other)` | Flips the divisor's record locations before concatenation — the SAT literal-polarity flip made explicit. |
-| `comp.getPrimesInNumerator()` / `.getPrimesInDenominator()` | Net-exponent views for downstream decoding (CNF→polynomial SAT witness extraction). |
+| `comp.divide(other)` | Flips the divisor's record locations before concatenation. |
+| `comp.getPrimesInNumerator()` / `.getPrimesInDenominator()` | Net-exponent views. |
 
 The computations in cells 1–6 are the exact assertions the original `prime-composite.js` demo verifies, expanded with narrative and auxiliary combinatorics for a newcomer.
 </cell>
