@@ -1,13 +1,14 @@
 {
   "upstream_repo": "FRAQTL",
-  "upstream_sha": "8b04a038",
+  "upstream_sha": "90da229b",
   "app_page": "app.html",
   "file_count": 777,
-  "tree_sha256": "15fd474ef41ce78ebb1da9301d3fdf2bde1ca54720eebec0a3001bcbe246d710",
+  "tree_sha256": "fcc2d077f1360cbe1ad835bdbb281f1ad67bd1a52a68e7f34ee2d7f0b6c3fb5f",
   "tree_excludes": [
     "index.html",
     "images",
-    "DeSciXAppSDK.js"
+    "DeSciXAppSDK.js",
+    "share.json"
   ],
   "refreshed_by_script": "scripts/refresh-site.sh"
 }

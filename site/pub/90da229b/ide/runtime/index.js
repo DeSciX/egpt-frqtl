@@ -931,7 +931,7 @@ function _failMathRealm(err) {
  *
  * WHY (root cause of the static/public wasm-math failure): the WASM-only PUBLISH
  * entry (sdk/egpt-math-sdk `dist-entry.js`, served at the site's
- * `./pub/egpt-math-sdk/index.js` in the static build) registers its wasm provider ONLY into its private facade
+ * `./pub/<build>/egpt-math-sdk/index.js` in the static build) registers its wasm provider ONLY into its private facade
  * slot (`wasm-facade.js` `_setActiveWasmProvider`). To keep the JS math core OUT
  * of the published bundle (CEO 2026-07-10 WASM-only publish rule) it deliberately
  * NEVER imports `lib/egpt/js/model/backend/*`, so it CANNOT register into the registry
@@ -951,10 +951,8 @@ function _failMathRealm(err) {
  * label), and `resetScope()` reach the wasm arena.
  *
  * The DEV entry (`sdk-entry.js`) exposes its js-reference provider the same way.
- * Where that entry shares this registry instance (the dev server) the SAME object
+ * It shares this registry instance (the dev server), so the SAME object already
  * self-registered through the reference barrel, and `register()` is a no-op for it.
- * Where it is bundled separately (the .vsix co-served egpt-math-sdk.mjs) this is how
- * js-reference reaches this registry at all.
  *
  * `register()` owns provider identity: the same object again is a no-op, a
  * DIFFERENT object under a taken id throws (two provider bundles in one realm), and

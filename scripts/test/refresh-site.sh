@@ -10,13 +10,14 @@
 # present or absent; the provenance stamp and fingerprint describe the bundle-derived set only.
 # A name the bundle DECLARES host-provided (data-frqtl-host-provided on the consuming element,
 # read from the bundle's own bytes) must be a SITE_FOREIGN name present in site/, or the
-# refresh is refused and site/ is left untouched.
+# refresh is refused and site/ is left untouched. The stamp names the bundle's graph directory:
+# a bundle without pub/<stamp>/, or with another pub/<8-hex>/ beside it, is refused.
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
-BUILD=0123456789abcdef0123456789abcdef01234567
+BUILD=0123abcd
 FAIL=0
 
 pass() { echo "PASS  $1"; }
@@ -34,10 +35,11 @@ repo() {
 # extra <head> markup (the host-provided declarations under test).
 bundle() {
   local b="$SCRATCH/$1/bundle" build=${2:-$BUILD} head=${3:-}
-  mkdir -p "$b/app-assets" "$b/pub/images"
+  mkdir -p "$b/app-assets" "$b/pub/$build/images"
   printf '<!doctype html><html data-frqtl-site-build="%s"><head>%s</head><body>IDE</body></html>\n' "$build" "$head" > "$b/index.html"
   printf 'console.log("chunk")\n' > "$b/app-assets/index-abc.js"
-  printf 'png' > "$b/pub/images/a file with spaces.png"
+  printf '<!doctype html><title>player</title>\n' > "$b/pub/index.html"
+  printf 'png' > "$b/pub/$build/images/a file with spaces.png"
   printf '{"build":"%s","phases":{"root":"GREEN","prefix":"GREEN"}}' "$build" > "$b/VERIFICATION.json"
   echo "$b"
 }
@@ -60,7 +62,7 @@ if cmp -s "$R/site/images/marker.png" "$SCRATCH/marker.png"; then pass "images-m
 if cmp -s "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js"; then pass "descix-app-sdk-survives"; else fail "descix-app-sdk-survives" "site/DeSciXAppSDK.js was deleted or changed"; fi
 if cmp -s "$R/site/share.json" "$SCRATCH/share.json"; then pass "share-json-survives"; else fail "share-json-survives" "site/share.json was deleted or changed"; fi
 if [ ! -e "$R/site/stale-bundle-file.js" ]; then pass "stale-bundle-file-removed"; else fail "stale-bundle-file-removed" "a file no longer in the bundle survived"; fi
-if [ -f "$R/site/pub/images/a file with spaces.png" ] && [ -f "$R/site/app-assets/index-abc.js" ]; then pass "bundle-namespaces-copied"; else fail "bundle-namespaces-copied" "app-assets/ or pub/ incomplete"; fi
+if [ -f "$R/site/pub/$BUILD/images/a file with spaces.png" ] && [ -f "$R/site/pub/index.html" ] && [ -f "$R/site/app-assets/index-abc.js" ]; then pass "bundle-namespaces-copied"; else fail "bundle-namespaces-copied" "app-assets/ or pub/ incomplete"; fi
 got=$(jq -r '.upstream_sha // empty' "$R/.descix/site-provenance.json" 2>/dev/null)
 if [ "$got" = "$BUILD" ] && grep -qF "data-frqtl-site-build=\"$BUILD\"" "$R/site/app.html" 2>/dev/null; then pass "provenance-stamp-is-app-html"; else fail "provenance-stamp-is-app-html" "upstream_sha=$got, want the app.html stamp $BUILD"; fi
 TREE_PRE=$(jq -r '.tree_sha256 // empty' "$R/.descix/site-provenance.json" 2>/dev/null)
@@ -87,6 +89,20 @@ for owned in app.html images DeSciXAppSDK.js share.json; do
   if [ "$owned" = images ]; then mkdir -p "$B/images"; printf x > "$B/images/x.png"; else printf x > "$B/$owned"; fi
   if refresh "$R" "$B"; then fail "refuses-bundle-shipping-$owned" "accepted"; elif grep -qF "$owned" "$SCRATCH/clash-$owned/out.txt" && [ ! -e "$R/site" ]; then pass "refuses-bundle-shipping-$owned"; else fail "refuses-bundle-shipping-$owned" "$(cat "$SCRATCH/clash-$owned/out.txt")"; fi
 done
+
+# --- The graph directory the stamp names: required, and alone.
+R=$(repo nograph); B=$(bundle nograph); rm -rf "$B/pub/$BUILD"
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-bundle-without-stamped-graph" "accepted a bundle stamped $BUILD with no pub/$BUILD/"; elif grep -qF "pub/$BUILD/ is missing" "$SCRATCH/nograph/out.txt" && [ "$(cat "$R/site/index.html")" = front ] && [ ! -e "$R/site/app.html" ]; then pass "refuses-bundle-without-stamped-graph"; else fail "refuses-bundle-without-stamped-graph" "$(cat "$SCRATCH/nograph/out.txt")"; fi
+
+R=$(repo twograph); B=$(bundle twograph); mkdir -p "$B/pub/fedcba98"; printf 'old\n' > "$B/pub/fedcba98/old.js"
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-bundle-with-another-builds-graph" "accepted a bundle carrying pub/fedcba98/ beside pub/$BUILD/"; elif grep -qF "fedcba98" "$SCRATCH/twograph/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-bundle-with-another-builds-graph"; else fail "refuses-bundle-with-another-builds-graph" "$(cat "$SCRATCH/twograph/out.txt")"; fi
+
+# A refresh moves the site to the new build's graph: the previous pub/<build>/ leaves site/.
+R=$(repo nextbuild); B=$(bundle nextbuild)
+mkdir -p "$R/site/pub/fedcba98"; printf 'old\n' > "$R/site/pub/fedcba98/old.js"
+if refresh "$R" "$B" && [ ! -e "$R/site/pub/fedcba98" ] && [ -d "$R/site/pub/$BUILD" ]; then pass "previous-build-graph-leaves-site"; else fail "previous-build-graph-leaves-site" "$(cat "$SCRATCH/nextbuild/out.txt"; ls "$R/site/pub")"; fi
 
 # --- Host-provided declarations, read from the bundle's bytes.
 SDK_TAG='<script src="DeSciXAppSDK.js" data-frqtl-host-provided></script>'

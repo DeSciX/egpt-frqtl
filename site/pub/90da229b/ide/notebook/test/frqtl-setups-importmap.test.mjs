@@ -64,10 +64,10 @@ describe('buildFrqtlSetupsImportMap — canonical setup-factory bare specifiers'
         }
     });
 
-    test('the document-relative static router (the static bake) maps every spec under ./pub/js/game/setup-esm/', () => {
-        const map = buildFrqtlSetupsImportMap(engineRouter({ mode: 'static', documentRelative: true }));
+    test('the document-relative static router (the static bake) maps every spec under ./pub/<build>/js/game/setup-esm/', () => {
+        const map = buildFrqtlSetupsImportMap(engineRouter({ mode: 'static', documentRelative: true, build: 'ab12cd34' }));
         for (const spec of Object.keys(FRQTL_SETUPS_MANIFEST)) {
-            assert.equal(map.imports[spec], './pub/js/game/setup-esm/' + FRQTL_SETUPS_MANIFEST[spec].file);
+            assert.equal(map.imports[spec], './pub/ab12cd34/js/game/setup-esm/' + FRQTL_SETUPS_MANIFEST[spec].file);
         }
     });
 

@@ -34,7 +34,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT FRQTL — Emergent Physics from Cellular Automata</title>
-    <link rel="stylesheet" href="css/bootstrap.min.css">
+    <link rel="stylesheet" href="90da229b/css/bootstrap.min.css">
     <style>
         /* ── Reset ───────────────────────────────────────── */
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -241,8 +241,8 @@
 
 </div>
 
-<!-- The ESM entry resolves page-relative to this dist's own copy; build.js adds the lib/ placements. -->
-<script type="importmap" data-frqtl-lib-placement>{"imports":{"@descix/frqtl-sdk":"./esm/index.js","lib/shim/":"./ide/","lib/components/":"./components/","lib/frqtl/experiments/":"./experiments/"}}</script>
+<!-- build.js generates this map (scripts/lib-dist-placement.js pageImportMap): the ESM entry and the lib/ placements. -->
+<script type="importmap" data-frqtl-lib-placement>{"imports":{"@descix/frqtl-sdk":"./90da229b/esm/index.js","lib/shim/":"./90da229b/ide/","lib/components/":"./90da229b/components/","lib/frqtl/experiments/":"./90da229b/experiments/"}}</script>
 <script type="module">
 /* Copyright 2023-2026 by Essam Abadir */
 
@@ -253,16 +253,16 @@ import {
     WALKTHROUGH, walkthroughById, walkthroughGroup, walkthroughModes, defaultWalkthroughModeId,
     effectiveRenderState, FIRST_CONTACT_WALKTHROUGH_ID
 } from 'lib/shim/registry/walkthrough.js';
-import { engineRouter } from 'lib/shim/engine/router.js';
 import { bootLocalStorage, recordStorageBoot } from 'lib/shim/storage/boot.js';
 import { openRunOnceCard, recordRunOnceNotOffered } from 'lib/components/run-once-card/index.js';
 import { exhibitFor, sceneKey, showcaseCard } from 'lib/frqtl/experiments/exhibits.js';
 
-// Page-relative dist root (no trailing slash — engineRouter({mode:'cdn', base}) joins
-// base + '/js/...'). Every engine/renderer/game script and every experiment page re-anchors HERE.
-var DIST_ROOT = new URL('.', location.href).href.replace(/\/$/, '');
+// The GRAPH root: the directory of the ESM entry's own placement, read from this page's import map
+// (the address the placement owner emits), never from location. No trailing slash —
+// engineRouter({mode:'cdn', base}) joins base + '/js/...'. Every engine/renderer/game script
+// re-anchors HERE.
+var GRAPH_ROOT = new URL('..', import.meta.resolve('@descix/frqtl-sdk')).href.replace(/\/$/, '');
 var ENGINE = 'wasm';
-var router = engineRouter({ mode: 'cdn', engine: ENGINE, base: DIST_ROOT });
 
 var statusEl = document.getElementById('center-status');
 var mountEl  = document.getElementById('canvas-wrapper');
@@ -399,7 +399,7 @@ function bootRung(sel) {
     var token = ++bootToken;
     statusEl.textContent = 'booting ' + sel.rung.title + '…';
     mountEl.innerHTML = '';
-    return bootRecipe(mountEl, sel.rung.source, { base: DIST_ROOT, renderState: sel.renderState })
+    return bootRecipe(mountEl, sel.rung.source, { base: GRAPH_ROOT, renderState: sel.renderState })
         .then(function (scene) {
             if (token !== bootToken) { return null; }
             window.__frqtlScene = scene;           // realm-assertion handle (Playwright)
@@ -480,13 +480,16 @@ function playRung(id, modeId) {
     });
 }
 
-/** An experiment: the card, then NAVIGATE to its canonical page (replace: Back never bounces here). */
+/**
+ * An experiment: the card, then NAVIGATE to its canonical page (replace: Back never bounces here). The
+ * page is an ENTRY beside this one (experiments/{id}/index.html), so it resolves against this document.
+ */
 function playExperiment(id) {
     var row;
     try { row = exhibitFor({ kind: 'experiment', id: id }); }   // FAIL-LOUD on an unknown id
     catch (e) { failLoud('Cannot play ?experiment=' + id, String((e && e.message) || e)); return; }
     statusEl.textContent = row ? row.title : id;
-    var target = router.resolve('experiments/' + encodeURIComponent(id) + '/index.html') +
+    var target = new URL('experiments/' + encodeURIComponent(id) + '/index.html', document.baseURI).href +
         '?engine=' + encodeURIComponent(ENGINE);
     openSceneCard({ kind: 'experiment', id: id }, function () { location.replace(target); });
 }

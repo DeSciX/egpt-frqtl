@@ -7,7 +7,8 @@
 //   order  — section#proof (the cards) is the first element after the nav, above the hero.
 //   lede   — the #proof lede is the CEO-approved paragraph, exactly.
 //   hrefs  — every #proof tile opens the SDK player (pub/index.html) on a scene id the SERVED
-//            registries (site/pub/ide/registry/) declare, with a mode that rung declares.
+//            registries (site/pub/<build>/ide/registry/, <build> = .descix/site-provenance.json
+//            upstream_sha — the stamp the refresh read) declare, with a mode that rung declares.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -54,7 +55,9 @@ if (!proofMatch) fail('proof', 'no <section id="proof"> in site/index.html');
 
 // ── hrefs ────────────────────────────────────────────────────────────────────
 {
-  const reg = join(ROOT, 'site', 'pub', 'ide', 'registry');
+  const { upstream_sha: build } = JSON.parse(readFileSync(join(ROOT, '.descix', 'site-provenance.json'), 'utf8'));
+  if (!/^[0-9a-f]{8}$/.test(build || '')) { throw new Error('.descix/site-provenance.json upstream_sha is not a build id: ' + build); }
+  const reg = join(ROOT, 'site', 'pub', build, 'ide', 'registry');
   const W = await import(pathToFileURL(join(reg, 'walkthrough.js')).href);
   const E = await import(pathToFileURL(join(reg, 'experiments.js')).href);
   const tiles = [...proof.matchAll(/<a class="tile[^"]*" href="([^"]*)"[\s\S]*?<b>([^<]*)<\/b>[\s\S]*?<i>([^<]*)<\/i>/g)]

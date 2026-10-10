@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Blackbody Radiation</title>
-    <link rel="stylesheet" href="../_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../90da229b/experiments/_shared/experiment-layout.css">
     <style>
         .bb-outer {
             display: flex;
@@ -79,18 +79,18 @@
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../js/lib/","assets/render/":"../../js/consumers/","assets/models/":"../../js/models/","compat/providers/":"../../js/compat/","compat/":"../../js/compat/","objects/":"../../js/game/","experiments/_shared/":"../../experiments/_shared/","experiments/":"../../experiments/","shim/":"../../ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../90da229b/js/lib/","assets/render/":"../../90da229b/js/consumers/","assets/models/":"../../90da229b/js/models/","compat/providers/":"../../90da229b/js/compat/","compat/":"../../90da229b/js/compat/","objects/":"../../90da229b/js/game/","experiments/_shared/":"../../90da229b/experiments/_shared/","experiments/":"../../90da229b/experiments/","shim/":"../../90da229b/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../90da229b/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Canonical shared loader: engine + renderer + game layer in ONE order.
          Box.js and OvenBox.js are now part of the canonical GAME layer
          (game-layer-manifest.js) and load globally via stack-boot.js — no
          longer needed here in data-page-scripts. -->
-    <script src="../_shared/stack-boot.js"
+    <script src="../../90da229b/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../js/game/setup/setupBlackbody.js,
-            ../_shared/experiment-metrics.js,
-            ../_shared/radiation-histogram.js
+            ../../90da229b/js/game/setup/setupBlackbody.js,
+            ../../90da229b/experiments/_shared/experiment-metrics.js,
+            ../../90da229b/experiments/_shared/radiation-histogram.js
         "></script>
 
     <!-- Page structure -->
