@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Single-Source Self-Interference (omni, 2D)</title>
-    <link rel="stylesheet" href="../../407f813e/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../aec81862/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -25,14 +25,14 @@
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../407f813e/js/lib/","assets/render/":"../../407f813e/js/consumers/","assets/models/":"../../407f813e/js/models/","compat/providers/":"../../407f813e/js/compat/","compat/":"../../407f813e/js/compat/","objects/":"../../407f813e/js/game/","experiments/_shared/":"../../407f813e/experiments/_shared/","experiments/":"../../407f813e/experiments/","shim/":"../../407f813e/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../407f813e/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../aec81862/js/lib/","assets/render/":"../../aec81862/js/consumers/","assets/models/":"../../aec81862/js/models/","compat/providers/":"../../aec81862/js/compat/","compat/":"../../aec81862/js/compat/","objects/":"../../aec81862/js/game/","experiments/_shared/":"../../aec81862/experiments/_shared/","experiments/":"../../aec81862/experiments/","scenes/":"../../aec81862/scenes/","shim/":"../../aec81862/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../aec81862/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendor three.js (r128 UMD) for the 3D mode — must be set BEFORE
          stack-boot.js so render-boot.js can load it when the page boots with
-         ?egpt3D=1 (renderer=three). Harmless in the default 2D/p5 mode:
+         ?renderer=three. Harmless in the default 2D/p5 mode:
          render-boot only FETCHES three when the three renderer is selected. -->
-    <script>window._egptThreeUrl = new URL("../../407f813e/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../aec81862/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- render.mesh external-geometry loaders (GLTFLoader + DRACOLoader) — opt-in
          for the 3D "source mesh (glTF)" toggle (below). render-boot.js loads them
@@ -44,20 +44,20 @@
          Interference). The disk of directions (bench S5) is the 2D analogue of
          the sphere of directions (S4) with one fewer axis. A 2D/3D toggle
          (below) re-selects the RENDERER via the ONE existing render-boot
-         mechanism: it reloads with ?egpt3D=1, which render-boot.js reads to
-         auto-switch to the three.js provider (the SAME `?egpt3D=1` reinit idiom
+         mechanism: it reloads with ?renderer=three, which render-boot.js reads to
+         select the three.js provider (the SAME URL-reinit idiom
          dse-lab/dsewall-lab use to switch p5↔three — dimensionality/renderer is
          a reinit, activeAxes.z + the renderer script stack are fixed at boot, so
          it is NOT a live-knob reload). In 3D the SAME emitter particles render as
          SPHERES (ball glow) via three-provider; color/alpha come from the SAME
          render-intent contract (scheme parity), only the primitive + projection
-         differ. NO window._egpt3D inline: render-boot sets it from ?egpt3D=1. -->
+         differ. The page names no 3D flag: three IS the 3D display. -->
 
     <!-- Canonical shared loader: engine + renderer + game layer in ONE order. -->
-    <script src="../../407f813e/experiments/_shared/stack-boot.js"
+    <script src="../../aec81862/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../407f813e/js/game/setup/setupSphereEmitter3D.js,
-            ../../407f813e/experiments/_shared/experiment-metrics.js
+            ../../aec81862/js/game/setup/setupSphereEmitter3D.js,
+            ../../aec81862/experiments/_shared/experiment-metrics.js
         "></script>
 
     <!-- Page structure -->
@@ -193,14 +193,14 @@
             </label>
 
             <!-- 2D/3D TOGGLE — re-selects the RENDERER via the ONE existing render-boot
-                 mechanism (dse-lab/dsewall-lab's established `?egpt3D=1` reinit idiom):
-                 checking it reloads with ?egpt3D=1, which render-boot.js reads to
-                 auto-switch p5 → three.js (window._egpt3D). This is a reinit-class switch
+                 mechanism (the URL-reinit idiom):
+                 checking it reloads with ?renderer=three, which render-boot.js reads to
+                 switch p5 → three.js. This is a reinit-class switch
                  (activeAxes.z + the renderer script stack are fixed at universe.init()/
                  boot time), NOT a live-knob reload. In 3D the SAME emitter particles
                  render as SPHERES; scheme parity is preserved (both providers consume the
                  same render.color/render.colorScheme/render.shape contract). -->
-            <label title="2D (p5, flat x-y) ↔ 3D (three.js, orbit sphere-particles). REINIT — reloads with ?egpt3D=1 so render-boot.js re-selects the renderer (the SAME p5↔three switch mechanism dse-lab/dsewall-lab use; dimensionality + renderer are fixed at boot, so this is a reinit, not a live-knob reload). Same physics field; in 3D the particles spread in z (is2D=false → the sphere-of-directions) and render as spheres, with identical per-particle colors/alpha from the render-intent contract.">
+            <label title="2D (p5, flat x-y) ↔ 3D (three.js, orbit sphere-particles). REINIT — reloads with ?renderer=three so render-boot.js re-selects the renderer (the SAME p5↔three switch mechanism dse-lab/dsewall-lab use; dimensionality + renderer are fixed at boot, so this is a reinit, not a live-knob reload). Same physics field; in 3D the particles spread in z (is2D=false → the sphere-of-directions) and render as spheres, with identical per-particle colors/alpha from the render-intent contract.">
                 <input type="checkbox" id="ctrl-3d"> 3D (spheres)
             </label>
 
@@ -412,7 +412,7 @@
     window.__frqtlSSI = { activeQuanta: 0, wlScale: 16, effWavelength: 0 };
 
     // PageParams contract (lib/shim/page-params) — the ONE owner of every URL param
-    // key name this page reads (?egpt3D=, ?stepping=). Live-imported from
+    // key name this page reads (?renderer=, ?stepping=). Live-imported from
     // window.PageParams, which stack-boot.js's ENGINE array installs before any page
     // script runs; a named FAIL-LOUD guard (the fx-experiment.js/_getAstSchema pattern),
     // never a raw TypeError and never a hand-typed literal key.
@@ -429,15 +429,15 @@
         _metricsEl = document.getElementById('ssi-metrics');
 
         // ── 2D vs 3D MODE (renderer + physics dimensionality) ────────────────────────
-        // render-boot.js sets window._egpt3D=true when the page booted with ?egpt3D=1
-        // (and therefore already selected the three.js provider). is3D drives BOTH:
+        // The page booted the three.js display when it loaded with ?renderer=three (the 3D
+        // toggle's reinit); three IS the 3D display. is3D drives BOTH:
         //   - the RENDERER (already selected by render-boot: three when is3D, else p5), and
         //   - the PHYSICS dimensionality: LOCKED.is2D = !is3D, so in 3D the emitter's
         //     ball-of-directions actually spreads in z (the SPHERE field), in 2D the disk.
         // Mutated on LOCKED BEFORE any makeEmitter call below so the default + every
         // manager-created emitter is born at the correct dimensionality. Zero new physics
         // (bench SU1): is2D only picks which axes the SAME base-walk/wave rules run on.
-        var is3D = (typeof window !== 'undefined' && !!window._egpt3D);
+        var is3D = (typeof window !== 'undefined' && window.FrqtlDisplay && window.FrqtlDisplay.name() === 'three');
         LOCKED.is2D = !is3D;
         if (_metricsEl) {
             _metricsEl.setAttribute('data-is2d', String(!is3D));
@@ -542,7 +542,7 @@
         // ── EMITTER MANAGER (ADD / EDIT / DELETE / LIST) — PER-EMITTER DIMENSION ──────
         // (CEO 2026-07-19 corrected model.) Dimensions are ADDABLE scale LAYERS (like
         // Frames); an emitter births its leaves AT a chosen dimension via makeLeafFrame's
-        // explicit level + addDimension (the setupBlackbody pattern). So DIMENSION is
+        // explicit level + addDimension (the scenes/blackbody.js pattern). So DIMENSION is
         // PER-EMITTER: each emitter (tick-fn) holds its own dim and emits at that layer, and
         // MULTIPLE emitters at DIFFERENT dimensions COEXIST on one universe (init once at
         // BASE_FUNDAMENTAL = the DEFAULT emitter's dim, so the default is "light"/FAST). The
@@ -974,8 +974,8 @@
         shapeSel.addEventListener('change', applyShape);
 
         // ── 2D/3D TOGGLE — re-select the RENDERER via the ONE existing render-boot
-        //    mechanism (dse-lab/dsewall-lab's `?egpt3D=1` reinit idiom). Checking it
-        //    reloads with ?egpt3D=1 (render-boot sets window._egpt3D → auto-selects three);
+        //    mechanism (the URL-reinit idiom). Checking it
+        //    reloads with ?renderer=three (render-boot selects three);
         //    unchecking removes it (→ p5). Dimensionality + renderer script stack are
         //    fixed at boot, so this is a REINIT-class switch, not a live-knob reload. ─────
         var toggle3D = document.getElementById('ctrl-3d');
@@ -983,9 +983,9 @@
         toggle3D.addEventListener('change', function () {
             var PP = _getPageParams();   // the ONE guard for this page (see its docstring)
             var url = new URL(window.location.href);
-            if (toggle3D.checked) { url.searchParams.set(PP.KEYS.EGPT3D, '1'); }
-            else { url.searchParams.delete(PP.KEYS.EGPT3D); }
-            // D1 (2026-07-20) — the ?egpt3D=1 switch is a REINIT (fresh boot), so persist the
+            if (toggle3D.checked) { url.searchParams.set(PP.KEYS.RENDERER, 'three'); }
+            else { url.searchParams.delete(PP.KEYS.RENDERER); }
+            // D1 (2026-07-20) — the ?renderer=three switch is a REINIT (fresh boot), so persist the
             // current applied control state to sessionStorage FIRST; setup() restores it after
             // the reload so the classic self-interference preset (and any applied emitter set)
             // reproduces the identical pattern in 3D instead of being lost.
@@ -1223,13 +1223,13 @@
         ];
 
         // ── CONTROL-STATE PERSISTENCE ACROSS THE 2D↔3D REINIT (D1, 2026-07-20) ────────
-        // The ctrl-3d toggle reloads with ?egpt3D=1 (a REINIT — fresh boot), which otherwise
+        // The ctrl-3d toggle reloads with ?renderer=three (a REINIT — fresh boot), which otherwise
         // drops every applied setting (the classic preset, the emitter set, wavelengthScale,
         // shape, emission rate). We snapshot the CURRENT applied control state to sessionStorage
         // (keyed to THIS experiment) in the toggle handler, then restore + consume it here on
         // boot — so the SAME self-interference reproduces in 3D. sessionStorage is the cleanest
         // full-snapshot idiom for this page's multi-emitter state (the labs persist only single
-        // scalars as URL params — ?depth=/?egpt3D=1 — which doesn't scale to an emitter LIST).
+        // scalars as URL params — ?depth=/?renderer=three — which doesn't scale to an emitter LIST).
         // One-shot: a normal reload (no toggle) writes nothing, so nothing is restored. A storage
         // failure (private mode) degrades to "not restored" (the pre-D1 behavior) — NOT a silent
         // physics/contract fallback, so a best-effort try/catch is correct here.

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FRQTL SDK — Game Objects API Reference</title>
-    <link rel="stylesheet" href="407f813e/css/bootstrap.min.css">
+    <link rel="stylesheet" href="aec81862/css/bootstrap.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -22,11 +22,6 @@
         }
         .sdk-header h1 { color: #fff; font-size: 1.8rem; margin-bottom: 4px; }
         .sdk-header .subtitle { color: #666; font-size: 0.9rem; }
-        .back-link {
-            display: inline-block; margin-bottom: 16px;
-            color: #4a9eff; text-decoration: none; font-size: 0.85rem;
-        }
-        .back-link:hover { color: #6db3ff; }
 
         h2 { color: #fff; font-size: 1.3rem; margin: 40px 0 16px; border-bottom: 1px solid #1a1a1a; padding-bottom: 8px; }
         h3 { color: #ddd; font-size: 1.05rem; margin: 28px 0 10px; }
@@ -80,8 +75,6 @@
 </head>
 <body>
 <div class="sdk-container">
-
-<a href="index.html" class="back-link">&larr; Back to Simulations</a>
 
 <div class="sdk-header">
     <h1>FRQTL SDK — Game Objects API</h1>
@@ -636,14 +629,6 @@ ObjectFactory.create(<span class="string">'LiveChart'</span>, {
 <span class="comment">// result.sources.source1, result.sources.source2, result.largeObjects</span>
 </code></pre>
 
-<h3>setupBlackbody(universe, options)</h3>
-
-<p>Heated box with temperature-controlled emitters.</p>
-
-<pre><code><span class="keyword">var</span> result = setupBlackbody(universe, { temperature: <span class="number">300</span> });
-<span class="comment">// result.largeObjects, result.box, result.temperatureControl</span>
-</code></pre>
-
 <h3>setupCircuitBasic(universe, options)</h3>
 
 <p>Series resistor circuit — battery, wire, resistor, ground.</p>
@@ -651,21 +636,6 @@ ObjectFactory.create(<span class="string">'LiveChart'</span>, {
 <pre><code><span class="keyword">var</span> result = setupCircuitBasic(universe, {});
 <span class="comment">// result.battery, result.probes.before_resistor, result.probes.after_resistor</span>
 <span class="comment">// result.setBatteryVoltage(v), result.setBatteryAmperage(amp), result.getCircuitState()</span>
-</code></pre>
-
-<h3>setupHalfAdder(universe, options)</h3>
-
-<p>Half-adder — SUM = A XOR B, CARRY = A AND B — built from two <code>LogicGate</code>s,
-straight <code>Trace</code> input rails and grounded <code>Trace</code> readout stubs.
-Each logical input drives TWO independent generators at the full rail (control-plane
-fan-out); the current is never split.</p>
-
-<pre><code><span class="keyword">var</span> result = setupHalfAdder(universe, { railVoltage: <span class="keyword">6</span> });
-<span class="comment">// result.gates.SUM, result.gates.CARRY, result.readouts.SUM, result.readouts.CARRY</span>
-<span class="comment">// result.setInputA(bool), result.setInputB(bool), result.getState()</span>
-<span class="comment">// result.getLayout(), result.getSettleBudget(), result.setRailVoltage(v)</span>
-<span class="comment">// Drive the per-tick fan-out with EXACTLY ONE of:</span>
-<span class="comment">//   result.attachToRunner(runner)   — or —   result.onTick(tickData)</span>
 </code></pre>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->

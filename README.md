@@ -11,23 +11,25 @@ bundle. **PROD is deliberately not a mirror of DEV.**
 Developers are encouraged to make new impossible cards — Three.js-oriented developers especially. A
 card is a scene the FRQTL engine computes live in the visitor's tab: compose it from the SDK's parts,
 render it with the renderer you already know, and propose it for the front page's "Impossible things,
-running." grid (`site/index.html`, section `#proof`).
+running." grid (`site/index.html`, section `#proof`). The grid is the FRQTL showcase roster the bundle
+serves (`site/pub/<build>/ide/registry/exhibits.js`, `EXHIBITS`): a new card is a new roster row, and
+its tile opens the scene in the GYM.
 
 ## Layout
 
 ```
 site/                          the ONLY directory uploaded as the site
-  index.html                   front page — authored here, never written by a refresh
+  index.html                   front page — built from the shared template (CLAUDE.md), never written
+                               by a refresh; its #proof tiles are the served roster's GYM links
   images/*                     front-page images — authored here, never written by a refresh
   DeSciXAppSDK.js              DeSciX app-side SDK — vendored here, never written by a refresh
   share.json                   share metadata the edge worker injects into the shell head; its
                                icon and share image live in images/share/ — never written by a refresh
-  app.html                     IDE entry — the bundle's index.html
+  app.html                     IDE entry — the bundle's app.html, published unchanged
   app-assets/*                 hashed React chunks (vite owns this namespace)
   app-assets/host-view.js      the bundle's one unhashed entry: asks the shell for full-screen
-  pub/index.html, pub/sdk.html, pub/artifact/*.html, pub/experiments/<id>/index.html
-                               the bundle's HTML entries — fixed URLs (the front-page tiles open
-                               pub/index.html?…), served no-store
+  pub/sdk.html, pub/artifact/*.html, pub/experiments/<id>/index.html
+                               the bundle's HTML entries — fixed URLs, served no-store
   pub/<build>/*                everything those entries load: engine, vendor, experiment scripts, ide,
                                notebooks, math SDK — <build> is the bundle's data-frqtl-site-build stamp,
                                so a new build is a new directory and no browser-held old file is reused
@@ -44,8 +46,14 @@ scripts/
   lib/tree.sh                  the tree fingerprint both refresh scripts use
   lib/share-contract.mjs       the pre-upload check of site/share.json against runbook §7.3
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
-  test/frontpage.mjs           gate for site/index.html: #proof cards first, approved lede, player hrefs
-                               (against the served registries under site/pub/<upstream_sha>/)
+  test/frontpage.mjs           static gate for site/index.html: #proof cards first, approved lede, tiles ==
+                               the served EXHIBITS in order with GYM hrefs and their stills (against
+                               site/pub/<build>/ide/registry/, <build> = site/app.html's stamp)
+  test/frontpage-controls.mjs  controls for frontpage.mjs on fixture front pages (`npm test`)
+  test/frontpage-tiles.mjs     browser gate: every #proof tile lands on the GYM with its scene applied;
+                               the IDE's brand links to the front page
+  test/frontpage-tiles-controls.mjs  controls for frontpage-tiles.mjs (unknown id, STUDIO tile, no home link)
+  test/lib/                    the #proof reader and the fixture-site builder the gates and controls share
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
   test/share-contract.mjs      controls for lib/share-contract.mjs (`npm test`)
@@ -74,24 +82,26 @@ scripts/refresh-site.sh <.deploy-static directory>
 
 The argument is the `.deploy-static/` directory FRAQTL `make static-deploy` assembles and
 browser-verifies at the root of a FRAQTL checkout. The script
-refuses a non-directory, a directory without `index.html`, and an `index.html` without exactly one
-`data-frqtl-site-build="<git sha>"` attribute. It also refuses a bundle containing
+refuses a non-directory, a bundle that ships an `index.html` (the front page is this repo's; FRAQTL
+ships `app.html`), a directory without `app.html`, and an `app.html` without exactly one
+`data-frqtl-site-build="<git sha>"` attribute. It refuses a bundle — or a carried-over `SITE_FOREIGN`
+entry — holding a `.claude/` or `agent-memory/` directory anywhere. It also refuses a bundle containing
 `KNOWN_FAILING.json`, which the FRAQTL assembler writes while it ships pages it knows are broken,
 and a bundle whose `VERIFICATION.json` is missing, records a different build than the stamp, or does
 not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (the reader reads
 `build` and `phases` only) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
-It also refuses a bundle that ships `app.html`, `index.html`'s published name, or any name in the
-script's `SITE_FOREIGN` — the one list of top-level `site/` entries this repo owns outside the
-bundle (authored or vendored here; see Layout).
+It also refuses a bundle that ships any name in the script's `SITE_FOREIGN` — the one list of
+top-level `site/` entries this repo owns outside the bundle (authored or vendored here; see Layout).
 A bundle declares each site file it needs on the element that loads it — `data-frqtl-host-provided`
-(FRAQTL's IDE: `<script src="DeSciXAppSDK.js" data-frqtl-host-provided>`). The script reads those
-names from the bundle's `index.html` and refuses, changing nothing, when a declared name is not in
+(FRAQTL's IDE: `<script src="DeSciXAppSDK.js" data-frqtl-host-provided>` and
+`<link rel="home" href="index.html" data-frqtl-host-provided>`). The script reads those
+names from the bundle's `app.html` and refuses, changing nothing, when a declared name is not in
 the script's `SITE_FOREIGN`, or is missing from `site/`.
 The stamp also names the bundle's graph directory: the script refuses a bundle without
 `pub/<stamp>/`, or with any other `pub/<8 hex digits>/` beside it.
-On success it publishes the bundle's `index.html` byte-identical as `site/app.html`, replaces every
+On success it publishes the bundle's `app.html` byte-identical as `site/app.html`, replaces every
 other bundle-derived file in `site/` (files no longer in the bundle are removed — the previous
 build's `pub/<build>/` with them), carries
 every `SITE_FOREIGN` entry over untouched — or leaves it absent unless the bundle declares it — and
@@ -137,7 +147,7 @@ record, with the owner function and the record's own excludes:
 (. scripts/lib/tree.sh; tree_sha256 site $(jq -r '.tree_excludes[]' .descix/site-provenance.json))
 ```
 
-**Inside `tree_sha256`, `-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/images/` contains a filename with
+**Inside `tree_sha256`, `-print0 | sort -z | xargs -0` is load-bearing.** `site/pub/<build>/images/` contains a filename with
 spaces (`particles which did not go through a slit at all.png`). A plain `find | xargs shasum`
 splits on whitespace, silently skips that file, and yields a fingerprint that cannot detect a change
 to it.
@@ -149,6 +159,7 @@ workspace, API URL and environment in use). Always dry-run first.
 
 | What | Command |
 |---|---|
+| Site front-page gates | `node scripts/test/frontpage.mjs` (static) and `node scripts/test/frontpage-tiles.mjs --port <n>` (browser) against `site/` — both must report every row PASS before `descix site upload` |
 | Site host-view gate | `node scripts/test/host-view.mjs --port <n>` against `site/` — must report 5/5 PASS before `descix site upload` |
 | Site share-contract gate | `node scripts/lib/share-contract.mjs` — `site/share.json` (the link-preview card; contract: the app-developer runbook §7.3) must report PASS before `descix site upload`; it reports ABSENT and exits 0 when there is none |
 | Site | `descix site upload --dry-run`, then `descix site upload` |

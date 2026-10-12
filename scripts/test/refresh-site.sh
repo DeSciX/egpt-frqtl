@@ -4,14 +4,18 @@
 #
 #   scripts/test/refresh-site.sh
 #
-# The contract under test: the bundle's index.html is published as site/app.html; site/index.html
-# (the front page), site/images/ and site/share.json (the share metadata the edge worker reads) are
-# owned outside the bundle and survive a refresh untouched,
-# present or absent; the provenance stamp and fingerprint describe the bundle-derived set only.
+# The contract under test: the bundle ships its IDE entry as app.html and the refresh publishes it
+# as site/app.html byte-identical; a bundle WITH an index.html (the front page is the publisher's)
+# or WITHOUT an app.html is refused. site/index.html (the front page), site/images/ and
+# site/share.json (the share metadata the edge worker reads) are owned outside the bundle and
+# survive a refresh untouched, present or absent; the provenance stamp and fingerprint describe
+# the bundle-derived set only.
 # A name the bundle DECLARES host-provided (data-frqtl-host-provided on the consuming element,
 # read from the bundle's own bytes) must be a SITE_FOREIGN name present in site/, or the
-# refresh is refused and site/ is left untouched. The stamp names the bundle's graph directory:
-# a bundle without pub/<stamp>/, or with another pub/<8-hex>/ beside it, is refused.
+# refresh is refused and site/ is left untouched — FRAQTL's <link rel="home" href="index.html"> is
+# one, so a site without its front page refuses the bundle. The stamp names the bundle's graph
+# directory: a bundle without pub/<stamp>/, or with another pub/<8-hex>/ beside it, is refused.
+# A .claude/ or agent-memory/ directory in the publish set is refused.
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -36,9 +40,9 @@ repo() {
 bundle() {
   local b="$SCRATCH/$1/bundle" build=${2:-$BUILD} head=${3:-}
   mkdir -p "$b/app-assets" "$b/pub/$build/images"
-  printf '<!doctype html><html data-frqtl-site-build="%s"><head>%s</head><body>IDE</body></html>\n' "$build" "$head" > "$b/index.html"
+  printf '<!doctype html><html data-frqtl-site-build="%s"><head>%s</head><body>IDE</body></html>\n' "$build" "$head" > "$b/app.html"
   printf 'console.log("chunk")\n' > "$b/app-assets/index-abc.js"
-  printf '<!doctype html><title>player</title>\n' > "$b/pub/index.html"
+  printf '<!doctype html><title>sdk</title>\n' > "$b/pub/sdk.html"
   printf 'png' > "$b/pub/$build/images/a file with spaces.png"
   printf '{"build":"%s","phases":{"root":"GREEN","prefix":"GREEN"}}' "$build" > "$b/VERIFICATION.json"
   echo "$b"
@@ -56,13 +60,13 @@ printf '{"title":"t"}\n' > "$R/site/share.json"
 printf 'stale\n' > "$R/site/stale-bundle-file.js"
 cp "$R/site/index.html" "$SCRATCH/front.html"; cp "$R/site/images/marker.png" "$SCRATCH/marker.png"; cp "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js"; cp "$R/site/share.json" "$SCRATCH/share.json"
 if refresh "$R" "$B"; then pass "refresh-exits-0"; else fail "refresh-exits-0" "$(cat "$SCRATCH/pre/out.txt")"; fi
-if cmp -s "$R/site/app.html" "$B/index.html"; then pass "writes-app-html-byte-identical"; else fail "writes-app-html-byte-identical" "site/app.html missing or differs from the bundle's index.html"; fi
+if cmp -s "$R/site/app.html" "$B/app.html"; then pass "writes-app-html-byte-identical"; else fail "writes-app-html-byte-identical" "site/app.html missing or differs from the bundle's app.html"; fi
 if cmp -s "$R/site/index.html" "$SCRATCH/front.html"; then pass "front-page-index-html-survives"; else fail "front-page-index-html-survives" "site/index.html was overwritten or deleted"; fi
 if cmp -s "$R/site/images/marker.png" "$SCRATCH/marker.png"; then pass "images-marker-survives"; else fail "images-marker-survives" "site/images/marker.png was deleted or changed"; fi
 if cmp -s "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js"; then pass "descix-app-sdk-survives"; else fail "descix-app-sdk-survives" "site/DeSciXAppSDK.js was deleted or changed"; fi
 if cmp -s "$R/site/share.json" "$SCRATCH/share.json"; then pass "share-json-survives"; else fail "share-json-survives" "site/share.json was deleted or changed"; fi
 if [ ! -e "$R/site/stale-bundle-file.js" ]; then pass "stale-bundle-file-removed"; else fail "stale-bundle-file-removed" "a file no longer in the bundle survived"; fi
-if [ -f "$R/site/pub/$BUILD/images/a file with spaces.png" ] && [ -f "$R/site/pub/index.html" ] && [ -f "$R/site/app-assets/index-abc.js" ]; then pass "bundle-namespaces-copied"; else fail "bundle-namespaces-copied" "app-assets/ or pub/ incomplete"; fi
+if [ -f "$R/site/pub/$BUILD/images/a file with spaces.png" ] && [ -f "$R/site/pub/sdk.html" ] && [ -f "$R/site/app-assets/index-abc.js" ]; then pass "bundle-namespaces-copied"; else fail "bundle-namespaces-copied" "app-assets/ or pub/ incomplete"; fi
 got=$(jq -r '.upstream_sha // empty' "$R/.descix/site-provenance.json" 2>/dev/null)
 if [ "$got" = "$BUILD" ] && grep -qF "data-frqtl-site-build=\"$BUILD\"" "$R/site/app.html" 2>/dev/null; then pass "provenance-stamp-is-app-html"; else fail "provenance-stamp-is-app-html" "upstream_sha=$got, want the app.html stamp $BUILD"; fi
 TREE_PRE=$(jq -r '.tree_sha256 // empty' "$R/.descix/site-provenance.json" 2>/dev/null)
@@ -80,11 +84,16 @@ COUNT_BARE=$(jq -r '.file_count // empty' "$R/.descix/site-provenance.json" 2>/d
 if [ -n "$TREE_PRE" ] && [ "$TREE_PRE" = "$TREE_BARE" ] && [ "$COUNT_PRE" = "$COUNT_BARE" ]; then pass "fingerprint-excludes-front-page"; else fail "fingerprint-excludes-front-page" "tree $TREE_PRE/$COUNT_PRE with front page vs $TREE_BARE/$COUNT_BARE without"; fi
 
 # --- Refusals leave site/ untouched.
-R=$(repo noindex); B=$(bundle noindex); rm "$B/index.html"
+R=$(repo noapp); B=$(bundle noapp); rm "$B/app.html"
 mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
-if refresh "$R" "$B"; then fail "refuses-bundle-without-index-html" "accepted"; elif grep -qF "index.html is missing" "$SCRATCH/noindex/out.txt" && [ "$(cat "$R/site/index.html")" = front ]; then pass "refuses-bundle-without-index-html"; else fail "refuses-bundle-without-index-html" "$(cat "$SCRATCH/noindex/out.txt")"; fi
+if refresh "$R" "$B"; then fail "refuses-bundle-without-app-html" "accepted"; elif grep -qF "app.html is missing" "$SCRATCH/noapp/out.txt" && [ "$(cat "$R/site/index.html")" = front ] && [ ! -e "$R/site/app.html" ]; then pass "refuses-bundle-without-app-html"; else fail "refuses-bundle-without-app-html" "$(cat "$SCRATCH/noapp/out.txt")"; fi
 
-for owned in app.html images DeSciXAppSDK.js share.json; do
+# A bundle that ships a front page: refused by name — the front page is the publisher's.
+R=$(repo withindex); B=$(bundle withindex); printf '<!doctype html><title>bundle front</title>\n' > "$B/index.html"
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-bundle-shipping-index-html" "accepted"; elif grep -qF "the front page is the publisher's; FRAQTL ships app.html" "$SCRATCH/withindex/out.txt" && [ "$(cat "$R/site/index.html")" = front ] && [ ! -e "$R/site/app.html" ]; then pass "refuses-bundle-shipping-index-html"; else fail "refuses-bundle-shipping-index-html" "$(cat "$SCRATCH/withindex/out.txt")"; fi
+
+for owned in images DeSciXAppSDK.js share.json; do
   R=$(repo "clash-$owned"); B=$(bundle "clash-$owned")
   if [ "$owned" = images ]; then mkdir -p "$B/images"; printf x > "$B/images/x.png"; else printf x > "$B/$owned"; fi
   if refresh "$R" "$B"; then fail "refuses-bundle-shipping-$owned" "accepted"; elif grep -qF "$owned" "$SCRATCH/clash-$owned/out.txt" && [ ! -e "$R/site" ]; then pass "refuses-bundle-shipping-$owned"; else fail "refuses-bundle-shipping-$owned" "$(cat "$SCRATCH/clash-$owned/out.txt")"; fi
@@ -110,7 +119,7 @@ SDK_TAG='<script src="DeSciXAppSDK.js" data-frqtl-host-provided></script>'
 # Declared and present: accepted, the publisher's file carried over byte-identical.
 R=$(repo hp-ok); B=$(bundle hp-ok "$BUILD" "$SDK_TAG")
 mkdir -p "$R/site"; printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
-if refresh "$R" "$B" && cmp -s "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js" && cmp -s "$R/site/app.html" "$B/index.html"; then pass "accepts-declared-host-provided-present"; else fail "accepts-declared-host-provided-present" "$(cat "$SCRATCH/hp-ok/out.txt")"; fi
+if refresh "$R" "$B" && cmp -s "$R/site/DeSciXAppSDK.js" "$SCRATCH/sdk.js" && cmp -s "$R/site/app.html" "$B/app.html"; then pass "accepts-declared-host-provided-present"; else fail "accepts-declared-host-provided-present" "$(cat "$SCRATCH/hp-ok/out.txt")"; fi
 
 # Declared and MISSING from site/: refused by name, site/ untouched.
 R=$(repo hp-missing); B=$(bundle hp-missing "$BUILD" "$SDK_TAG")
@@ -126,5 +135,29 @@ if refresh "$R" "$B"; then fail "refuses-declared-name-not-site-foreign" "accept
 R=$(repo hp-noref); B=$(bundle hp-noref "$BUILD" '<script data-frqtl-host-provided></script>')
 mkdir -p "$R/site"; printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
 if refresh "$R" "$B"; then fail "refuses-declaration-naming-no-file" "accepted"; elif grep -qF "names no src" "$SCRATCH/hp-noref/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-declaration-naming-no-file"; else fail "refuses-declaration-naming-no-file" "$(cat "$SCRATCH/hp-noref/out.txt")"; fi
+
+# The home link FRAQTL's app.html declares (<link rel="home" href="index.html">): the front page is
+# the declared file, so it must be in site/ — and it is carried over, never written by the refresh.
+HOME_TAG='<link rel="home" href="index.html" data-frqtl-host-provided>'
+R=$(repo home-ok); B=$(bundle home-ok "$BUILD" "$HOME_TAG")
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B" && [ "$(cat "$R/site/index.html")" = front ] && cmp -s "$R/site/app.html" "$B/app.html"; then pass "accepts-home-link-with-front-page"; else fail "accepts-home-link-with-front-page" "$(cat "$SCRATCH/home-ok/out.txt")"; fi
+
+R=$(repo home-missing); B=$(bundle home-missing "$BUILD" "$HOME_TAG")
+mkdir -p "$R/site"; printf 'sdk shim\n' > "$R/site/DeSciXAppSDK.js"
+if refresh "$R" "$B"; then fail "refuses-home-link-without-front-page" "accepted a bundle whose declared index.html is not in site/"; elif grep -qF '"index.html" data-frqtl-host-provided, and site/index.html is missing' "$SCRATCH/home-missing/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-home-link-without-front-page"; else fail "refuses-home-link-without-front-page" "$(cat "$SCRATCH/home-missing/out.txt")"; fi
+
+# --- Maintainer state never ships: a .claude/ or agent-memory/ directory in the bundle, or in a
+# carried-over publisher entry, is refused and site/ is left untouched.
+R=$(repo leak-claude); B=$(bundle leak-claude); mkdir -p "$B/pub/$BUILD/.claude"; printf 'x\n' > "$B/pub/$BUILD/.claude/settings.json"
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-bundle-carrying-.claude" "accepted"; elif grep -qF "./pub/$BUILD/.claude" "$SCRATCH/leak-claude/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-bundle-carrying-.claude"; else fail "refuses-bundle-carrying-.claude" "$(cat "$SCRATCH/leak-claude/out.txt")"; fi
+
+R=$(repo leak-memory); B=$(bundle leak-memory); mkdir -p "$B/app-assets/agent-memory"; printf 'x\n' > "$B/app-assets/agent-memory/MEMORY.md"
+mkdir -p "$R/site"; printf 'front\n' > "$R/site/index.html"
+if refresh "$R" "$B"; then fail "refuses-bundle-carrying-agent-memory" "accepted"; elif grep -qF "./app-assets/agent-memory" "$SCRATCH/leak-memory/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-bundle-carrying-agent-memory"; else fail "refuses-bundle-carrying-agent-memory" "$(cat "$SCRATCH/leak-memory/out.txt")"; fi
+
+R=$(repo leak-foreign); B=$(bundle leak-foreign); mkdir -p "$R/site/images/.claude"; printf 'x\n' > "$R/site/images/.claude/x"
+if refresh "$R" "$B"; then fail "refuses-carried-over-.claude" "accepted"; elif grep -qF "site/images/.claude" "$SCRATCH/leak-foreign/out.txt" && [ ! -e "$R/site/app.html" ]; then pass "refuses-carried-over-.claude"; else fail "refuses-carried-over-.claude" "$(cat "$SCRATCH/leak-foreign/out.txt")"; fi
 
 exit "$FAIL"
