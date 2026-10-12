@@ -1,10 +1,10 @@
 {
-  "build": "aec81862",
+  "build": "8ba141ba",
   "phases": {
     "root": "GREEN",
     "prefix": "GREEN"
   },
-  "verified_at": "2026-10-12T11:38:48Z",
+  "verified_at": "2026-10-12T14:13:43Z",
   "instrument": {
     "script": "scripts/verify-static-deploy.sh",
     "urls": "scripts/verify-static-deploy-urls.mjs",

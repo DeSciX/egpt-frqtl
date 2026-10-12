@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Single-Source Self-Interference (omni, 2D)</title>
-    <link rel="stylesheet" href="../../aec81862/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../8ba141ba/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -25,14 +25,14 @@
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../aec81862/js/lib/","assets/render/":"../../aec81862/js/consumers/","assets/models/":"../../aec81862/js/models/","compat/providers/":"../../aec81862/js/compat/","compat/":"../../aec81862/js/compat/","objects/":"../../aec81862/js/game/","experiments/_shared/":"../../aec81862/experiments/_shared/","experiments/":"../../aec81862/experiments/","scenes/":"../../aec81862/scenes/","shim/":"../../aec81862/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../aec81862/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../8ba141ba/js/lib/","assets/render/":"../../8ba141ba/js/consumers/","assets/models/":"../../8ba141ba/js/models/","compat/providers/":"../../8ba141ba/js/compat/","compat/":"../../8ba141ba/js/compat/","objects/":"../../8ba141ba/js/game/","experiments/_shared/":"../../8ba141ba/experiments/_shared/","experiments/":"../../8ba141ba/experiments/","scenes/":"../../8ba141ba/scenes/","shim/":"../../8ba141ba/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../8ba141ba/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendor three.js (r128 UMD) for the 3D mode — must be set BEFORE
          stack-boot.js so render-boot.js can load it when the page boots with
          ?renderer=three. Harmless in the default 2D/p5 mode:
          render-boot only FETCHES three when the three renderer is selected. -->
-    <script>window._egptThreeUrl = new URL("../../aec81862/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../8ba141ba/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- render.mesh external-geometry loaders (GLTFLoader + DRACOLoader) — opt-in
          for the 3D "source mesh (glTF)" toggle (below). render-boot.js loads them
@@ -54,10 +54,10 @@
          differ. The page names no 3D flag: three IS the 3D display. -->
 
     <!-- Canonical shared loader: engine + renderer + game layer in ONE order. -->
-    <script src="../../aec81862/experiments/_shared/stack-boot.js"
+    <script src="../../8ba141ba/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../aec81862/js/game/setup/setupSphereEmitter3D.js,
-            ../../aec81862/experiments/_shared/experiment-metrics.js
+            ../../8ba141ba/js/game/setup/setupSphereEmitter3D.js,
+            ../../8ba141ba/experiments/_shared/experiment-metrics.js
         "></script>
 
     <!-- Page structure -->
