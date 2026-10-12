@@ -2,9 +2,6 @@
   "scripts": {
     "test": "bash scripts/test/verification-record.sh && bash scripts/test/refresh-site.sh && node scripts/test/share-contract.mjs && node --no-warnings scripts/test/frontpage-controls.mjs"
   },
-  "dependencies": {
-    "@descix/cli": "^1.0.9"
-  },
   "devDependencies": {
     "@playwright/test": "1.61.0"
   }
