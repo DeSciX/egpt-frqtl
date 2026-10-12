@@ -21,8 +21,9 @@ its tile opens the scene in the GYM.
 site/                          the ONLY directory uploaded as the site
   index.html                   front page — built from the shared template (CLAUDE.md), never written
                                by a refresh; its #proof tiles are the served roster's GYM links
-  images/*                     front-page images — authored here, never written by a refresh
-  DeSciXAppSDK.js              DeSciX app-side SDK — vendored here, never written by a refresh
+  images/*                     front-page images (template images, tile stills) — generator output with
+                               index.html, never written by a refresh
+  DeSciXAppSDK.js              DeSciX app-side SDK — generator output with index.html, never written by a refresh
   share.json                   share metadata the edge worker injects into the shell head; its
                                icon and share image live in images/share/ — never written by a refresh
   app.html                     IDE entry — the bundle's app.html, published unchanged
