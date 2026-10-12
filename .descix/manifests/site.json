@@ -1,7 +1,7 @@
 {
   "_purpose": "Deployable site set for the egpt-frqtl PROD app. WITHOUT this manifest the CLI's legacy flow uploads the whole app directory. Site URLs are non-expiring and unsigned, so the set is an explicit ALLOWLIST: SiteWalker treats an empty `include` as match-everything.",
   "_repo_root_excluded": "The only source is `site`, so the repo-root assets/, kb/, plugin/, docs/, scripts/ and .descix/ are outside the walk and never uploaded. Do not add them as bare-name excludes: SiteWalker.isDirExcluded matches a bare directory name at ANY depth, so an `assets` exclude would silently drop any assets/ directory inside the bundle. Do not add a source whose path is `.` or a repo-root directory.",
-  "_schema_pin": "Same schema as the egpt-godsworld worked example, authored against the PUBLISHED @descix/cli@1.0.6 tarball: lib/core/ManifestLoader.js::validateSiteManifest (sources[] non-empty; each {path required string, include?/exclude? string arrays}; buildCommand string|null) and lib/core/SiteWalker.js::walkDir (exclude tested BEFORE include, so exclude wins; isDirExcluded matches the BARE directory name, so directory excludes carry no glob suffix). RE-VERIFY THIS PIN against the CLI actually used at upload time before trusting it.",
+  "_schema_pin": "Schema and walk rules are the app-developer runbook §7.1, the handbook for the CLI that CLAUDE.md pins: sources[] of {path, include?, exclude?}, buildCommand null; an empty include matches everything, a non-empty include is the complete list; exclude is tested BEFORE include, so exclude wins; a bare directory name in exclude matches that name at ANY depth, so directory excludes carry no glob suffix.",
   "sources": [
     {
       "path": "site",

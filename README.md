@@ -154,7 +154,7 @@ to it.
 
 ## Deploying
 
-Run from the repo root with a PROD `.descix/workspace.json` (`descix config show` prints the
+`descix …` is the published CLI exactly as CLAUDE.md's CLI line pins it (an `npx` invocation; it is not a dependency). Run from the repo root with a PROD `.descix/workspace.json` (`descix config show` prints the
 workspace, API URL and environment in use). Always dry-run first.
 
 | What | Command |
