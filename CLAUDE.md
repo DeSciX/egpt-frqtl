@@ -9,21 +9,22 @@ PLATFORM WALL: when the handbook does not answer — stop, write the question wi
 Public URL https://egpt-frqtl.descix.net/ (frqtl.com 301-forwards to it); app id `egpt-frqtl`, community `egpt`.
 One site, one repo: this repo builds and uploads this app; nothing else uploads to it, and no other app's files live here. The front page is generated from the shared template (egpt-courantgroup `site/index.html`) and this app's content block in EGPT-Evidence `site-src/frontpage/egpt-frqtl.json`; only the built OUTPUT lives here.
 `site/share.json` and `site/images/share/` are this repo's: it authors, validates (`scripts/lib/share-contract.mjs`) and uploads them; nothing else writes them (CEO-COMMS record Unkamon 540758a).
-CLI: `npx descix …` from this root (package.json pins @descix/cli; 1.0.9 is installed). The published 1.0.21 also runs here as `npx -y -p @descix/cli@2.0.3 descix …`. Either prints `env: prod (.descix/workspace.json env.apiUrl) https://descix.net` as its first line (measured 2026-10-09) — read that line on every call.
+CLI: the published CLI, `npx -y -p @descix/cli@2.0.3 descix …` from this root (written `descix …` below). It prints `env: prod (.descix/workspace.json env.apiUrl) https://descix.net` as its first line (measured 2026-10-09) — read that line on every call.
 
 ## Layout
-- `site/` is the only directory uploaded. Authored here: `index.html` (front page, full screen via `app-assets/host-view.js`), `share.json` (title, description, icon, og_image, apple_touch_icon), `images/` with `images/share/` (favicon.ico, icon-180.png, share-1200x630.png), `DeSciXAppSDK.js` (vendored). Bundle-derived, written only by `scripts/refresh-site.sh`: `app.html` (the IDE), `app-assets/*`, the fixed HTML entries under `pub/` (`index.html`, `sdk.html`, `artifact/*`, `experiments/<id>/index.html`) and everything they load under `pub/<build>/` (`<build>` = the `data-frqtl-site-build` stamp).
+- `site/` is the only directory uploaded. Authored here: `index.html` (front page, full screen via `app-assets/host-view.js`), `share.json` (title, description, icon, og_image, apple_touch_icon), `images/` with `images/share/` (favicon.ico, icon-180.png, share-1200x630.png), `DeSciXAppSDK.js` (vendored). Bundle-derived, written only by `scripts/refresh-site.sh`: `app.html` (the IDE, the bundle's own `app.html`), `app-assets/*`, the fixed HTML entries under `pub/` (`sdk.html`, `artifact/*`, `experiments/<id>/index.html`) and everything they load under `pub/<build>/` (`<build>` = the `data-frqtl-site-build` stamp). The bundle ships no `index.html`: the front page is this repo's, and the IDE's FRQTL brand links to it (`<link rel="home" href="index.html">`).
+- The front page's `#proof` tiles are the served showcase roster (`site/pub/<build>/ide/registry/exhibits.js` `EXHIBITS`, in order), each a GYM deep link `app.html?preset=compare&walkthrough=<id>[&mode=<m>]`; `scripts/test/frontpage.mjs` (static) and `scripts/test/frontpage-tiles.mjs` (browser) gate it.
 - `.descix/manifests/site.json` is an explicit include allowlist: a new file or directory under `site/` must be added to its `include` or the upload silently leaves it out.
 - `kb/` (five KBs, one manifest each), `plugin/` (the `frqtl` Claude plugin), `scripts/` (refresh, tests): README.md owns those procedures; read it before touching any of them.
 - Nothing in `site/` may use a root-absolute path: PROD serves the bundle under `/prod/egpt-frqtl/site/`, `descix serve` under `/p/egpt-frqtl/`.
 
 ## Serve
-`npx descix serve` from this root; the app is detected from cwd (the workspace maps `site.static: "site"`, port `env.gateway.port` = 5173). Open the gateway ROOT `https://localhost:5173/` — the App Shell wrapping the app; `/p/egpt-frqtl` is the bare iframe target the shell loads, not a page to hand out. Files are read from disk on every request: rebuild, refresh, no restart.
+`descix serve` from this root; the app is detected from cwd (the workspace maps `site.static: "site"`, port `env.gateway.port` = 5173). Open the gateway ROOT `https://localhost:5173/` — the App Shell wrapping the app; `/p/egpt-frqtl` is the bare iframe target the shell loads, not a page to hand out. Files are read from disk on every request: rebuild, refresh, no restart.
 
 ## Upload
-1. `npm test`, `node scripts/test/host-view.mjs --port <n>` and `node scripts/lib/share-contract.mjs` pass (README).
-2. `npx descix site upload -a egpt-frqtl --dry-run` — read both lists: everything uploaded, and "Would remove from the server".
-3. `npx descix site upload -a egpt-frqtl` — a full replace of the served site; the receipt ends `Site uploaded successfully!`.
+1. `npm test`, `node scripts/test/frontpage.mjs`, `node scripts/test/frontpage-tiles.mjs --port <n>`, `node scripts/test/host-view.mjs --port <n>` and `node scripts/lib/share-contract.mjs` pass (README).
+2. `descix site upload -a egpt-frqtl --dry-run` — read both lists: everything uploaded, and "Would remove from the server".
+3. `descix site upload -a egpt-frqtl` — a full replace of the served site; the receipt ends `Site uploaded successfully!`.
 4. Served == built: `shasum -a 256 site/index.html` equals `curl -fsS https://egpt-frqtl.descix.net/prod/egpt-frqtl/site/index.html | shasum -a 256` (equal on 2026-10-09); repeat for one changed file.
 5. Share card: `curl -sS -A 'facebookexternalhit/1.1' https://egpt-frqtl.descix.net/ | grep -o '<title>[^<]*</title>\|property="og:image" content="[^"]*"'` prints this site's title and og:image. The edge caches a share.json MISS for 300 s after the first upload that introduces it; later uploads self-heal.
 
