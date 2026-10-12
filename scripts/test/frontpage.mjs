@@ -1,42 +1,59 @@
 #!/usr/bin/env node
-// Gate for the authored front page, site/index.html. Exit 0 only when every check passes.
+// Static gate for the published front page, <site>/index.html. Exit 0 only when every check passes.
 //
-//   node scripts/test/frontpage.mjs
+//   node scripts/test/frontpage.mjs [--site <dir>]        (default: this repo's site/)
+//
+// The tiles are the SERVED showcase roster: EXHIBITS from <site>/pub/<build>/ide/registry/exhibits.js,
+// <build> = the data-frqtl-site-build stamp on <site>/app.html (the bytes the refresh published).
+// Never FRAQTL's tree.
 //
 // Checks:
 //   order  — section#proof (the cards) is the first element after the nav, above the hero.
 //   lede   — the #proof lede is the CEO-approved paragraph, exactly.
-//   hrefs  — every #proof tile opens the SDK player (pub/index.html) on a scene id the SERVED
-//            registries (site/pub/<build>/ide/registry/, <build> = .descix/site-provenance.json
-//            upstream_sha — the stamp the refresh read) declare, with a mode that rung declares.
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+//   tiles  — the #proof tiles are EXHIBITS, one per row, in roster order:
+//              title (<b>) and sentence (<span>) are the row's `title` and `what`;
+//              href is a RELATIVE GYM deep link (an absolute link to this site's own origin is
+//              refused as a self-link) — app.html?preset=compare&walkthrough=<id>[&mode=<m>] for a
+//              rung (mode iff the row names one), app.html?preset=compare&experiment=<id> for an
+//              experiment row — with exactly those keys, ids resolving in the served registries;
+//              the call to action is "Open live ↗";
+//              a tile carries an <img> iff it is not .dark, and the img is images/<sceneKey>.png
+//              (exhibits.js sceneKey of the row), present in <site>/images/.
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { servedRegistries } from './lib/served-roster.mjs';
+import { proofSection, proofLinks, isTile, text } from './lib/proof-tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const html = readFileSync(join(ROOT, 'site', 'index.html'), 'utf8');
+const siteArg = process.argv.indexOf('--site');
+const SITE = resolve(siteArg === -1 ? join(ROOT, 'site') : process.argv[siteArg + 1]);
+const APP_PAGE = 'app.html';
+const GYM_PRESET = 'compare';
+const CTA = 'Open live ↗';
+// This site's own origin: a tile on its own front page links the GYM relatively; the generator's
+// self_host rule writes the absolute form only for OTHER sites' pages.
+const SELF_ORIGIN = 'https://egpt-frqtl.descix.net';
+
+const html = readFileSync(join(SITE, 'index.html'), 'utf8');
 let FAIL = 0;
 const pass = (n) => console.log('PASS  ' + n);
 const fail = (n, why) => { console.log('FAIL  ' + n + ': ' + why); FAIL = 1; };
-
-const decode = (s) => s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-const text = (s) => decode(s.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
 
 // ── order ────────────────────────────────────────────────────────────────────
 {
   const navEnd = html.indexOf('</nav>');
   const after = navEnd < 0 ? '' : html.slice(navEnd + '</nav>'.length);
   const first = after.match(/<(section|header|main|div)\b[^>]*>/);
-  if (navEnd < 0) fail('order', 'no </nav> in site/index.html');
+  if (navEnd < 0) fail('order', 'no </nav> in ' + join(SITE, 'index.html'));
   else if (!first || !/\bid="proof"/.test(first[0]) || first[1] !== 'section')
     fail('order', 'first element after </nav> is ' + (first ? first[0] : '(none)') + ', not <section id="proof">');
   else pass('order: section#proof is the first element after the nav');
 }
 
-// The #proof section body.
-const proofMatch = html.match(/<section\b[^>]*\bid="proof"[^>]*>([\s\S]*?)<\/section>/);
-const proof = proofMatch ? proofMatch[1] : '';
-if (!proofMatch) fail('proof', 'no <section id="proof"> in site/index.html');
+const proofBody = proofSection(html);
+const proof = proofBody || '';
+if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE, 'index.html'));
 
 // ── lede ─────────────────────────────────────────────────────────────────────
 {
@@ -53,36 +70,72 @@ if (!proofMatch) fail('proof', 'no <section id="proof"> in site/index.html');
   else fail('lede', 'got "' + got + '"');
 }
 
-// ── hrefs ────────────────────────────────────────────────────────────────────
+// ── tiles ────────────────────────────────────────────────────────────────────
 {
-  const { upstream_sha: build } = JSON.parse(readFileSync(join(ROOT, '.descix', 'site-provenance.json'), 'utf8'));
-  if (!/^[0-9a-f]{8}$/.test(build || '')) { throw new Error('.descix/site-provenance.json upstream_sha is not a build id: ' + build); }
-  const reg = join(ROOT, 'site', 'pub', build, 'ide', 'registry');
-  const W = await import(pathToFileURL(join(reg, 'walkthrough.js')).href);
-  const E = await import(pathToFileURL(join(reg, 'experiments.js')).href);
-  const tiles = [...proof.matchAll(/<a class="tile[^"]*" href="([^"]*)"[\s\S]*?<b>([^<]*)<\/b>[\s\S]*?<i>([^<]*)<\/i>/g)]
-    .map(([, href, title, cta]) => ({ href: decode(href), title, cta }));
-  if (tiles.length !== 9) fail('hrefs', 'expected 9 #proof tiles, found ' + tiles.length);
-  for (const { href, title, cta } of tiles) {
-    const n = 'hrefs: ' + title;
+  const { X, W, E } = await servedRegistries(SITE);
+
+  const links = proofLinks(html);
+  for (const t of links.filter((l) => !isTile(l))) fail('tiles', 'a link in #proof that is not a tile: ' + t.href);
+  const grid = links.filter(isTile);
+  if (grid.length !== X.EXHIBITS.length) {
+    fail('tiles', grid.length + ' #proof tiles, the served roster has ' + X.EXHIBITS.length + ' rows (' +
+      X.EXHIBITS.map((r) => r.id).join(', ') + ')');
+  }
+
+  const n = Math.max(grid.length, X.EXHIBITS.length);
+  for (let i = 0; i < n; i++) {
+    const row = X.EXHIBITS[i];
+    const t = grid[i];
+    const name = 'tile ' + (i + 1) + ' ' + (row ? row.kind + ':' + row.id + (row.mode ? '/' + row.mode : '') : '(no roster row)');
+    if (!row) { fail(name, 'extra tile "' + t.title + '" → ' + t.href); continue; }
+    if (!t) { fail(name, 'missing — the roster row "' + row.title + '" has no tile'); continue; }
+    const why = [];
+    if (t.title !== row.title) why.push('title "' + t.title + '" ≠ roster "' + row.title + '"');
+    if (t.what !== row.what) why.push('sentence "' + t.what + '" ≠ roster what "' + row.what + '"');
+    if (t.cta !== CTA) why.push('call to action "' + t.cta + '" ≠ "' + CTA + '"');
+
+    // href: the GYM deep link of this row, nothing else.
+    const href = t.href || '';
+    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) {
+      why.push(new URL(href, SELF_ORIGIN + '/').origin === SELF_ORIGIN
+        ? 'href ' + href + ' is an absolute self-link — this site\'s own page links its GYM relatively (' + APP_PAGE + '?preset=' + GYM_PRESET + '…)'
+        : 'href ' + href + ' leaves this site — a tile opens this site\'s GYM (' + APP_PAGE + '?preset=' + GYM_PRESET + '…)');
+      fail(name, why.join('; '));
+      continue;
+    }
     const [path, query = ''] = href.split('?');
-    if (path !== 'pub/index.html') { fail(n, href + ' is not a player URL (pub/index.html)'); continue; }
     const q = new URLSearchParams(query);
     const keys = [...q.keys()].sort().join(',');
-    if (keys === 'rung' || keys === 'mode,rung') {
-      const rung = W.WALKTHROUGH.find((r) => r.id === q.get('rung'));
-      if (!rung) { fail(n, 'rung "' + q.get('rung') + '" is not in the walkthrough registry'); continue; }
-      const modes = (rung.modes || []).map((m) => m.id);
-      if (q.has('mode') && !modes.includes(q.get('mode'))) {
-        fail(n, 'mode "' + q.get('mode') + '" is not declared by ' + rung.id + ' [' + modes.join(',') + ']'); continue;
+    if (path !== APP_PAGE) why.push('href ' + t.href + ' is not the GYM (' + APP_PAGE + '?preset=' + GYM_PRESET + '…)');
+    else if (q.get('preset') !== GYM_PRESET) why.push('href ' + t.href + ' preset=' + q.get('preset') + ', not ' + GYM_PRESET);
+    else if (row.kind === 'rung') {
+      const want = row.mode ? 'mode,preset,walkthrough' : 'preset,walkthrough';
+      if (keys !== want) why.push('href ' + t.href + ' keys {' + keys + '}, want {' + want + '}');
+      else if (q.get('walkthrough') !== row.id) why.push('href walkthrough=' + q.get('walkthrough') + ', roster id ' + row.id);
+      else if (row.mode && q.get('mode') !== row.mode) why.push('href mode=' + q.get('mode') + ', roster mode ' + row.mode);
+      else {
+        const rung = W.walkthroughById(q.get('walkthrough'));
+        if (!rung) why.push('walkthrough "' + q.get('walkthrough') + '" is not in the served walkthrough registry');
+        else if (q.has('mode') && !W.walkthroughModes(rung).map((m) => m.id).includes(q.get('mode'))) {
+          why.push('mode "' + q.get('mode') + '" is not declared by ' + rung.id);
+        }
       }
-    } else if (keys === 'experiment') {
-      if (!E.EXPERIMENTS.some((x) => x.id === q.get('experiment'))) {
-        fail(n, 'experiment "' + q.get('experiment') + '" is not in the experiments registry'); continue;
-      }
-    } else { fail(n, href + ' names neither exactly one rung (+mode) nor one experiment'); continue; }
-    if (cta !== 'Open live ↗') { fail(n, 'call to action is "' + cta + '", not "Open live ↗"'); continue; }
-    pass(n + ' → ' + href);
+    } else {
+      if (keys !== 'experiment,preset') why.push('href ' + t.href + ' keys {' + keys + '}, want {experiment,preset}');
+      else if (q.get('experiment') !== row.id) why.push('href experiment=' + q.get('experiment') + ', roster id ' + row.id);
+      else if (!E.experimentById(row.id)) why.push('experiment "' + row.id + '" is not in the served experiments registry');
+    }
+
+    // image: .dark iff no image; the image is the row's still.
+    const dark = t.classes.includes('dark');
+    const still = 'images/' + X.sceneKey({ kind: row.kind, id: row.id, modeId: row.mode }) + '.png';
+    if (dark && t.img) why.push('.dark tile carries an image ' + t.img);
+    else if (!dark && !t.img) why.push('tile has no image and is not .dark');
+    else if (t.img && t.img !== still) why.push('image ' + t.img + ' is not the row\'s still ' + still);
+    else if (t.img && !existsSync(join(SITE, t.img))) why.push('image ' + t.img + ' is not in ' + join(SITE, 'images'));
+
+    if (why.length) fail(name, why.join('; '));
+    else pass(name + ' → ' + t.href + (t.img ? ' [' + t.img + ']' : ' [.dark]'));
   }
 }
 
