@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Tunnel Lab (DirectedTunnel isolation)</title>
-    <link rel="stylesheet" href="../../407f813e/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../aec81862/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -33,10 +33,10 @@
 </head>
 <body>
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../407f813e/js/lib/","assets/render/":"../../407f813e/js/consumers/","assets/models/":"../../407f813e/js/models/","compat/providers/":"../../407f813e/js/compat/","compat/":"../../407f813e/js/compat/","objects/":"../../407f813e/js/game/","experiments/_shared/":"../../407f813e/experiments/_shared/","experiments/":"../../407f813e/experiments/","shim/":"../../407f813e/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../407f813e/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
-    <script>window._egptThreeUrl = new URL("../../407f813e/js/lib/three.min.js", document.baseURI).href;</script>
-    <script>window._egpt3D = true;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../aec81862/js/lib/","assets/render/":"../../aec81862/js/consumers/","assets/models/":"../../aec81862/js/models/","compat/providers/":"../../aec81862/js/compat/","compat/":"../../aec81862/js/compat/","objects/":"../../aec81862/js/game/","experiments/_shared/":"../../aec81862/experiments/_shared/","experiments/":"../../aec81862/experiments/","scenes/":"../../aec81862/scenes/","shim/":"../../aec81862/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../aec81862/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../aec81862/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptDefaultRenderer = 'three';   /* the 3D display; the runner tells the provider is3D */</script>
 
     <!--
     ── TUNNEL LAB — DirectedTunnel ISOLATION (I1, directed-tunnel composition model §3) ──
@@ -82,7 +82,7 @@
     defaulting to the view that matches the reference images"): the CEO's
     reference images (`docs/internal/physics-lab/img/dse/LightSource_Expected_
     Output_{DownTheBarrel,Rooftop}.png`) are 3D — this page now boots 3D-only
-    (`window._egpt3D=true`, the SAME two-line recipe `gun-chamber/index.html`
+    (three display + FrqtlApp is3D, the SAME two-line recipe `gun-chamber/index.html`
     uses), with `depth` (= the current bore, a real z-containment box — Tube/
     DirectedTunnel heritage, `activeAxes:{x,y,z}`) passed to `setupTunnelLab`.
     Camera presets mirror `dse-lab`'s own `runner.cameraControl` capability-
@@ -118,10 +118,10 @@
     against lightsource-lab's default particleWalk mode at matched settings.
     -->
 
-    <script src="../../407f813e/experiments/_shared/stack-boot.js"
+    <script src="../../aec81862/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../407f813e/js/game/setup/setupTunnelLab.js,
-            ../../407f813e/experiments/_shared/experiment-metrics.js
+            ../../aec81862/js/game/setup/setupTunnelLab.js,
+            ../../aec81862/experiments/_shared/experiment-metrics.js
         "></script>
 
     <div class="experiment-container">
@@ -214,7 +214,6 @@
 
     function currentOpts() {
         return {
-            canvasW: 700, canvasH: 400,
             bore: currentBore, length: currentLength, wavelength: currentWavelength,
             // 3D MODE (CEO drive #2 item 1) — depth = the current bore (a roughly
             // square cross-section, matching the reference images' boxy aperture);
@@ -296,6 +295,7 @@
 
     window.setup = function () {
         runner = new FrqtlApp({
+            is3D: true,   // a 3D page: perspective + depth (handed to the provider's init)
             canvasParentId: 'canvas-wrapper',
             canvasW: 700, canvasH: 400, seed: 42,
             onTick: function (tickData, setupResult) {
@@ -497,7 +497,7 @@
 
         // ── Camera orbit control (sugar handle — mirrors gun-chamber/
         // sphere-emitter-3d EXACTLY) — capability-checked, never
-        // renderer-sniffed. This page is 3D-only (window._egpt3D=true above), so
+        // renderer-sniffed. This page is 3D-only (is3D above), so
         // `cam` is always present once the three.js provider is live. DEFAULT
         // PRESET is 'down-barrel' (CEO drive #2 — matches the CEO's reference
         // image `LightSource_Expected_Output_DownTheBarrel.png`'s camera angle;
