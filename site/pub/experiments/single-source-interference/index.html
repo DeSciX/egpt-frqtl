@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Single-Source Self-Interference (omni, 2D)</title>
-    <link rel="stylesheet" href="../../c9060f82/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../dc72d057/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -25,14 +25,14 @@
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../c9060f82/js/lib/","assets/render/":"../../c9060f82/js/consumers/","assets/models/":"../../c9060f82/js/models/","compat/providers/":"../../c9060f82/js/compat/","compat/":"../../c9060f82/js/compat/","objects/":"../../c9060f82/js/game/","experiments/_shared/":"../../c9060f82/experiments/_shared/","experiments/":"../../c9060f82/experiments/","scenes/":"../../c9060f82/scenes/","shim/":"../../c9060f82/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../c9060f82/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../dc72d057/js/lib/","assets/render/":"../../dc72d057/js/consumers/","assets/models/":"../../dc72d057/js/models/","compat/providers/":"../../dc72d057/js/compat/","compat/":"../../dc72d057/js/compat/","objects/":"../../dc72d057/js/game/","experiments/_shared/":"../../dc72d057/experiments/_shared/","experiments/":"../../dc72d057/experiments/","scenes/":"../../dc72d057/scenes/","shim/":"../../dc72d057/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../dc72d057/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendor three.js (r128 UMD) for the 3D mode — must be set BEFORE
          stack-boot.js so render-boot.js can load it when the page boots with
          ?renderer=three. Harmless in the default 2D/p5 mode:
          render-boot only FETCHES three when the three renderer is selected. -->
-    <script>window._egptThreeUrl = new URL("../../c9060f82/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../dc72d057/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- render.mesh external-geometry loaders (GLTFLoader + DRACOLoader) — opt-in
          for the 3D "source mesh (glTF)" toggle (below). render-boot.js loads them
@@ -54,10 +54,10 @@
          differ. The page names no 3D flag: three IS the 3D display. -->
 
     <!-- Canonical shared loader: engine + renderer + game layer in ONE order. -->
-    <script src="../../c9060f82/experiments/_shared/stack-boot.js"
+    <script src="../../dc72d057/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../c9060f82/js/game/setup/setupSphereEmitter3D.js,
-            ../../c9060f82/experiments/_shared/experiment-metrics.js
+            ../../dc72d057/js/game/setup/setupSphereEmitter3D.js,
+            ../../dc72d057/experiments/_shared/experiment-metrics.js
         "></script>
 
     <!-- Page structure -->
@@ -134,9 +134,8 @@
 
             <!-- EMITTER MANAGER (CEO 2026-07-19, per-emitter dimension): MULTIPLE sphere-emitter
                  host tick-functions on ONE universe, each at its OWN DIMENSION (and mass). Built
-                 on the FrqtlApp emitter-tracking API (addEmitter / removeObject /
-                 _emitters) + setupSphereEmitter3D's `leafDimension` — NOT a parallel
-                 registry. Emitters at DIFFERENT dimensions COEXIST (e.g. a dim2 + a dim4 emitter
+                 on the page's own emitter list (each entry holds its setupSphereEmitter3D
+                 handle and disposes it) + setupSphereEmitter3D's `leafDimension`. Emitters at DIFFERENT dimensions COEXIST (e.g. a dim2 + a dim4 emitter
                  both run, each its own scale layer with its own move-gate/mass/color). ADD =
                  new emitter at the current (dim, mass), keeps the others → multi-dimension
                  coexistence; EDIT = change the selected emitter's dim/mass (dispose + re-add in
@@ -147,7 +146,7 @@
             </label>
             <button type="button" id="ctrl-emitter-add" title="ADD a NEW emitter at the current (dimension, mass), KEEPING the existing ones — emitters at different dimensions run concurrently on one universe (e.g. a dim2 + a dim4 emitter, each its own layer/move-gate/color; the two-source-interference foundation). Registers via the runner emitter API + setupSphereEmitter3D leafDimension; no universe re-init, no stacking.">+ add</button>
             <button type="button" id="ctrl-emitter-edit" title="EDIT the SELECTED emitter: apply the current dimension + mass to it — dispose its old tick-function and register the updated one in place (recompiles that emitter only, re-births its field at the new dim/mass). This is where the dispose-before-add fix applies so an EDIT replaces in place without stacking.">edit</button>
-            <button type="button" id="ctrl-emitter-del" title="DELETE the SELECTED emitter — removes its tick-function from the run (runner.removeObject → dispose → splice). Disabled when only one emitter remains (there must always be a source).">del</button>
+            <button type="button" id="ctrl-emitter-del" title="DELETE the SELECTED emitter — removes its tick-function from the run (control.dispose → splice). Disabled when only one emitter remains (there must always be a source).">del</button>
             <button type="button" id="ctrl-emitter-restart" title="RESTART the sim locally — re-inits the universe (clears ALL particles / wipes the canvas) and RE-REGISTERS the SAME emitter set on the fresh universe, so it restarts with the identical emitters running. Distinct from DELETE (removes an emitter) and from ADD/EDIT (commit staged params). Keeps the N tick-functions; only the particles are cleared.">restart</button>
 
             <!-- SUGAR COLOR OVERRIDE (render-intent, NO engine): force render.color independent of
@@ -481,10 +480,10 @@
         // ── EMITTER MANAGER STATE (declared before the runner so onTick closes over it) ──
         // Ordered list of registered emitters — each {id, mass, control}; `control` is a
         // setupSphereEmitter3D handle owning its own host tick-fn + dispose. This is the
-        // canonical "user-space holds its emitter handles and CRUDs them" pattern (the same
-        // one the IDE Layers panel uses via runner._emitters), NOT a parallel tick-fn
-        // registry — the real registry is universe.experimentTickFunctions, add via the
-        // factory + runner.addEmitter, remove via runner.removeObject → control.dispose.
+        // canonical "user-space holds its emitter handles and CRUDs them" pattern on the
+        // PRIMITIVE surface (this page builds its parts with the setup factory, so they are not
+        // declared objects): the real registry is universe.experimentTickFunctions — add via the
+        // factory, remove via control.dispose (the page's own handle).
         var emitters   = [];
         var emitterSeq = 0;
         function primaryControl() { return emitters.length ? emitters[0].control : null; }
@@ -561,8 +560,8 @@
         // Controls are STAGED (CEO 2026-07-19) — the dimension/mass controls edit PENDING
         // params without live-mutating any emitter; they commit AS A UNIT. Default staged mass
         // = capacity (fullness 1 → moves at c → no pile-up); the user lowers it to see slowdown.
-        // Manager actions (built on the runner emitter API addEmitter/removeObject/_emitters
-        // — no parallel registry, no engine change):
+        // Manager actions (built on the page's own emitter list and each handle's dispose —
+        // no engine change):
         //   ADD     = new emitter at the STAGED (dim, mass), KEEPS existing → multi-dim coexist.
         //   EDIT    = dispose the SELECTED emitter + re-add at the STAGED (dim, mass) — the
         //             dispose-before-add fix applies HERE so an EDIT replaces in place (no stack).
@@ -618,7 +617,7 @@
         // at BASE_FUNDAMENTAL — a GLOBAL field reset); after that every emitter is just a PART
         // construction (its tick-fn + addDimension(dim), no field wipe). There is no flag: the
         // absence of the world call IS "don't re-init". setWavelength stamps the exact
-        // per-emitter mass; runner.addEmitter TRACKS it (_emitters).
+        // per-emitter mass; the page's `emitters` list holds it.
         function makeEmitter(dim, mass, color, center) {
             var opts = {}; for (var k in LOCKED) { opts[k] = LOCKED[k]; }
             opts.fundamentalDimension = BASE_FUNDAMENTAL;   // universe base (init once)
@@ -635,12 +634,11 @@
             var control = setupSphereEmitter3D(runner.universe, opts).sphereEmitterControl;
             control.setWavelength(massToWl(mass, control.getMaxWavelength()));  // exact per-emitter mass
             control.setEmitEveryTicks(liveEmitEveryTicks);   // D3 — inherit the current live emission rate
-            runner.addEmitter(control);
             return control;
         }
 
         // ── Commit staged params AS A UNIT ────────────────────────────────────────────
-        function addEmitter() {   // NEW emitter at the STAGED (dim, mass, color) — KEEPS existing (multi-dim)
+        function addStagedEmitter() {   // NEW emitter at the STAGED (dim, mass, color) — KEEPS existing (multi-dim)
             var entry = { id: ++emitterSeq, dim: stagedDim, mass: stagedMass, color: stagedColor, center: null,
                           control: makeEmitter(stagedDim, stagedMass, stagedColor, null) };
             emitters.push(entry);
@@ -649,7 +647,7 @@
         }
         function editSelected() { // apply the STAGED (dim, mass, color) to the SELECTED emitter (replace in place)
             var e = selectedEntry(); if (!e) return;
-            runner.removeObject(e.control);
+            e.control.dispose();
             e.dim = stagedDim; e.mass = stagedMass; e.color = stagedColor;
             e.control = makeEmitter(e.dim, e.mass, e.color, e.center);   // preserve this emitter's source position
             refreshManagerUI();
@@ -657,7 +655,7 @@
         function deleteSelected() {
             if (emitters.length <= 1) return;   // always keep one source
             var e = selectedEntry(); if (!e) return;
-            runner.removeObject(e.control);
+            e.control.dispose();
             emitters = emitters.filter(function (x) { return x.id !== e.id; });
             selectedId = emitters[0] ? emitters[0].id : null;
             var s = selectedEntry(); if (s) { stagedDim = s.dim; stagedMass = s.mass; stagedColor = s.color; }
@@ -671,7 +669,7 @@
             var wl = (runner.universe && runner.universe.wavelengthScale !== undefined)
                 ? runner.universe.wavelengthScale : undefined;
             var specs = emitters.map(function (e) { return { id: e.id, dim: e.dim, mass: e.mass, color: e.color, center: e.center }; });
-            emitters.forEach(function (e) { runner.removeObject(e.control); });   // drop old tick-fns
+            emitters.forEach(function (e) { e.control.dispose(); });   // drop old tick-fns
             emitters = [];
             universeInited = false;   // force the next makeEmitter to RE-INIT → fresh universe (clears particles)
             specs.forEach(function (s) {
@@ -765,7 +763,7 @@
             var s = selectedEntry(); if (s) { stagedDim = s.dim; stagedMass = s.mass; stagedColor = s.color; }
             refreshManagerUI();
         });
-        addBtn.addEventListener('click', addEmitter);
+        addBtn.addEventListener('click', addStagedEmitter);
         editBtn.addEventListener('click', editSelected);
         delBtn.addEventListener('click', deleteSelected);
         restartBtn.addEventListener('click', localRestart);
@@ -784,7 +782,7 @@
                 slider.value = 16; label.textContent = 16;
             }
             // reduce to ONE classic emitter: dispose all, re-init a fresh universe, add the single source
-            emitters.forEach(function (e) { runner.removeObject(e.control); });
+            emitters.forEach(function (e) { e.control.dispose(); });
             emitters = []; universeInited = false;
             var e0 = { id: ++emitterSeq, dim: stagedDim, mass: stagedMass, color: stagedColor, center: null,
                        control: makeEmitter(stagedDim, stagedMass, stagedColor, null) };
@@ -836,7 +834,7 @@
                 slider.value = TWO_SRC_WLSCALE; label.textContent = TWO_SRC_WLSCALE;
             }
             // Rebuild as EXACTLY two sources on a fresh universe (clears any prior field).
-            emitters.forEach(function (e) { runner.removeObject(e.control); });
+            emitters.forEach(function (e) { e.control.dispose(); });
             emitters = []; universeInited = false;
             centers.forEach(function (c) {
                 var e = { id: ++emitterSeq, dim: 2, mass: 1, color: null, center: c.slice(),
@@ -1028,13 +1026,13 @@
         }
         function setSourceMesh(on) {
             // Constructing the LO registers it with the world for physics AND render; the
-            // toggle-off is a real teardown (`removeObject` disposes, which unregisters
+            // toggle-off is a real teardown (`dispose()` unregisters
             // engine-side and leaves the world census in the same call) rather than a splice
             // out of a render-only list that would have left the registration behind.
             if (on && !_sourceMeshLO) {
                 _sourceMeshLO = makeSourceMeshLO();
             } else if (!on && _sourceMeshLO) {
-                runner.removeObject(_sourceMeshLO);
+                _sourceMeshLO.dispose();
                 _sourceMeshLO = null;
             }
             if (_metricsEl) {
@@ -1283,7 +1281,7 @@
             stagedColor = snap.stagedColor || null;
             // Rebuild the committed emitter set on a FRESH universe (mirrors localRestart).
             if (Array.isArray(snap.emitters) && snap.emitters.length) {
-                emitters.forEach(function (e) { runner.removeObject(e.control); });
+                emitters.forEach(function (e) { e.control.dispose(); });
                 emitters = []; universeInited = false;
                 snap.emitters.forEach(function (s) {
                     emitters.push({ id: ++emitterSeq, dim: s.dim, mass: s.mass, color: s.color || null, center: s.center || null,

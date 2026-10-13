@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FRQTL SDK — Game Objects API Reference</title>
-    <link rel="stylesheet" href="c9060f82/css/bootstrap.min.css">
+    <link rel="stylesheet" href="dc72d057/css/bootstrap.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -439,6 +439,7 @@ runner.addTickListener(<span class="keyword">function</span> (tickData) { slit.a
 <table>
     <tr><th>Option</th><th>Default</th><th>Description</th></tr>
     <tr><td><code>left</code>, <code>top</code></td><td>—</td><td>Bore (aperture) top-left corner, px</td></tr>
+    <tr><td><code>rect</code></td><td>—</td><td>Write-only: the envelope of every member, <code>[left, top, w, h]</code> or <code>[left, top, z, w, h, d]</code>. Writing it (<code>t.setRect(...)</code>, the STUDIO carry) moves the whole Tunnel as one object — both plates and the exit gate by one delta, the gate program re-pushed; a size change re-derives <code>length</code>/<code>bore</code> (refused on a directed Tunnel). Never written to code — <code>left</code>/<code>top</code> are.</td></tr>
     <tr><td><code>length</code></td><td>—</td><td>Travel-axis extent of the corridor, px</td></tr>
     <tr><td><code>bore</code></td><td>—</td><td>Cross-section gap between the two mirror faces, px (the clear aperture)</td></tr>
     <tr><td><code>wallThickness</code></td><td>10</td><td>Thickness of each mirror wall, px</td></tr>
