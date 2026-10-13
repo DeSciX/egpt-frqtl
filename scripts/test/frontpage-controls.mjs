@@ -23,8 +23,8 @@ const { X, stillOf, gymHref } = fx;
 
 const SCRATCH = mkdtempSync(join(tmpdir(), 'frontpage-controls-'));
 let FAIL = 0;
-function run(name, mutate, expect) {
-  const site = fx.build(join(SCRATCH, name), mutate);
+function run(name, mutate, expect, opts) {
+  const site = fx.build(join(SCRATCH, name), mutate, opts);
   const r = spawnSync(process.execPath, ['--no-warnings', GATE, '--site', site], { encoding: 'utf8' });
   const out = (r.stdout || '') + (r.stderr || '');
   const ok = expect === 'PASS' ? r.status === 0 : (r.status === 1 && out.includes(expect));
@@ -49,6 +49,13 @@ try {
   run('undeclared-image', (t) => { t[4].img = 'images/' + r4.id + '.jpg'; return t; }, 'is not the row\'s still');
   run('image-not-in-site', (t, site) => { rmSync(join(site, stillOf(r4))); return t; }, 'is not in ');
   run('dark-tile-with-image', (t) => { t[1].dark = true; return t; }, '.dark tile carries an image');
+  run('tile-line-is-card-what', (t) => { t[0].tile = r0.what; return t; }, '≠ roster tile "');
+  run('mutated-alt', (t) => { t[2].alt = t[2].alt + ' (edited)'; return t; }, '≠ roster still.alt "');
+  run('alt-is-title', (t) => { t[3].alt = t[3].title; return t; }, '≠ roster still.alt "');
+  const through = X.SHOWCASE_THROUGH_LINE.join('');
+  run('mutated-through-line', (t) => t, '≠ the served SHOWCASE_THROUGH_LINE', { throughLine: through.replace('fractal', 'factual') });
+  run('empty-through-line', (t) => t, '≠ the served SHOWCASE_THROUGH_LINE', { throughLine: '' });
+  run('no-through-line', (t) => t, '0 [data-showcase-throughline] elements in #proof', { throughLine: null });
 } finally {
   rmSync(SCRATCH, { recursive: true, force: true });
 }

@@ -11,19 +11,22 @@
 //   order  — section#proof (the cards) is the first element after the nav, above the hero.
 //   lede   — the #proof lede is the CEO-approved paragraph, exactly.
 //   tiles  — the #proof tiles are EXHIBITS, one per row, in roster order:
-//              title (<b>) and sentence (<span>) are the row's `title` and `what`;
+//              title (<b>) and sentence (<span>) are the row's `title` and `tile`;
 //              href is a RELATIVE GYM deep link (an absolute link to this site's own origin is
 //              refused as a self-link) — app.html?preset=compare&walkthrough=<id>[&mode=<m>] for a
 //              rung (mode iff the row names one), app.html?preset=compare&experiment=<id> for an
 //              experiment row — with exactly those keys, ids resolving in the served registries;
 //              the call to action is "Open live ↗";
 //              a tile carries an <img> iff it is not .dark, and the img is images/<sceneKey>.png
-//              (exhibits.js sceneKey of the row), present in <site>/images/.
+//              (exhibits.js sceneKey of the row), present in <site>/images/, its alt the row's
+//              `still.alt`.
+//   through-line — #proof holds exactly one [data-showcase-throughline] element, after the grid, and
+//              its text is the served SHOWCASE_THROUGH_LINE.
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { servedRegistries } from './lib/served-roster.mjs';
-import { proofSection, proofLinks, isTile, text } from './lib/proof-tiles.mjs';
+import { proofSection, proofLinks, throughLines, isTile, text } from './lib/proof-tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const siteArg = process.argv.indexOf('--site');
@@ -91,7 +94,7 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
     if (!t) { fail(name, 'missing — the roster row "' + row.title + '" has no tile'); continue; }
     const why = [];
     if (t.title !== row.title) why.push('title "' + t.title + '" ≠ roster "' + row.title + '"');
-    if (t.what !== row.what) why.push('sentence "' + t.what + '" ≠ roster what "' + row.what + '"');
+    if (t.tile !== row.tile) why.push('sentence "' + t.tile + '" ≠ roster tile "' + row.tile + '"');
     if (t.cta !== CTA) why.push('call to action "' + t.cta + '" ≠ "' + CTA + '"');
 
     // href: the GYM deep link of this row, nothing else.
@@ -133,10 +136,26 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
     else if (!dark && !t.img) why.push('tile has no image and is not .dark');
     else if (t.img && t.img !== still) why.push('image ' + t.img + ' is not the row\'s still ' + still);
     else if (t.img && !existsSync(join(SITE, t.img))) why.push('image ' + t.img + ' is not in ' + join(SITE, 'images'));
+    if (t.img && (!row.still || t.alt !== row.still.alt)) {
+      why.push('alt "' + t.alt + '" ≠ roster still.alt "' + (row.still ? row.still.alt : '(row declares no still)') + '"');
+    }
 
     if (why.length) fail(name, why.join('; '));
     else pass(name + ' → ' + t.href + (t.img ? ' [' + t.img + ']' : ' [.dark]'));
   }
+}
+
+// ── through-line ─────────────────────────────────────────────────────────────
+{
+  const { X } = await servedRegistries(SITE);
+  const want = Array.isArray(X.SHOWCASE_THROUGH_LINE) ? X.SHOWCASE_THROUGH_LINE.join('') : null;
+  const got = throughLines(html);
+  const gridAt = proof.indexOf('data-exhibits'), markAt = proof.indexOf('data-showcase-throughline');
+  if (want === null) fail('through-line', 'the served roster exports no SHOWCASE_THROUGH_LINE');
+  else if (got.length !== 1) fail('through-line', got.length + ' [data-showcase-throughline] elements in #proof, want exactly 1');
+  else if (got[0] !== text(want)) fail('through-line', '"' + got[0].slice(0, 80) + '…" ≠ the served SHOWCASE_THROUGH_LINE');
+  else if (gridAt < 0 || markAt < gridAt) fail('through-line', 'the through-line is not under the tile grid');
+  else pass('through-line: the served SHOWCASE_THROUGH_LINE, once, under the grid');
 }
 
 process.exit(FAIL);
