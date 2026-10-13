@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FRQTL SDK — Game Objects API Reference</title>
-    <link rel="stylesheet" href="8ba141ba/css/bootstrap.min.css">
+    <link rel="stylesheet" href="c9060f82/css/bootstrap.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -145,16 +145,17 @@ activeRenderer.renderTick(tickData, result.largeObjects);
 
 <h3>Constructor</h3>
 
-<pre><code><span class="keyword">new</span> EGPTUniverse(config)   <span class="comment">// ONE config bag — name only what you change</span>
+<pre><code>EGPTUniverse.create(config)   <span class="comment">// ONE config bag — rect REQUIRED, name only what else you change</span>
 
-<span class="keyword">new</span> EGPTUniverse({ rect: rect, seed: <span class="number">42</span> });
+<span class="keyword">var</span> universe = EGPTUniverse.create({ rect: rect, seed: <span class="number">42</span> });
+universe.init(<span class="number">0</span>, { wavelengthScale: <span class="number">1</span> });   <span class="comment">// init(fundamentalDimension, options) — ALWAYS FIRST; no rect</span>
 </code></pre>
 
-<p>Every key is optional and carries the default below, so a scene names only the settings it actually means to change. Unknown keys throw.</p>
+<p><code>rect</code> is REQUIRED — the one world-rect declaration; <code>init(fundamentalDimension, options)</code> reads it and takes no rect. Every other key is optional and carries the default below, so a scene names only the settings it actually means to change. Unknown keys throw.</p>
 
 <table>
     <tr><th>Key</th><th>Type</th><th>Default</th><th>Description</th></tr>
-    <tr><td><code>rect</code></td><td>Rectangle</td><td><code>null</code></td><td>Simulation boundary (x, y, w, h). A leaf that leaves it is gone.</td></tr>
+    <tr><td><code>rect</code></td><td>Rectangle</td><td>REQUIRED</td><td>Simulation boundary (x, y, w, h). A leaf that leaves it is gone.</td></tr>
     <tr><td><code>seed</code></td><td>number</td><td><code>42</code></td><td>PRNG seed — same seed, bit-identical run</td></tr>
     <tr><td><code>fps</code></td><td>number</td><td><code>60</code></td><td>Target frame rate</td></tr>
     <tr><td><code>iframeIntervalSeconds</code></td><td>number</td><td><code>1</code></td><td>Seconds between iframe (higher-dimension) ticks; <code>1/60</code> = every tick</td></tr>
