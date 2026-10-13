@@ -48,7 +48,8 @@ scripts/
   lib/share-contract.mjs       the pre-upload check of site/share.json against runbook §7.3
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
   test/frontpage.mjs           static gate for site/index.html: #proof cards first, approved lede, tiles ==
-                               the served EXHIBITS in order with GYM hrefs and their stills (against
+                               the served EXHIBITS in order (title, tile line, GYM href, still and its
+                               alt), the through-line == the served SHOWCASE_THROUGH_LINE (against
                                site/pub/<build>/ide/registry/, <build> = site/app.html's stamp)
   test/frontpage-controls.mjs  controls for frontpage.mjs on fixture front pages (`npm test`)
   test/frontpage-tiles.mjs     browser gate: every #proof tile lands on the GYM with its scene applied;

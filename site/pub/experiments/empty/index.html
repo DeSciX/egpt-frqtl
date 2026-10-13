@@ -5,26 +5,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Empty Universe</title>
-    <link rel="stylesheet" href="../../8ba141ba/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../c9060f82/experiments/_shared/experiment-layout.css">
 </head>
 <body>
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../8ba141ba/js/lib/","assets/render/":"../../8ba141ba/js/consumers/","assets/models/":"../../8ba141ba/js/models/","compat/providers/":"../../8ba141ba/js/compat/","compat/":"../../8ba141ba/js/compat/","objects/":"../../8ba141ba/js/game/","experiments/_shared/":"../../8ba141ba/experiments/_shared/","experiments/":"../../8ba141ba/experiments/","scenes/":"../../8ba141ba/scenes/","shim/":"../../8ba141ba/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../8ba141ba/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../c9060f82/js/lib/","assets/render/":"../../c9060f82/js/consumers/","assets/models/":"../../c9060f82/js/models/","compat/providers/":"../../c9060f82/js/compat/","compat/":"../../c9060f82/js/compat/","objects/":"../../c9060f82/js/game/","experiments/_shared/":"../../c9060f82/experiments/_shared/","experiments/":"../../c9060f82/experiments/","scenes/":"../../c9060f82/scenes/","shim/":"../../c9060f82/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../c9060f82/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendored three.js (r128) — a load-by-eval rung may request the three renderer
          (a scene registered with renderState.renderer 'three', ?renderer=three). render-boot.js reads this before
          falling back to a CDN; setting it mirrors the _egptWasmPkgUrl precedent so the
          dev realm has no silent CDN dependency. Harmless for 2D/p5 loads (only read
          when three is selected). -->
-    <script>window._egptThreeUrl = new URL("../../8ba141ba/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../c9060f82/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- Canonical shared loader. No page scripts: the universe is created via the
          RecipeContext object and populated by an eval'd buildExperiment(exp) module
          (a saved project) OR left blank (Empty Universe / palette authoring). -->
-    <script src="../../8ba141ba/experiments/_shared/stack-boot.js"></script>
+    <script src="../../c9060f82/experiments/_shared/stack-boot.js"></script>
 
     <!-- Page structure -->
     <div class="experiment-container">
@@ -135,8 +135,8 @@
 
     /**
      * _stampWorldIntrospection() — THE one site on this page that writes the resolved-
-     * world data-* attributes. Called after every world step (setup, applyModuleSource,
-     * _egptApplyWalkthrough), which is exactly when the answer can change: `exp.world` is
+     * world data-* attributes. Called after every world step (FrqtlPage.applyModuleSource →
+     * _buildScene → _publishWorld), which is exactly when the answer can change: `exp.world` is
      * written by the scene's co-init call and by nothing else, so there is no per-tick stamping to do.
      *
      * The badge is SHOWN only when a sampler was actually declared — an A/B still then
@@ -153,18 +153,6 @@
         el.textContent = declared ? ('stepping: ' + stepping) : '';
     }
 
-    /**
-     * window.FrqtlPage — this page's PUBLIC surface.
-     *
-     * A public hook gets a public name: an underscore on the front door tells the
-     * reader the door is not a door, and this IS the shipped, documented, only way
-     * to load a hand-written scene into the blank page (STUDIO's author surface,
-     * the hosted eyes, and the getting-started doc all come through here). The
-     * `Frqtl*` namespace-object family (FrqtlDisplay, FrqtlVision, FrqtlCapture,
-     * FrqtlCaptureHost) is the established public-global convention. Additional
-     * page hooks join this object only through review — it is a front door, not a
-     * dumping ground.
-     */
     /**
      * The renderer a scene's co-init call asked for when it did not match the booted one
      * (RecipeContext's mismatch error carries it) — read by displayResolution().
@@ -210,9 +198,11 @@
      * window.FrqtlPage — this page's PUBLIC surface.
      *
      * A public hook gets a public name: this IS the shipped, documented way to load a scene into
-     * the blank page (STUDIO's author surface, the GYM's rung frame, the hosted eyes, the
-     * getting-started doc). The page itself states NO world: every scene does, in its first
-     * statement — the blank STUDIO universe is the scene file scenes/empty.js like any other.
+     * the blank page — the ONE door every host comes through (STUDIO's author surface, the GYM's
+     * rung frame via rung-frame.js applySceneText, the hosted eyes, the getting-started doc). The
+     * page itself states NO world: every scene does, in its first statement — the blank STUDIO
+     * universe is the scene file scenes/empty.js like any other. A member joins this object only
+     * through review: it is a front door, not a dumping ground.
      */
     window.FrqtlPage = {
         /** True once the page's sizeless facade exists — the moment a host may apply a scene. */
@@ -290,35 +280,6 @@
         }
         host.appendChild(box);
     }
-
-    /**
-     * Apply a WALK-THROUGH rung's scene file: eval + build, FAIL-LOUD on any build error (a
-     * visible overlay + a rejected promise). A scene needs no script delta — the sugar it
-     * composes is in the shared game-layer roster.
-     *
-     * @param {string} src — the scene file's buildExperiment(exp) source.
-     * @returns {Promise<boolean>}
-     */
-    window._egptApplyWalkthrough = function (src) {
-        if (arguments.length > 1) {
-            var gone = new Error('[empty] _egptApplyWalkthrough(src) takes ONE argument — the per-rung ' +
-                'script delta is deleted (every rung composes the shared game-layer roster). (FAIL-LOUD.)');
-            _egptPaintWalkthroughError('Walk-through load failed', String(gone.message));
-            return Promise.reject(gone);
-        }
-        if (!window._egptExperiment) {
-            _egptPaintWalkthroughError('Walk-through load failed', 'no RecipeContext on the page.');
-            return Promise.reject(new Error('[empty] _egptApplyWalkthrough: no RecipeContext'));
-        }
-        return Promise.resolve().then(function () {
-            _buildScene(src, null);
-            return true;
-        }).catch(function (e) {
-            _egptPaintWalkthroughError('Walk-through load failed', String((e && e.stack) || e));
-            console.error('[empty] _egptApplyWalkthrough failed:', e);
-            throw e;   // FAIL-LOUD — surface, never swallow to a blank canvas.
-        });
-    };
 
     // Boot — the ONE dance stack-boot.js owns: engine → renderer → the stack-complete
     // promise (every data-page-scripts entry) → p5 (its load calls
