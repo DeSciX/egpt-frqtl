@@ -109,12 +109,32 @@ export function assertShowcaseIntro(intro) {
     return intro;
 }
 
+/** The public EGPT repository (DeSciX/EGPT, main) every intro link cites, one document per link. */
+const EGPT_EVIDENCE_BLOB = 'https://github.com/DeSciX/EGPT/blob/main/';
+
+/** A link segment to one tracked document of the public EGPT repository. */
+const egptDoc = (text, path) => Object.freeze({ text, href: EGPT_EVIDENCE_BLOB + path });
+
 /** The run-once intro card, shown once before the first roster scene card a viewer meets. */
 export const SHOWCASE_INTRO = Object.freeze({
     seenKey: 'showcase-intro',
     title: "Why these calculations are called impossible",
     paragraphs: Object.freeze([
-        Object.freeze(["The EGPT proofs are machine-checked in Lean, and their RET capstone, Rota's Entropy Theorem, proves that P=NP is quantum computing: by Rota's proof, all the distributions of physics are scaled Shannon entropy, and all entropy, including von Neumann entropy, is scaled Shannon entropy. RET is the Lean theorem rota_all_entropy_scaled_shannon; the proof was first outlined in the paper P Probably Equals NP (January 2025)."]),
+        Object.freeze([
+            "The EGPT proofs are machine-checked in Lean. Rota's Entropy Theorem (RET), the Lean theorem ",
+            egptDoc("rota_all_entropy_scaled_shannon", "08_LEAN/EGPT/InformationTheory/EntropyNumber/RotaEntropy.lean"),
+            ", is why P=NP is quantum computing: by Rota's proof, all the distributions of physics are scaled Shannon entropy (for the Bose-Einstein, Fermi-Dirac and Maxwell-Boltzmann distributions, the Lean theorems ",
+            egptDoc("entropy_BE_eq_C_shannon, entropy_FD_eq_C_shannon and entropy_MB_eq_C_shannon", "08_LEAN/EGPT/InformationTheory/Physics/PhysicsDist.lean"),
+            "), and all entropy, including von Neumann entropy, is scaled Shannon entropy. RET provides the framework for all three P=NP proofs, the Lean theorems ",
+            egptDoc("P_eq_NP", "08_LEAN/EGPT/InformationTheory/Complexity/SetRFL.lean"),
+            ", ",
+            egptDoc("P_eq_NP_info", "08_LEAN/EGPT/InformationTheory/Complexity/PPNP.lean"),
+            " and ",
+            egptDoc("P_eq_NP_info_standard", "08_LEAN/EGPT/InformationTheory/Complexity/StandardComplexity.lean"),
+            ". Together, RET and the distribution theorems are a formalisation of a Theory of Everything, as discussed under Question 1 of ",
+            egptDoc("the Claude Singularity session", "12_SINGULARITY/Claude/Cowork_Session_10.01.2026.md"),
+            ". The proof of P=NP was first outlined in the paper P Probably Equals NP (January 2025).",
+        ]),
         Object.freeze(["Ray tracing, path tracing and photon mapping cannot produce interference or wave diffusion at any cost, because they treat light as straight lines. Real-time engines fake shadows, reflections and indirect light as separate effects, with fixed bounce limits."]),
         Object.freeze(["Matching what you will see here means solving Maxwell's equations directly. The standard method is FDTD: a 3D grid of about 20 cells per wavelength, updated every time step. At real optical wavelengths that cost is out of reach."]),
         Object.freeze(["Assumptions: visible light at 500 nm; 20 cells per wavelength; about 24 bytes and 30 operations per cell per step; a time step at the standard stability limit for a 3D grid, so light advances at most 1/√3 of a cell per step and crossing the scene takes about 1.7 steps for every cell across it; a Frontier-class supercomputer (about 10^18 operations per second, about 10 PB of memory). \"One crossing\" means light travelling once across the scene."]),
@@ -128,7 +148,7 @@ export const SHOWCASE_INTRO = Object.freeze({
         }) }),
         Object.freeze(["Running indefinitely multiplies that by every further crossing. At physical wavelengths, \"impossible for supercomputers\" is literally true."]),
         Object.freeze(["The table is about light waves. The blackbody, the logic circuit, the Big Bang and the atom are impossible the usual way for a different reason: each needs a theory, equations and a program of its own, at a scale of its own. The glowing box needs energy quanta assumed, the circuit needs a search through its inputs, the cosmos needs gravity computed over 13.8 billion years, and the atom needs quantised energy levels."]),
-        Object.freeze(["The EGPT proofs, machine-checked in Lean, show that P=NP. ROSETTA, the engineering that builds on them, is at the proof-of-concept stage, and its results are directional only. These scenes are different: they run in your browser, in front of you, and you can read their code and decide for yourself whether what you are watching is true P=NP quantum computing."]),
+        Object.freeze([egptDoc("The EGPT proofs", "08_LEAN/PROOF_CHAINS.md"), ", machine-checked in Lean, show that P=NP. ROSETTA, the engineering that builds on them, is at the proof-of-concept stage, and its results are directional only. These scenes are different: they run in your browser, in front of you, and you can read their code and decide for yourself whether what you are watching is true P=NP quantum computing."]),
         Object.freeze(["A conventional engine must commit to one physical scale and pay for every level of detail at it. FRQTL computes the same emergent behaviour at whatever scale is declared."]),
     ]),
 });
@@ -143,7 +163,7 @@ const ROSTER = [
         still: { tick: 7200, alt: "Three red blocks with blue slit walls between them inside a dark glass box; a cloud of yellow dots hangs above the slits, and below them a flat heat-map plate of blue squares glows yellow-green along a central band." },
         title: "Double slit",
         tile: "Two slits, one particle at a time. Feynman's “only mystery,” with no amplitudes to add.",
-        what: "Particles go through two slits one at a time, and bright and dark bands build up on the detector plate below them, live in your browser tab: the pattern Feynman called quantum mechanics' \"only mystery\". The Lean RET capstone proves that P=NP is quantum computing: all entropy, including von Neumann entropy, is scaled Shannon entropy. Watch it run, read its code, and judge for yourself whether this is true P=NP quantum computing.",
+        what: "Particles go through two slits one at a time, and bright and dark bands build up on the detector plate below them, live in your browser tab: the pattern Feynman called quantum mechanics' \"only mystery\". EGPT conceptually holds computer science and physics are linked by P=NP and the principle of least action - that is, everything in reality is efficiently computable. The Lean RET, the derivation of EntropyReal from an IIDParticleSource, and the P=NP capstones are modern formalizations of proofs and ideas advanced by Gian-Carlo Rota circa the late 1970s. The EGPT Lean proofs transparently show the most rigorously advanced proofs ever offered for bridging not only quantum and classical mechanics but mathematics and all the other sciences. Watch it run, read its code, and judge for yourself whether this is true P=NP quantum computing.",
         why: "Feynman called it \"impossible, absolutely impossible, to explain in any classical way\". A ray tracer cannot draw it at all, and solving the light waves directly for a 10 cm tabletop would need about 150,000 times the memory of the Frontier supercomputer and about 400 years of its time.",
         how: "A sphere emitter, walls, two tunnels for the slits and a detector plate. Each particle is an independent cellular automaton following local rules: no wave equation, no amplitudes to add.",
     },
@@ -190,7 +210,7 @@ const ROSTER = [
         tile: "A half-adder settles on its own answer. No search algorithm runs.",
         what: "A half-adder settles on its own answer, you are watching electricity simulated in a circuit component live in your browser tab. Quanta (electrons or photons if you like) flow down the wires into two gates; with input A on, the SUM line fills with flowing quanta and nothing flows along CARRY. No search algorithm runs.",
         why: "Circuit satisfiability, the canonical P vs NP problem of computer science, is also a physical question about real circuits. Every modern circuit is built out of half-adders - put some constant number C of half-adders together and if simulating one is polynomial then C × polynomial is still polynomial. No polynomial-time algorithm is supposed to exist, so the usual way to find an input that satisfies a circuit is to search for one. The EGPT proofs, machine-checked in Lean, show that P=NP.",
-        how: "Two logic gates, the wires between them and an emitter on each input - the half-adder electrical circuit simulation settles in your browser in polynomial time, effectively at once. A gate opens only when its inputs carry the pattern it stands for, so the circuit settles into its answer. Independent cellular automata, no equations. The Lean RET capstone proves that P=NP is quantum computing: all entropy, including von Neumann entropy, is scaled Shannon entropy. Watch the answer emerge with no search, read the code, and judge for yourself whether this is true P=NP quantum computing.",
+        how: "Two logic gates, the wires between them and an emitter on each input - the half-adder electrical circuit simulation settles in your browser in polynomial time, effectively at once. A gate opens only when its inputs carry the pattern it stands for, so the circuit settles into its answer. Independent cellular automata, no equations. EGPT conceptually holds computer science and physics are linked by P=NP and the principle of least action - that is, everything in reality is efficiently computable. The Lean RET, the derivation of EntropyReal from an IIDParticleSource, and the P=NP capstones are modern formalizations of proofs and ideas advanced by Gian-Carlo Rota circa the late 1970s. The EGPT Lean proofs transparently show the most rigorously advanced proofs ever offered for bridging not only quantum and classical mechanics but mathematics and all the other sciences. Watch the answer emerge with no search, read the code, and judge for yourself whether this is true P=NP quantum computing.",
         controls: "It starts with input A on. Click the input A and input B toggles (bottom left) to switch each input on or off. Read the two outputs on the right: the top one is SUM (A xor B), the bottom one is CARRY (A and B). An output with quanta flowing along it reads 1; an empty one reads 0.",
     },
     {

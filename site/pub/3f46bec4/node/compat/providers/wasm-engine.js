@@ -9,13 +9,6 @@
  *     constructor and passes it in via makeProvider(WasmUniverse).
  *   - Classic-script-safe IIFE with module.exports tail (dual-mode).
  *   - No ES-module syntax.
- *
- * Rectangle corner-mode contract:
- *   new Rectangle(fd.x, fd.y, fd.w, fd.h, null, false)  — is_centered=false
- *   Rust reports x/y as the top-left corner. The JS reference engine also
- *   builds leaf rects in corner-mode (EGPTfrqtl.js makeLeafFrame:
- *   `new Rectangle(left, top, w, h, null, false)`). Centered mode would
- *   shift reported x/left by w/2 versus the JS reference.
  */
 (function () {
     'use strict';
@@ -1981,15 +1974,15 @@
     // ── Internal helpers ─────────────────────────────────────────────────
 
 
-    // THE ONE raw-frame → canonical FrameData wrapper. Rust reports flat x/y/w/h (top-left corner) +
-    // a data bubble whose string_map arrives as a JS Map under serde_wasm_bindgen v0.6; normalize it
-    // to a plain object. §5 LOCKED: corner-mode Rectangle (is_centered=false). Used by _wrapTickData
-    // for BOTH frames[] and objects[].frames — no parallel DTO.
+    // THE ONE raw-frame → canonical FrameData wrapper. Rust reports flat x/y/z (the CENTRE on all three
+    // axes) + w/h, wrapped here as a centred Rectangle, and a data bubble whose string_map arrives as a
+    // JS Map under serde_wasm_bindgen v0.6; normalize it to a plain object. Used by _wrapTickData for
+    // BOTH frames[] and objects[].frames, and by queryRectFrames/queryObbFrames — no parallel DTO.
     function _wrapRawFrame(fd, defaultTick) {
         var rect = new Rectangle(
             fd.x != null ? fd.x : 0, fd.y != null ? fd.y : 0,
             fd.w != null ? fd.w : 1, fd.h != null ? fd.h : 1,
-            null, false
+            null, true
         );
         var wasmData = (fd.data !== undefined && fd.data !== null) ? fd.data : null;
         if (wasmData && wasmData.string_map instanceof Map) {
