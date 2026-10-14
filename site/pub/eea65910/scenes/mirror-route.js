@@ -99,18 +99,15 @@ function buildExperiment(exp) {
   if (IS3D) { exp.createScene(W, H, WORLD_D, setupSphereEmitter3D.worldCfg(SRC)); }
   else      { exp.createCanvas(W, H, setupSphereEmitter3D.worldCfg(SRC)); }
   exp.addObject('SphereEmitter', SRC);
-  // The ten mirrors at the star vertices — each its own colour + the recolor tag; m1 also carries
-  // a COUNT hook so the live chart can read laps at the first mirror. In 3D each is a SLAB
-  // (z-slab −SD/2..SD/2); in 2D the bag is EMPTY, so the wall is the flat mirror.
+  // The ten mirrors at the star vertices — each its own colour + the recolor tag. In 3D each is a
+  // SLAB (z-slab −SD/2..SD/2); in 2D the bag is EMPTY, so the wall is the flat mirror.
   var ZSLAB = IS3D ? { z: -Math.round(SD / 2), depth: SD } : {};
-  var m1 = null;
   for (var i = 0; i < 10; i++) {
     var p = pos[i];
-    var w = exp.addObject('Wall', Object.assign(
+    exp.addObject('Wall', Object.assign(
       { rect: [Math.round(p[0] - SW / 2), Math.round(p[1] - SH / 2), SW, SH] }, ZSLAB,
       { collisionBehavior: 'bounce', bounceDirection: 'reflect', orientationDeg: ORI[i],
-        name: 'm' + (i + 1), color: PAL[i], hooks: (i === 0 ? ['recolor', 'count'] : ['recolor']) }));
-    if (i === 0) { m1 = w; }
+        name: 'm' + (i + 1), color: PAL[i], hooks: ['recolor'] }));
   }
   if (IS3D) {
     // SCENE Z-COLLIMATOR (CEO drive ruling 2026-07-26 — 'the z is letting things pass through,
@@ -130,24 +127,9 @@ function buildExperiment(exp) {
   // mechanics) IS the live population — the ONE 'how many live' authority. In 3D it must contain
   // EVERY live leaf: the universe z-band is ±half-width (z-strays DIE at it), so its z-slab is ±W
   // (a strict superset). Counting never moves/kills/recolors a frame: zero physics (SU1).
-  var popWall = exp.addObject('Wall', Object.assign(
+  exp.addObject('Wall', Object.assign(
     { rect: [0, 0, W, H] }, IS3D ? { z: -W, depth: 2 * W } : {},
     { collisionBehavior: 'nothing', hooks: ['count'], name: 'population', visible: false }));
-  // Live chart of LAPS at m1 (its count hook) — observability of the infinite loop (the bounce
-  // tally at the first mirror keeps climbing as the beam circulates).
-  exp.addObject('LiveChart', {
-    source: m1,
-    rect: [Math.round(W * 0.72), Math.round(H * 0.04), Math.round(W * 0.25), Math.round(H * 0.2)],
-    series: 'bar', label: 'laps at m1', refreshMs: 100, color: [24, 32, 46]
-  });
-  // Live chart of the POPULATION (the same counter the gate reads, via the liveCount projector).
-  // The '(cap N)' suffix is DERIVED at render time from the emitter's LIVE emissionCap
-  // (truth-in-labeling — never a hardcoded literal).
-  exp.addObject('LiveChart', {
-    source: popWall, projector: 'liveCount',
-    rect: [Math.round(W * 0.03), Math.round(H * 0.04), Math.round(W * 0.22), Math.round(H * 0.18)],
-    series: 'bar', label: 'live quanta', refreshMs: 100, color: [24, 32, 46]
-  });
   // MOVE/LOOK camera joysticks — the OMNI_3D pattern (3D only).
   if (IS3D && typeof document !== 'undefined' && window.CameraControls && exp.runner) {
     if (exp.runner.controlHost) { window.CameraControls.attach(exp.runner, exp.runner.controlHost); }

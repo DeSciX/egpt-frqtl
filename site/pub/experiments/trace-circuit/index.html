@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Trace Circuit (the wire part: source → trace → ground, 2D)</title>
-    <link rel="stylesheet" href="../../29bfdb75/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../eea65910/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -22,17 +22,17 @@
 <body>
 
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../29bfdb75/js/lib/","assets/render/":"../../29bfdb75/js/consumers/","assets/models/":"../../29bfdb75/js/models/","compat/providers/":"../../29bfdb75/js/compat/","compat/":"../../29bfdb75/js/compat/","objects/":"../../29bfdb75/js/game/","experiments/_shared/":"../../29bfdb75/experiments/_shared/","experiments/":"../../29bfdb75/experiments/","scenes/":"../../29bfdb75/scenes/","shim/":"../../29bfdb75/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../29bfdb75/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../eea65910/js/lib/","assets/render/":"../../eea65910/js/consumers/","assets/models/":"../../eea65910/js/models/","compat/providers/":"../../eea65910/js/compat/","compat/":"../../eea65910/js/compat/","objects/":"../../eea65910/js/game/","experiments/_shared/":"../../eea65910/experiments/_shared/","experiments/":"../../eea65910/experiments/","scenes/":"../../eea65910/scenes/","shim/":"../../eea65910/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../eea65910/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- 2D ONLY (p5). A Trace routes on the x/y grid; the conduction picture is a flat
          x-y observable, so no 3D display path is offered here on purpose. -->
 
-    <script src="../../29bfdb75/experiments/_shared/stack-boot.js"
+    <script src="../../eea65910/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../29bfdb75/js/game/setup/setupSphereEmitter3D.js,
-            ../../29bfdb75/js/game/setup/setupTraceCircuit.js,
-            ../../29bfdb75/experiments/_shared/experiment-metrics.js
+            ../../eea65910/js/game/setup/setupSphereEmitter3D.js,
+            ../../eea65910/js/game/setup/setupTraceCircuit.js,
+            ../../eea65910/experiments/_shared/experiment-metrics.js
         "></script>
 
     <div class="experiment-container">

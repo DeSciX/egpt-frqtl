@@ -287,9 +287,7 @@ export var WALKTHROUGH = [
                'gate (emissionCap + gateCounter, the blackbody pattern compiled at construction) reads ' +
                'THAT counter to pause emission at the cap and resume below it, so the population ' +
                'plateaus and FPS stays healthy while the circuit runs indefinitely — and the gate ' +
-               'survives Restart (it is captured descriptor DATA, not recipe code). Two live charts: ' +
-               'laps accumulating at m1 (its COUNT hook) and the live population against its live cap ' +
-               '(the background counter, liveCount projector).',
+               'survives Restart (it is captured descriptor DATA, not recipe code).',
         source: 'scenes/mirror-route.js',
         // 3D FIRST = the rung's DEFAULT mode (the first declared entry). It opens on the
         // 'table-top' camera preset (three-camera-contract.js cameraPresets) with god-rays on at
