@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Collision Matrix (density sweep)</title>
-    <link rel="stylesheet" href="../../3f46bec4/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../eea65910/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -24,9 +24,9 @@
 </head>
 <body>
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../3f46bec4/js/lib/","assets/render/":"../../3f46bec4/js/consumers/","assets/models/":"../../3f46bec4/js/models/","compat/providers/":"../../3f46bec4/js/compat/","compat/":"../../3f46bec4/js/compat/","objects/":"../../3f46bec4/js/game/","experiments/_shared/":"../../3f46bec4/experiments/_shared/","experiments/":"../../3f46bec4/experiments/","scenes/":"../../3f46bec4/scenes/","shim/":"../../3f46bec4/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../3f46bec4/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
-    <script>window._egptThreeUrl = new URL("../../3f46bec4/js/lib/three.min.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../eea65910/js/lib/","assets/render/":"../../eea65910/js/consumers/","assets/models/":"../../eea65910/js/models/","compat/providers/":"../../eea65910/js/compat/","compat/":"../../eea65910/js/compat/","objects/":"../../eea65910/js/game/","experiments/_shared/":"../../eea65910/experiments/_shared/","experiments/":"../../eea65910/experiments/","scenes/":"../../eea65910/scenes/","shim/":"../../eea65910/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../eea65910/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../eea65910/js/lib/three.min.js", document.baseURI).href;</script>
     <!-- Render interpretation: three ORTHOGRAPHIC 1:1 + BOX shader, same as g3-lo-collide.
          Runner not is3D → no perspective; 1 Dim-0 = 1 screen pixel, no zoom.
          Shape + colorScheme are set via runner.setRenderOption() in setup (NOT via the
@@ -57,10 +57,10 @@
          frqtl-control-sync.js: it joined the shared roster with the canvas
          control overlay (presentation pass Item 2), which needs reconciliation
          on ANY page. -->
-    <script src="../../3f46bec4/experiments/_shared/stack-boot.js"
+    <script src="../../eea65910/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../3f46bec4/js/game/setup/setupCollisionMatrix.js,
-            ../../3f46bec4/experiments/_shared/experiment-metrics.js
+            ../../eea65910/js/game/setup/setupCollisionMatrix.js,
+            ../../eea65910/experiments/_shared/experiment-metrics.js
         "></script>
 
     <div class="experiment-container">

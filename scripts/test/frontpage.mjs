@@ -60,13 +60,15 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
 
 // ── lede ─────────────────────────────────────────────────────────────────────
 {
-  const LEDE = 'FRQTL is an actual quantum computer that runs so efficiently it calculates what the ' +
-    'father of quantum computing called ‘absolutely impossible.’ In 1981 Feynman birthed the idea of ' +
-    'what you know as qubit based quantum computing. FRQTL takes a different approach based on the ' +
-    'Monte Carlo method and the work of Stanislaw Ulam. FRQTL’s model is inspired by the approach of ' +
-    'Stanislaw Ulam which was continued after the Manhattan Project at Los Alamos National Laboratory ' +
-    'and later pursued at Brookhaven National Laboratory Quantum Chromodynamics (QCD) and ' +
-    'super-computing projects.';
+  // CEO hand edit 2026-10-14, EGPT-Evidence 3edf669.
+  const LEDE = 'FRQTL is an actual quantum computer that runs so efficiently it runs in an iPhone. ' +
+    'The double-slit experiment, or DSE, is what Richard Feynman, the father of quantum computing ' +
+    'called the ‘only mystery’ and ‘absolutely impossible.’ In 1981 Feynman birthed the idea of what ' +
+    'the world now calls ‘qubit’ based quantum computing but FRQTL takes a different approach based ' +
+    'on the work of Feynman\'s collaborators at the Manhattan Project. FRQTL uses a Monte Carlo ' +
+    'method-like approach based on the work of Stanislaw Ulam and John von Neumann which was ' +
+    'continued by Gian-Carlo Rota at Los Alamos National Laboratory and later pursued at Brookhaven ' +
+    'National Laboratory Quantum Chromodynamics (QCD) and super-computing projects.';
   const m = proof.match(/<div class="sec-head">[\s\S]*?<p class="lede">([\s\S]*?)<\/p>/);
   const got = m ? text(m[1]) : '(no lede)';
   if (got === LEDE) pass('lede: the #proof lede is the approved paragraph');

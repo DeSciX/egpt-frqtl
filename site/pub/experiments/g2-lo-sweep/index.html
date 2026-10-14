@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — G2: a moving LO sweeps a field</title>
-    <link rel="stylesheet" href="../../3f46bec4/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../eea65910/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -21,17 +21,17 @@
 </head>
 <body>
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../3f46bec4/js/lib/","assets/render/":"../../3f46bec4/js/consumers/","assets/models/":"../../3f46bec4/js/models/","compat/providers/":"../../3f46bec4/js/compat/","compat/":"../../3f46bec4/js/compat/","objects/":"../../3f46bec4/js/game/","experiments/_shared/":"../../3f46bec4/experiments/_shared/","experiments/":"../../3f46bec4/experiments/","scenes/":"../../3f46bec4/scenes/","shim/":"../../3f46bec4/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../3f46bec4/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../eea65910/js/lib/","assets/render/":"../../eea65910/js/consumers/","assets/models/":"../../eea65910/js/models/","compat/providers/":"../../eea65910/js/compat/","compat/":"../../eea65910/js/compat/","objects/":"../../eea65910/js/game/","experiments/_shared/":"../../eea65910/experiments/_shared/","experiments/":"../../eea65910/experiments/","scenes/":"../../eea65910/scenes/","shim/":"../../eea65910/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../eea65910/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- UNIT-TEST G2: "an LO extends Frame" by composition.
          A LargeObject is linked to a moving backing frame (setLargeObjectFrame) so it MOVES via
          the move pass + speed_prob gate; its search rect (larger than the 1px body) sweeps a
          field of stationary targets and its ABSORB trigger clears them. -->
-    <script src="../../3f46bec4/experiments/_shared/stack-boot.js"
+    <script src="../../eea65910/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../3f46bec4/js/game/setup/setupG2Sweep.js,
-            ../../3f46bec4/experiments/_shared/experiment-metrics.js
+            ../../eea65910/js/game/setup/setupG2Sweep.js,
+            ../../eea65910/experiments/_shared/experiment-metrics.js
         "></script>
 
     <div class="experiment-container">
