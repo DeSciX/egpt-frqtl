@@ -1,13 +1,13 @@
 {
-  "build": "3f46bec4",
+  "build": "29bfdb75",
   "phases": {
     "root": "GREEN",
     "prefix": "GREEN"
   },
-  "verified_at": "2026-10-13T21:26:59Z",
+  "verified_at": "2026-10-14T01:12:39Z",
   "instrument": {
     "script": "scripts/verify-static-deploy.sh",
     "urls": "scripts/verify-static-deploy-urls.mjs",
-    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/boot-phases.spec.js", "apps/ide/test/stale-graph.spec.js", "apps/ide/test/run-once-explainers.spec.js", "apps/ide/test/gym-scene-player.spec.js", "apps/ide/test/gym-scene-editor.spec.js", "apps/ide/test/studio-scene-buffer.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/stack-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js", "apps/ide/test/studio-palette-selector.spec.js", "apps/ide/test/surface-deep-links.spec.js", "apps/ide/test/studio-hands.spec.js", "apps/ide/test/studio-grab-ux.spec.js", "apps/ide/test/studio-2d-parity.spec.js", "apps/ide/test/math-dist-debug-panel.spec.js", "apps/ide/test/static-ide-debug-panel-once.spec.js", "apps/ide/test/mobile-portrait.spec.js", "apps/ide/test/paint-of.spec.js", "apps/ide/test/studio-drop-emitter-run.spec.js", "apps/ide/test/studio-drop-error-surface.spec.js", "apps/ide/test/studio-declared.spec.js", "apps/ide/test/gym-reopen-cards.spec.js"]
+    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/boot-phases.spec.js", "apps/ide/test/stale-graph.spec.js", "apps/ide/test/run-once-explainers.spec.js", "apps/ide/test/gym-scene-player.spec.js", "apps/ide/test/gym-scene-editor.spec.js", "apps/ide/test/studio-scene-buffer.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/stack-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js", "apps/ide/test/studio-palette-selector.spec.js", "apps/ide/test/surface-deep-links.spec.js", "apps/ide/test/rosetta-default-chain.spec.js", "apps/ide/test/studio-hands.spec.js", "apps/ide/test/studio-grab-ux.spec.js", "apps/ide/test/studio-2d-parity.spec.js", "apps/ide/test/math-dist-debug-panel.spec.js", "apps/ide/test/static-ide-debug-panel-once.spec.js", "apps/ide/test/mobile-portrait.spec.js", "apps/ide/test/paint-of.spec.js", "apps/ide/test/studio-drop-emitter-run.spec.js", "apps/ide/test/studio-drop-error-surface.spec.js", "apps/ide/test/studio-declared.spec.js", "apps/ide/test/gym-reopen-cards.spec.js", "apps/ide/test/rotated-wall-no-outline.spec.js"]
   }
 }
