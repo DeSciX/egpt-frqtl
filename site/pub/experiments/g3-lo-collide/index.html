@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — G3: two LO bodies collide head-on</title>
-    <link rel="stylesheet" href="../../eea65910/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../5d0c22f5/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -21,9 +21,9 @@
 </head>
 <body>
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../eea65910/js/lib/","assets/render/":"../../eea65910/js/consumers/","assets/models/":"../../eea65910/js/models/","compat/providers/":"../../eea65910/js/compat/","compat/":"../../eea65910/js/compat/","objects/":"../../eea65910/js/game/","experiments/_shared/":"../../eea65910/experiments/_shared/","experiments/":"../../eea65910/experiments/","scenes/":"../../eea65910/scenes/","shim/":"../../eea65910/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../eea65910/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
-    <script>window._egptThreeUrl = new URL("../../eea65910/js/lib/three.min.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../5d0c22f5/js/lib/","assets/render/":"../../5d0c22f5/js/consumers/","assets/models/":"../../5d0c22f5/js/models/","compat/providers/":"../../5d0c22f5/js/compat/","compat/":"../../5d0c22f5/js/compat/","objects/":"../../5d0c22f5/js/game/","experiments/_shared/":"../../5d0c22f5/experiments/_shared/","experiments/":"../../5d0c22f5/experiments/","scenes/":"../../5d0c22f5/scenes/","shim/":"../../5d0c22f5/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../5d0c22f5/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../5d0c22f5/js/lib/three.min.js", document.baseURI).href;</script>
     <!-- Render interpretation for THIS experiment (BYO; default unchanged elsewhere): three in
          ORTHOGRAPHIC 1:1 mode (runner NOT is3D → no perspective; 1 Dim-0 = 1 screen pixel, no zoom)
          with the BOX shader, so we see the boxes-of-balls collide at true voxel size. -->
@@ -35,10 +35,10 @@
          momentum (conserved). Equal mass + full overlap = a perfect velocity SWAP (elastic
          bounce). Drive the mass-ratio slider: a heavier B plows through, A recoils faster.
          Knobs are LIVE via collideControl (Blackbody pattern) — no page reload. -->
-    <script src="../../eea65910/experiments/_shared/stack-boot.js"
+    <script src="../../5d0c22f5/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../eea65910/js/game/setup/setupG3Collide.js,
-            ../../eea65910/experiments/_shared/experiment-metrics.js
+            ../../5d0c22f5/js/game/setup/setupG3Collide.js,
+            ../../5d0c22f5/experiments/_shared/experiment-metrics.js
         "></script>
 
     <div class="experiment-container">
