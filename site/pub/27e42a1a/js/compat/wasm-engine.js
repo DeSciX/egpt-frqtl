@@ -207,6 +207,8 @@
           effect: 'the minimum fullness a merged/promoted composite must reach to survive.' },
         { key: 'wavelengthScale', def: 1, unit: 'multiplier',
           effect: 'the GLOBAL multiplier on every frame per-frame (capacity/mass) wavelength: lambda_eff = (capacity/mass) * wavelengthScale. Raising it widens fringes. init() re-reads this.' },
+        { key: 'liveQuantaCap', def: 300000, unit: 'leaf quanta | false',
+          effect: 'the WASM preview cap: once this many leaf quanta are alive, every further leaf add (makeLeafFrame) is skipped (returns null) until the count falls below it; the debug console is warned once per universe. The default is the preview limit set for this release: a value above it throws. false = uncapped.' },
     ];
 
     /**
@@ -418,7 +420,15 @@
             minMBFillRate: cfg.minMBFillRate,
             wavelength_scale: cfg.wavelengthScale,
             seed: cfg.seed,
+            // Wrapper state, never sent to the engine: the live-quanta admission cap (_admitLeaf).
+            liveQuantaCap: cfg.liveQuantaCap,
         };
+        // The cap's per-tick admission ledger (_admitLeaf): the alive count snapshotted once per
+        // engine tick, the leaves admitted since, and the once-per-universe warn latch.
+        this._capTick = null;
+        this._capAlive = 0;
+        this._capAdmitted = 0;
+        this._capWarned = false;
         this._wasm = null;
         this.tick = 0;
         // The world rect — written HERE, once, from create()'s REQUIRED `rect`; read through
@@ -529,6 +539,7 @@
      * | frameGenMode               | groundUp| 'groundUp' \| 'topDown'  |
      * | minMBFillRate              | 0.1     | fraction of capacity    |
      * | wavelengthScale            | 1       | multiplier              |
+     * | liveQuantaCap              | 300000  | leaf quanta \| false    |
      *
      * `rect` accepts EITHER a `Rectangle` OR a plain bounds literal
      * (`{left|x, top|y, w, h}`), which is normalised here to a non-centered
@@ -574,6 +585,7 @@
         // frameGenMode is the one ENUM in the table — THROW-OR-APPLY, naming every legal
         // value. (Every other row is a scalar the engine validates for itself.)
         _assertFrameGenMode('EGPTUniverse.create(config)', cfg.frameGenMode);
+        _assertLiveQuantaCap(cfg.liveQuantaCap);
 
         // rect: REQUIRED — the ONE world-rect declaration (init() takes none). A Rectangle passes
         // through; a plain bounds literal is normalised. Either way the dimensions are gated
@@ -619,6 +631,26 @@
     // finite NUMBERS (a numeric string is not one). The same rule the world-rect normalizer
     // (ObjectSchema.worldRect) and the renderer size rule (requireProviderSize) apply — one value
     // table drives all three doors (compat/providers/world-dimension-doors.test.mjs).
+    // liveQuantaCap: `false` (uncapped) or a positive integer no larger than the row's published
+    // default — the default is this release's published preview limit, so a larger value
+    // throws. The ceiling is READ from the row; nothing else states the number.
+    function _liveQuantaCapRow() {
+        for (var i = 0; i < UNIVERSE_CONFIG.length; i++) {
+            if (UNIVERSE_CONFIG[i].key === 'liveQuantaCap') { return UNIVERSE_CONFIG[i]; }
+        }
+        throw new Error('[wasm-engine] UNIVERSE_CONFIG has no liveQuantaCap row.');
+    }
+    function _assertLiveQuantaCap(v) {
+        var ceiling = _liveQuantaCapRow().def;
+        if (v === false) { return; }
+        if (typeof v === 'number' && Number.isInteger(v) && v > 0 && v <= ceiling) { return; }
+        throw new Error(
+            'EGPTUniverse.create(config): liveQuantaCap must be false (uncapped) or a positive ' +
+            'integer no larger than ' + ceiling + ' (the release ceiling, EGPTUniverse.CONFIG row ' +
+            "'liveQuantaCap') — got " + (typeof v === 'string' ? JSON.stringify(v) : String(v)) + '.'
+        );
+    }
+
     function _isPositiveFiniteDimension(v) {
         return typeof v === 'number' && isFinite(v) && v > 0;
     }
@@ -680,6 +712,13 @@
             if (!this._wasm) return 0;
             return this._wasm.active_quanta();
         }
+    });
+
+    // liveQuantaCap — the ACTIVE preview cap (a number, or false when uncapped), READ-ONLY: its
+    // one writer is EGPTUniverse.create({ liveQuantaCap }). "Reached" is derivable:
+    // activeQuanta >= liveQuantaCap.
+    Object.defineProperty(EGPTUniverse.prototype, 'liveQuantaCap', {
+        get: function () { return this._params.liveQuantaCap; }
     });
 
     // universe_rect — the world rect, READ-ONLY. Its one writer is `EGPTUniverse.create({ rect })`;
@@ -1085,8 +1124,11 @@
         // copy out at init time and nothing that could go stale afterwards. (A read-back
         // assignment lived here for one bite; it was a better-SOURCED cache, not engine truth.)
         // Register this universe as the active one so BoundaryFrame.makeLeafFrame
-        // can forward to the WASM ABI without holding an explicit reference.
-        _activeWasmUniverse = this._wasm;
+        // can forward through its makeLeafFrame door without holding an explicit reference.
+        _activeUniverse = this;
+        // A fresh engine starts its tick count over: drop the cap's snapshot so the next add
+        // re-reads the alive count of THIS engine.
+        this._capTick = null;
 
         if (this._withInterQuantumCollisions) this._wasm.set_with_inter_quantum_collisions(this._withInterQuantumCollisions);
         // WS-FRAMES-NOESCAPE: when noEscape is set, hard-trap children inside parent rects.
@@ -1240,10 +1282,16 @@
      * visual fixture (never edited; CLAUDE.md §Engine discipline) and the realm is WASM. This is a
      * DOCUMENTED no-op on the JS twin, NOT a silent drop — covered by the render-intent-merge test
      * (WASM stamp asserted) + the emitterProgram threading note. Adding a 4th key is one more `if` here.
-     * @returns {number} frame handle (SoA FrameId)
+     * THE ONE LEAF DOOR, AND THE PREVIEW CAP: every leaf a host births comes through here (the
+     * static Frame.makeLeafFrame routes through this method), so the `liveQuantaCap` admission
+     * check runs FIRST — a refused leaf costs no frame-store slot and no RNG draw — and the add
+     * returns `null` ("no frame"; handle 0 is a real frame). injectFrame(null) and
+     * getFrameQuantumId(null) absorb it; setLargeObjectFrame(h, null) throws.
+     * @returns {number|null} frame handle (SoA FrameId), or null when the cap refused the add
      */
     EGPTUniverse.prototype.makeLeafFrame = function (left, top, level, wavelength, vx, vy, wrap, chargeInt, color, shape, outline) {
         this._ensureInit();
+        if (!this._admitLeaf()) { return null; }
         // LEVEL (leaf scale) defaults to the universe's fundamental dimension: a fundamental leaf
         // at dimension N has level N (Rust make_leaf_frame: width=2^N, capacity=width², wavelength
         // derived). The emitter passes null; only an explicit override passes a number. Mirrors the
@@ -1302,6 +1350,42 @@
     };
 
     /**
+     * The `liveQuantaCap` admission check — private to makeLeafFrame. The alive count is an
+     * O(capacity) engine scan, so it is read ONCE per engine tick (keyed by `this.tick`, which
+     * doTick updates after the engine steps: the first add of a tick's Phase A sees the count at
+     * the previous tick's end); every leaf admitted since is counted here, so births never
+     * overshoot the cap. Deaths inside a tick show up at the next snapshot.
+     * @returns {boolean} true = make the leaf; false = refuse it (the cap is reached)
+     */
+    EGPTUniverse.prototype._admitLeaf = function () {
+        var cap = this._params.liveQuantaCap;
+        if (cap === false) { return true; }
+        if (this._capTick !== this.tick) {
+            var alive = this._wasm.active_quanta();
+            if (typeof alive !== 'number' || !isFinite(alive)) {
+                throw new Error('[EGPTUniverse] liveQuantaCap cannot read the alive count: ' +
+                    'active_quanta() returned ' + String(alive) + ', not a finite number.');
+            }
+            this._capTick = this.tick;
+            this._capAlive = alive;
+            this._capAdmitted = 0;
+        }
+        if (this._capAlive + this._capAdmitted >= cap) {
+            if (!this._capWarned) {
+                this._capWarned = true;
+                var ceiling = _liveQuantaCapRow().def.toLocaleString('en-US');
+                console.warn('[EGPTUniverse] liveQuantaCap: ' + cap.toLocaleString('en-US') +
+                    ' leaf quanta are alive — further leaf frames are skipped until the count ' +
+                    'falls below it. This version of the engine is a limited preview release ' +
+                    'capped at ' + ceiling + ' live quanta.');
+            }
+            return false;
+        }
+        this._capAdmitted++;
+        return true;
+    };
+
+    /**
      * THE CAPACITY LAW, PUBLISHED — the cell capacity of a leaf at `level`, read off the
      * engine that owns it (`ActiveAxes::level_capacity`). Sugar that must size a frame by
      * level CONSUMES this; it never re-derives `4^level`, which is the A={x,y} answer only
@@ -1329,10 +1413,12 @@
      * to create a frame (with correct wavelength/charge), then calls injectFrame()
      * to enqueue it.
      *
-     * @param {number} frameHandle - SoA FrameId returned by make_leaf_frame().
+     * @param {number|null} frameHandle - SoA FrameId returned by makeLeafFrame(); `null` (an add
+     *   the liveQuantaCap refused) is a no-op — it never reaches the engine's injection buffer.
      */
     EGPTUniverse.prototype.injectFrame = function (frameHandle) {
         this._ensureInit();
+        if (frameHandle === null) { return; }
         this._wasm.inject_frame(frameHandle);
     };
 
@@ -1341,10 +1427,13 @@
      * setFrameProperty/getFrameProperty and tickData.frameData[i].id key on. These two
      * id spaces differ; mutating a per-frame property with the raw makeLeafFrame handle
      * silently targets the wrong frame. Use this to bridge them (see the color path above,
-     * which does the same conversion internally).
+     * which does the same conversion internally). A `null` handle (an add the liveQuantaCap
+     * refused) answers 0, the ABI's own "no frame" id — never reaching the ABI, where null
+     * coerces to the REAL frame 0.
      */
     EGPTUniverse.prototype.getFrameQuantumId = function (frameHandle) {
         this._ensureInit();
+        if (frameHandle === null) { return 0; }
         return (typeof this._wasm.get_frame_quantum_id === 'function')
             ? this._wasm.get_frame_quantum_id(frameHandle)
             : frameHandle;
@@ -1361,6 +1450,11 @@
      */
     EGPTUniverse.prototype.setLargeObjectFrame = function (handle, frameHandle) {
         this._ensureInit();
+        if (frameHandle === null) {
+            throw new Error('[EGPTUniverse.setLargeObjectFrame] the backing frame is null — the ' +
+                'leaf add was refused by liveQuantaCap (' + this._params.liveQuantaCap + ' live ' +
+                'quanta). A LargeObject needs a real backing frame.');
+        }
         this._wasm.set_large_object_property(
             handle, 'frame_id', JSON.stringify(frameHandle));
     };
@@ -1820,12 +1914,6 @@
 
     // [D4] Methods present in node copy only; absent in browser copy — included here.
 
-    EGPTUniverse.prototype.createLeafFrame = function (x, y, vx, vy, charge) {
-        this._ensureInit();
-        var c = (charge === Charge.NEGATIVE) ? 1 : 0;
-        return this._wasm.create_leaf_frame(x, y, vx, vy, c);
-    };
-
     EGPTUniverse.prototype.killFrame = function (id) {
         this._ensureInit();
         this._wasm.kill_frame(id);
@@ -2179,8 +2267,8 @@
     }
 
     BoundaryFrame.prototype.insert = function (quantum) {
-        if (_activeWasmUniverse && this._handle !== undefined && quantum && quantum._handle !== undefined) {
-            return _activeWasmUniverse.insert_into_frame(this._handle, quantum._handle);
+        if (_activeUniverse && this._handle !== undefined && quantum && quantum._handle !== undefined) {
+            return _activeUniverse._wasm.insert_into_frame(this._handle, quantum._handle);
         }
         console.log('[shim] Frame.insert: missing handle(s) or no active WASM universe — returning null');
         return null;
@@ -2244,30 +2332,32 @@
 
     /**
      * Static makeLeafFrame — matches JS-reference Frame.makeLeafFrame signature.
-     * Forwards to the Rust WASM ABI when a universe is active; falls back to a
-     * BoundaryFrame null marker (log+null) if no universe is initialised yet.
+     * Routes through the active universe's makeLeafFrame (THE one leaf door, which owns the
+     * charge/wavelength translation and the liveQuantaCap admission). Returns the BoundaryFrame
+     * null marker when no universe is initialised yet OR when the cap refused the add.
      *
-     * charge: 0=Positive, 1=Negative, null/undefined=random (wire: i32 -1).
+     * charge: 0=Positive, 1=Negative, null/undefined=random.
      * wavelength: 0 or negative means "none" on the Rust side (mass = capacity).
+     * `boundary_rect` and `color_override` are NOT forwarded: the instance door's 9th positional
+     * is `color`, so the positional list must never be passed through as-is.
      *
      * The JS reference took a trailing frame-generation-mode flag here; it was never read by
      * this body (the mode is universe state the engine already holds) and is DROPPED. Extra
      * arguments from an old call site are ignored by JS, so no caller changes.
      */
     BoundaryFrame.makeLeafFrame = function (left, top, level, wavelength, vx, vy, wrap, charge, boundary_rect, color_override) {
-        if (!_activeWasmUniverse) {
+        if (!_activeUniverse) {
             console.log('[shim] Frame.makeLeafFrame: no active WASM universe — returning null');
             var f0 = new BoundaryFrame();
             f0.layer = level || 0;
             return f0;
         }
-        // Map JS charge convention → Rust i32 wire format (0=Pos, 1=Neg, -1=random)
-        var chargeInt = (charge === 0 || charge === 1) ? charge : -1;
-        var wl = (wavelength != null && wavelength > 0) ? wavelength : 0;
-        vx = vx || 0;
-        vy = vy || 0;
-        wrap = !!wrap;
-        var frameId = _activeWasmUniverse.make_leaf_frame(left, top, level || 0, wl, vx, vy, wrap, chargeInt);
+        var frameId = _activeUniverse.makeLeafFrame(left, top, level, wavelength, vx, vy, wrap, charge);
+        if (frameId === null) {
+            var fc = new BoundaryFrame();
+            fc.layer = level || 0;
+            return fc;
+        }
         var f = new BoundaryFrame();
         f._handle = frameId;
         f.layer = level || 0;
@@ -2298,7 +2388,7 @@
 
             // addFrame — forwards to Rust add_frame_to_dimension when a handle is present
             addFrame: function (mb) {
-                var w = wasm || _activeWasmUniverse;
+                var w = wasm || (_activeUniverse && _activeUniverse._wasm);
                 if (w && mb && mb._handle !== undefined) {
                     w.add_frame_to_dimension(layer, mb._handle);
                     return;
@@ -2310,7 +2400,7 @@
             // createFrameFromRect — forwards to Rust create_frame_from_rect
             // Returns a BoundaryFrame with _handle set, or a null-sentinel on failure.
             createFrameFromRect: function (rect, childFrames, vx, vy, addToDimension, is_stationary, string_map) {
-                var w = wasm || _activeWasmUniverse;
+                var w = wasm || (_activeUniverse && _activeUniverse._wasm);
                 if (w && rect) {
                     var childHandles = (childFrames || []).map(function (c) {
                         return (c && c._handle !== undefined) ? c._handle : 0;
@@ -2359,7 +2449,7 @@
 
             // createParentFrame — forwards to Rust create_parent_frame
             createParentFrame: function (childA, childB) {
-                var w = wasm || _activeWasmUniverse;
+                var w = wasm || (_activeUniverse && _activeUniverse._wasm);
                 if (w && childA && childA._handle !== undefined && childB && childB._handle !== undefined) {
                     var INVALID = 4294967295;
                     var frameId = w.create_parent_frame(layer, childA._handle, childB._handle);
@@ -2464,8 +2554,9 @@
 
     var _WasmUniverse = null;
     // Set during EGPTUniverse.prototype.init() so that BoundaryFrame static/instance
-    // methods can forward to the live WasmUniverse without holding an explicit ref.
-    var _activeWasmUniverse = null;
+    // methods can forward to the live universe (and its WasmUniverse) without holding an
+    // explicit ref.
+    var _activeUniverse = null;
 
     function makeProvider(WasmUniverseCtor, RectangleCtor) {
         if (!WasmUniverseCtor) {

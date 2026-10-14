@@ -1026,6 +1026,7 @@
             // 10th arg (Bite 5b A3) = per-leaf render.shape override (null default → no key →
             // byte-identical). Rides the SAME provider render-intent MERGE seam as color.
             var h = universe.makeLeafFrame(lx, ly, leafDimension, state.wavelength, v[0], v[1], false, chg, state.renderColor, state.renderShape);
+            if (h === null) { return; } // liveQuantaCap refused the add: no leaf, nothing to stamp
             universe.injectFrame(h);
             var q = universe.getFrameQuantumId(h);
             universe.setFrameProperty(q, 'z', lz);

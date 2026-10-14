@@ -130,6 +130,9 @@
                     (em.renderShape != null && em.renderShape !== '') ? em.renderShape : null,
                     (em.renderOutline != null) ? em.renderOutline : null
                 );
+                // liveQuantaCap refused the add: no leaf was born, so a finite quantumLimit is
+                // not spent on it (below the cap the handle is never null — byte-identical).
+                if (handle === null) { continue; }
                 universe.injectFrame(handle);
 
                 // OPT-IN 3D z-SPREAD (see module docstring). em.zMin is null for every
