@@ -5,26 +5,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Empty Universe</title>
-    <link rel="stylesheet" href="../../5d0c22f5/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../9ecc82bd/experiments/_shared/experiment-layout.css">
 </head>
 <body>
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../5d0c22f5/js/lib/","assets/render/":"../../5d0c22f5/js/consumers/","assets/models/":"../../5d0c22f5/js/models/","compat/providers/":"../../5d0c22f5/js/compat/","compat/":"../../5d0c22f5/js/compat/","objects/":"../../5d0c22f5/js/game/","experiments/_shared/":"../../5d0c22f5/experiments/_shared/","experiments/":"../../5d0c22f5/experiments/","scenes/":"../../5d0c22f5/scenes/","shim/":"../../5d0c22f5/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../5d0c22f5/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../9ecc82bd/js/lib/","assets/render/":"../../9ecc82bd/js/consumers/","assets/models/":"../../9ecc82bd/js/models/","compat/providers/":"../../9ecc82bd/js/compat/","compat/":"../../9ecc82bd/js/compat/","objects/":"../../9ecc82bd/js/game/","experiments/_shared/":"../../9ecc82bd/experiments/_shared/","experiments/":"../../9ecc82bd/experiments/","scenes/":"../../9ecc82bd/scenes/","shim/":"../../9ecc82bd/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../9ecc82bd/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendored three.js (r128) — a load-by-eval rung may request the three renderer
          (a scene registered with renderState.renderer 'three', ?renderer=three). render-boot.js reads this before
          falling back to a CDN; setting it mirrors the _egptWasmPkgUrl precedent so the
          dev realm has no silent CDN dependency. Harmless for 2D/p5 loads (only read
          when three is selected). -->
-    <script>window._egptThreeUrl = new URL("../../5d0c22f5/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../9ecc82bd/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- Canonical shared loader. No page scripts: the universe is created via the
          RecipeContext object and populated by an eval'd buildExperiment(exp) module
          (a saved project) OR left blank (Empty Universe / palette authoring). -->
-    <script src="../../5d0c22f5/experiments/_shared/stack-boot.js"></script>
+    <script src="../../9ecc82bd/experiments/_shared/stack-boot.js"></script>
 
     <!-- Page structure -->
     <div class="experiment-container">
@@ -171,17 +171,14 @@
         if (err) { window._egptFailSketch(err); } else { window._egptCompleteSketch(); }
     }
 
-    /** Eval a scene source and build it against this page's facade; publish its world. */
+    /** Build a scene source against this page's facade (RecipeContext.buildSource — the one
+        source→scene door); publish its world. */
     function _buildScene(src, sourceRef) {
         var exp = window._egptExperiment;
         try {
-            (0, eval)(src);   // defines window.buildExperiment for this (same-origin) page
-            if (typeof window.buildExperiment !== 'function') {
-                throw new Error('scene source did not define buildExperiment(exp)');
-            }
             exp._built = false;
             try {
-                exp.build(window.buildExperiment);   // the scene's first statement creates its world
+                exp.buildSource(src);   // the scene's first statement creates its world
             } catch (e) {
                 if (e && e.frqtlRequiredRenderer) { _requiredRenderer = e.frqtlRequiredRenderer; }
                 throw e;
@@ -199,7 +196,8 @@
      *
      * A public hook gets a public name: this IS the shipped, documented way to load a scene into
      * the blank page — the ONE door every host comes through (STUDIO's author surface, the GYM's
-     * rung frame via rung-frame.js applySceneText, the hosted eyes, the getting-started doc). The
+     * rung frame via rung-frame.js applySceneText, the hosted eyes, the getting-started doc) — and
+     * the ONE door a host hands a renderState bag through (applyRenderState). The
      * page itself states NO world: every scene does, in its first statement — the blank STUDIO
      * universe is the scene file scenes/empty.js like any other. A member joins this object only
      * through review: it is a front door, not a dumping ground.
@@ -225,15 +223,50 @@
                 throw new Error('[empty] FrqtlPage.applyModuleSource: no RecipeContext');
             }
             try {
-                if (typeof src !== 'string' || !src.trim()) {
-                    throw new Error('no scene source — the blank universe is itself a scene, scenes/empty.js; apply it.');
-                }
                 _buildScene(src, null);
                 return true;
             } catch (e) {
                 _egptPaintWalkthroughError('Recipe load failed', String((e && e.stack) || e));
                 console.error('[empty] FrqtlPage.applyModuleSource failed:', e);
                 throw e;   // FAIL-LOUD — surface, never swallow to a blank canvas.
+            }
+        },
+
+        /**
+         * Apply a renderState bag (a rung's effectiveRenderState, or a saved project's bag) to the
+         * runner the last applied scene built — the peer of applyModuleSource. The procedure (rows
+         * against the booted renderer, the camera, the backdrop) is lib/shim/render-state/apply.js
+         * `RenderState.apply`; this page supplies what only it has: its runner and its renderer
+         * registry (`env.knownNames`).
+         *
+         * FAIL-LOUD: no scene applied yet, or any throw from the owner (a row no renderer declares,
+         * a value its descriptor refuses, a camera on a display with no pose control) paints the
+         * visible error overlay AND rethrows.
+         *
+         * @param {object} bag — a renderState bag (raw or normalized)
+         * @returns {{applied:Object, retained:Array, camera:string|null, preset:string|null,
+         *   backdrop:boolean|null}} the owner's report — a host decides whether `retained` rows / a
+         *   `retained` camera are acceptable (the hosted eyes accept neither).
+         */
+        applyRenderState: function (bag) {
+            try {
+                if (!window._frqtlApp) {
+                    throw new Error('[empty] FrqtlPage.applyRenderState: no scene has been applied on the page — ' +
+                        'apply a scene source first. (FAIL-LOUD.)');
+                }
+                if (!window.RenderState || !window.RenderCapabilitiesCommon) {
+                    throw new Error('[empty] FrqtlPage.applyRenderState: ' + (!window.RenderState
+                        ? 'window.RenderState missing (the ENGINE phase did not load lib/shim/render-state/apply.js)'
+                        : 'window.RenderCapabilitiesCommon missing (the RENDERER phase did not load ' +
+                          'renderCapabilities-common.js)') + '. (FAIL-LOUD.)');
+                }
+                return window.RenderState.apply(window._frqtlApp, bag, {
+                    knownNames: window.RenderCapabilitiesCommon.knownRenderCapabilityNames(window._egptRendererProviders)
+                });
+            } catch (e) {
+                _egptPaintWalkthroughError('Render state failed', String((e && e.stack) || e));
+                console.error('[empty] FrqtlPage.applyRenderState failed:', e);
+                throw e;   // FAIL-LOUD — surface, never swallow.
             }
         },
 
