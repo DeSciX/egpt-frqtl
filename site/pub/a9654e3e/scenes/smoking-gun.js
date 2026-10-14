@@ -18,6 +18,27 @@
  * Order (it seeds the run): world → brownian/collision flags → the smoke ladder → the muzzle →
  * the wind-down tick-fn → the bullet → its flight tick-fn → the gun body.
  *
+ * Card text (the CEO's what / why / how for this scene, verbatim; the scene is not on the
+ * showcase roster, lib/shim/registry/exhibits.js, so no front-page tile or GYM card shows it):
+ *   What you are seeing:
+ *     Explore how you can create CGI-like effects out of emergent physics - if you are a ThreeJS
+ *     developer, this is your opportunity to shine! Presently, a gun fires, seen from the side. A
+ *     slit at the muzzle, one pixel wide and ten tall, releases twenty quanta per tick heading down
+ *     the barrel. The bullet is currently a ten-pixel reflecting cube (quanta bounce off it).
+ *   Why it is impossible the usual way:
+ *     Look into how you can use the collisions from the 3D Collisions Lab and the collision
+ *     experiments to make the bullet self-propelled. You'll need an intuitive understanding of what
+ *     the standard collisions in the model end up doing and possibly how Large Objects allow you to
+ *     define your own custom hooks and collision behaviors. The goal is that the collisions of the
+ *     smaller light quanta accumulate into bullet momentum instead of the currently scripted one
+ *     pixel every second tick.
+ *   How FRQTL gets it:
+ *     Currently, the quanta jostle and collide with one another, and they promote into ever larger
+ *     frames, from the fundamental layer through dimensions 4, 8 and 12. That climb is the smoke.
+ *     After three seconds the muzzle winds down, and by ten seconds it is cut, leaving the plume to
+ *     drift and spread on its own. No fluid dynamics, no gas law, no particle system scripted to
+ *     look like smoke.
+ *
  * Facts to help you out:
  *   - Muzzle: a 1×10 px slit, particle-walk preset (pure +X), 20 quanta per tick, at-fundamental leaves.
  *   - Brownian motion and inter-quantum collisions are on. Declared dimensions are 4, 8 and 12 (the

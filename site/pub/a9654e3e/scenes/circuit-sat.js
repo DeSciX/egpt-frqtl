@@ -44,8 +44,8 @@ function buildExperiment(exp) {
   var gateOpts = { bore: MIN.bore, wallThickness: MIN.wallThickness, length: MIN.length, supplyVoltage: RAIL };
 
   // ── THE GATES — SUM (XOR) above CARRY (AND) ─────────────────────────────
-  var sum = new LogicGate(u, Object.assign({ logic: 'XOR', left: LEFT, top: TOP, name: 'SUM', color: [200, 170, 70] }, gateOpts));
-  var carry = new LogicGate(u, Object.assign({ logic: 'AND', left: LEFT, top: TOP + cell.h, name: 'CARRY', color: [170, 200, 90] }, gateOpts));
+  var sum = exp.addObject('LogicGate', Object.assign({ logic: 'XOR', left: LEFT, top: TOP, name: 'SUM', color: [200, 170, 70] }, gateOpts));
+  var carry = exp.addObject('LogicGate', Object.assign({ logic: 'AND', left: LEFT, top: TOP + cell.h, name: 'CARRY', color: [170, 200, 90] }, gateOpts));
   var gates = { SUM: sum, CARRY: carry };
 
   // ── THE INPUT RAILS — the lane plan: B and A are SWAPPED on CARRY (AND commutes; the swap buys
@@ -59,7 +59,8 @@ function buildExperiment(exp) {
     var port = gates[row.gate][row.port], y = port[1];
     var t = new Trace(u, { path: [[port[0] - LEAD, y], [port[0], y]], bore: MIN.bore,
                            wallThickness: MIN.wallThickness, name: 'rail' + row.input + i, color: [90, 120, 200] });
-    var em = new SphereEmitter(emitterBag([t.inPort[0] + INSET, y])).addTo(u);   // parked inside the bore mouth
+    var em = exp.addObject('SphereEmitter', Object.assign(emitterBag([t.inPort[0] + INSET, y]),
+                                                          { name: 'input' + row.input + i }));   // parked inside the bore mouth
     em.setActive(row.input === 'A' ? STATE.a : STATE.b);
     rails[row.input].push(em);
     parts.push(t);
@@ -71,8 +72,8 @@ function buildExperiment(exp) {
                           bore: MIN.bore, wallThickness: MIN.wallThickness, ground: true, name: name, color: [60, 160, 220] });
   }
   var readouts = { SUM: readout(sum, 'SUM_out'), CARRY: readout(carry, 'CARRY_out') };
-  parts.push(readouts.SUM, readouts.CARRY, sum, carry);
-  parts.forEach(function (p) { p.attachToRunner(exp.runner); });   // every part reads the tick stream
+  parts.push(readouts.SUM, readouts.CARRY);
+  parts.forEach(function (p) { p.attachToRunner(exp.runner); });   // every trace reads the tick stream (a declared gate subscribed at addObject)
 
   function setInput(which, on) {
     STATE[which] = !!on;

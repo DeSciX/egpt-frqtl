@@ -1,10 +1,10 @@
 {
-  "build": "27e42a1a",
+  "build": "a9654e3e",
   "phases": {
     "root": "GREEN",
     "prefix": "GREEN"
   },
-  "verified_at": "2026-10-14T20:10:45Z",
+  "verified_at": "2026-10-14T23:00:29Z",
   "instrument": {
     "script": "scripts/verify-static-deploy.sh",
     "urls": "scripts/verify-static-deploy-urls.mjs",

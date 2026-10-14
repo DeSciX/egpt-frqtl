@@ -1,6 +1,6 @@
 {
   "name": "@descix/frqtl-sdk",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "FRQTL SDK — Discrete fractal physics and game engine distribution.",
   "author": "Essam Abadir",
   "license": "SEE LICENSE IN LICENSE",

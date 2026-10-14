@@ -6,7 +6,7 @@
  * and the one invitation). It is the ONE owner of every word of that copy.
  *
  * EXHIBITS is the ONE source for the front-page tiles, their GYM deep links and the scene card
- * (CEO 2026-10-03): ten rows in front-page order, each
+ * (CEO 2026-10-03): nine rows in front-page order, each
  * `{ kind, id, mode, title, tile, what, why, how, controls, still }`.
  *   - `kind` is 'rung' (a walk-through rung, lib/shim/registry/walkthrough.js) or 'experiment'
  *     (a canonical experiment page, lib/shim/registry/experiments.js); `id` resolves there.
@@ -161,9 +161,7 @@ assertShowcaseIntro(SHOWCASE_INTRO);
 
 // The authored roster, front-page order. `title` and `tile` are the published front-page tile copy
 // (egpt-frqtl site/index.html #proof at 5d2f019: each tile's <b> and its sentence), verbatim;
-// smoking-gun, added after that page, carries its own.
-// `what`, `why`, `how`, `controls` and each `still.alt` are the CEO-passed captions, except
-// smoking-gun's still.alt, written from its captured still.
+// `what`, `why`, `how`, `controls` and each `still.alt` are the CEO-passed captions.
 const ROSTER = [
     {
         kind: 'rung', id: "dse-tunnel-rebuild", mode: "3d",
@@ -246,15 +244,6 @@ const ROSTER = [
         what: "Balls in a box, in seven lanes coloured red to violet by density. Each pair flies together and collides: the hard ones bounce cleanly, the soft ones press into each other before parting. Contact, momentum, settling. This is a \"Collisions Lab\" because it is up to you to find the capacity-and-fill relationships that produce the desired elastic vs inelastic collisions at your desired scale.",
         why: "In a game engine, collisions come from a separate physics engine, such as NVIDIA PhysX, solving rigid-body equations beside the renderer that draws the light. Two systems, two sets of rules.",
         how: "The same engine that makes the light in the other scenes makes these collisions: pairs of the same frames at seven densities. No second physics, no equations.",
-    },
-    {
-        kind: 'rung', id: "smoking-gun",
-        still: { tick: 240, alt: "A grey gun seen from the side, its barrel pointing right; a white-hot flash at the muzzle opens into a wide cloud of gold specks with faint rays fanning out across black, and a small tan cube sits at the cloud's right edge." },
-        title: "Smoking Gun",
-        tile: "A gun fires and the smoke emerges. Your challenge: make the bullet self-propelled.",
-        what: "Explore how you can create CGI-like effects out of emergent physics - if you are a ThreeJS developer, this is your opportunity to shine! Presently, a gun fires, seen from the side. A slit at the muzzle, one pixel wide and ten tall, releases twenty quanta per tick heading down the barrel. The bullet is currently a ten-pixel reflecting cube (quanta bounce off it).",
-        why: "Look into how you can use the collisions from the 3D Collisions Lab and the collision experiments to make the bullet self-propelled. You'll need an intuitive understanding of what the standard collisions in the model end up doing and possibly how Large Objects allow you to define your own custom hooks and collision behaviors. The goal is that the collisions of the smaller light quanta accumulate into bullet momentum instead of the currently scripted one pixel every second tick.",
-        how: "Currently, the quanta jostle and collide with one another, and they promote into ever larger frames, from the fundamental layer through dimensions 4, 8 and 12. That climb is the smoke. After three seconds the muzzle winds down, and by ten seconds it is cut, leaving the plume to drift and spread on its own. No fluid dynamics, no gas law, no particle system scripted to look like smoke.",
     },
 ];
 

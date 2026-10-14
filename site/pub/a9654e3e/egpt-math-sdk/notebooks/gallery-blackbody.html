@@ -61,19 +61,23 @@ function buildExperiment(exp) {
   // The thermostat runs FIRST each tick: reserve its slot before the oven registers its own.
   var thermostatSlot = u.experimentTickFunctions.length;
   u.experimentTickFunctions.push(null);
-  var oven = new OvenBox(u, {
+  var oven = exp.addObject('OvenBox', {
+    name: 'oven',
     left: outer.left + WALL, top: outer.top + WALL,
     width: outer.w - 2 * WALL, height: outer.h - 2 * WALL,
     wallThickness: WALL, temperature: TEMPERATURE,
-    slitHeight: SLIT_HEIGHT, slitWall: 'right',
+    slitHeight: SLIT_HEIGHT,          // the slit is in the RIGHT wall (OvenBox's own slit side)
     color: [120, 120, 120]
   });
   u.experimentTickFunctions[thermostatSlot] = oven.getTemperatureTickFunction();
 
   // ── THE SINK — the experiment boundary on the slit side ─────────────────
-  new LargeObject(u, [W - SINK_DEPTH, 0, SINK_DEPTH, H],
-                  CollisionTypes.NONE, [CollisionActions.ABSORB],
-                  'radiation_sink', 'closest', null, 1, [0, 0, 0]);
+  exp.addObject('LargeObject', {
+    name: 'radiation_sink',
+    rect: { left: W - SINK_DEPTH, top: 0, w: SINK_DEPTH, h: H },
+    collision_type: CollisionTypes.NONE, actions: [CollisionActions.ABSORB],
+    reposition: 'closest', color: [0, 0, 0]
+  });
 
   // ── THE KNOB — temperature, live (the oven's own thermostat target) ─────
   if (typeof document !== 'undefined' && window.ControlRegistry && window.FrqtlControlsPanel &&
