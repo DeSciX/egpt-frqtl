@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Cone Emitter 3D (laser &harr; flashlight)</title>
-    <link rel="stylesheet" href="../../5d0c22f5/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../9ecc82bd/experiments/_shared/experiment-layout.css">
     <style>
         .experiment-controls {
             flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
@@ -24,21 +24,21 @@
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../5d0c22f5/js/lib/","assets/render/":"../../5d0c22f5/js/consumers/","assets/models/":"../../5d0c22f5/js/models/","compat/providers/":"../../5d0c22f5/js/compat/","compat/":"../../5d0c22f5/js/compat/","objects/":"../../5d0c22f5/js/game/","experiments/_shared/":"../../5d0c22f5/experiments/_shared/","experiments/":"../../5d0c22f5/experiments/","scenes/":"../../5d0c22f5/scenes/","shim/":"../../5d0c22f5/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../5d0c22f5/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../9ecc82bd/js/lib/","assets/render/":"../../9ecc82bd/js/consumers/","assets/models/":"../../9ecc82bd/js/models/","compat/providers/":"../../9ecc82bd/js/compat/","compat/":"../../9ecc82bd/js/compat/","objects/":"../../9ecc82bd/js/game/","experiments/_shared/":"../../9ecc82bd/experiments/_shared/","experiments/":"../../9ecc82bd/experiments/","scenes/":"../../9ecc82bd/scenes/","shim/":"../../9ecc82bd/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../9ecc82bd/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendor three.js (r128 UMD) — must be set BEFORE stack-boot.js. -->
-    <script>window._egptThreeUrl = new URL("../../5d0c22f5/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../9ecc82bd/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- 3D mode: render-boot.js auto-selects the three.js provider (orbit
          PerspectiveCamera + getCameraControl). Mirrors particle-walk-3d. -->
     <script>window._egptDefaultRenderer = 'three';   /* the 3D display; the runner tells the provider is3D */</script>
 
     <!-- Canonical shared loader: engine + renderer + game layer in ONE order. -->
-    <script src="../../5d0c22f5/experiments/_shared/stack-boot.js"
+    <script src="../../9ecc82bd/experiments/_shared/stack-boot.js"
         data-page-scripts="
-            ../../5d0c22f5/js/game/setup/setupConeEmitter3D.js,
-            ../../5d0c22f5/experiments/_shared/experiment-metrics.js
+            ../../9ecc82bd/js/game/setup/setupConeEmitter3D.js,
+            ../../9ecc82bd/experiments/_shared/experiment-metrics.js
         "></script>
 
     <!-- Page structure -->
