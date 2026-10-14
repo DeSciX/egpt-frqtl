@@ -109,7 +109,7 @@ export function assertShowcaseIntro(intro) {
     return intro;
 }
 
-/** The public EGPT repository (DeSciX/EGPT, main) every intro link cites, one document per link. */
+/** The public EGPT repository (DeSciX/EGPT, main) the intro's closing paragraph cites, one document per link. */
 const EGPT_EVIDENCE_BLOB = 'https://github.com/DeSciX/EGPT/blob/main/';
 
 /** A link segment to one tracked document of the public EGPT repository. */
@@ -118,8 +118,28 @@ const egptDoc = (text, path) => Object.freeze({ text, href: EGPT_EVIDENCE_BLOB +
 /** The run-once intro card, shown once before the first roster scene card a viewer meets. */
 export const SHOWCASE_INTRO = Object.freeze({
     seenKey: 'showcase-intro',
-    title: "Why these calculations are called impossible",
+    title: "Why these are considered \"impossible\"",
     paragraphs: Object.freeze([
+        Object.freeze([
+            "The industry-standard projection is that simulating just 100 electrons requires a classical computer with 2^100 bits, more atoms than there are in the universe (",
+            Object.freeze({ text: "Microsoft's quantum computing overview", href: "https://learn.microsoft.com/en-us/azure/quantum/overview-understanding-quantum-computing" }),
+            "). Google's framing is that 100 photons (or qubits) would require 725 trillion times the age of the universe to calculate using the world's most powerful supercomputers, like Frontier.",
+        ]),
+        Object.freeze(["You're about to see the FRQTL hyper-computer accurately simulate many thousands on your own mobile phone or laptop."]),
+        Object.freeze(["FRQTL is a patent-pending P=NP hyper-computer based on a radically different architecture than current computer chips and hypothetical qubit-based quantum computers."]),
+        Object.freeze(["FRQTL doesn't cheat, and it isn't like any \"traditional\" approach such as ray tracing, path tracing and photon mapping, which cannot produce interference or wave diffusion at any cost. They treat light as straight lines. Real-time engines fake shadows, reflections and indirect light as separate effects, with fixed bounce limits."]),
+        Object.freeze(["Matching what you will see FRQTL do here means solving Maxwell's equations directly. The standard method is FDTD: a 3D grid of about 20 cells per wavelength, updated every time step. At real optical wavelengths that cost is out of reach."]),
+        Object.freeze(["Assumptions: visible light at 500 nm; 20 cells per wavelength; about 24 bytes and 30 operations per cell per step; a time step at the standard stability limit for a 3D grid, so light advances at most 1/√3 of a cell per step and crossing the scene takes about 1.7 steps for every cell across it; a Frontier-class supercomputer (about 10^18 operations per second, about 10 PB of memory). \"One crossing\" means light travelling once across the scene."]),
+        Object.freeze({ table: Object.freeze({
+            caption: SHOWCASE_ESTIMATE_CAPTION,
+            head: Object.freeze(["Scene","Grid cells","Memory needed","Compute for one crossing","Time on Frontier"]),
+            rows: Object.freeze([
+                Object.freeze(["10 cm tabletop","6 × 10^19","about 1.5 zettabytes, about 150,000× Frontier's memory","about 10^28 operations","about 400 years"]),
+                Object.freeze(["5 m room","8 × 10^24","about 2 × 10^26 bytes, more than all the storage on Earth","about 10^35 operations","about 3 billion years"]),
+            ]),
+        }) }),
+        Object.freeze(["Running indefinitely multiplies that by every further crossing. At physical wavelengths, \"impossible for supercomputers\" is literally true."]),
+        Object.freeze(["The table is about light waves. The blackbody, the logic circuit, the Big Bang and the atom are impossible the usual way for a different reason: each needs a theory, equations and a program of its own, at a scale of its own. The glowing box needs energy quanta assumed, the circuit needs a search through its inputs, the cosmos needs gravity computed over 13.8 billion years, and the atom needs quantised energy levels."]),
         Object.freeze([
             "The EGPT proofs are machine-checked in Lean. Rota's Entropy Theorem (RET), the Lean theorem ",
             egptDoc("rota_all_entropy_scaled_shannon", "08_LEAN/EGPT/InformationTheory/EntropyNumber/RotaEntropy.lean"),
@@ -135,21 +155,6 @@ export const SHOWCASE_INTRO = Object.freeze({
             egptDoc("the Claude Singularity session", "12_SINGULARITY/Claude/Cowork_Session_10.01.2026.md"),
             ". The proof of P=NP was first outlined in the paper P Probably Equals NP (January 2025).",
         ]),
-        Object.freeze(["Ray tracing, path tracing and photon mapping cannot produce interference or wave diffusion at any cost, because they treat light as straight lines. Real-time engines fake shadows, reflections and indirect light as separate effects, with fixed bounce limits."]),
-        Object.freeze(["Matching what you will see here means solving Maxwell's equations directly. The standard method is FDTD: a 3D grid of about 20 cells per wavelength, updated every time step. At real optical wavelengths that cost is out of reach."]),
-        Object.freeze(["Assumptions: visible light at 500 nm; 20 cells per wavelength; about 24 bytes and 30 operations per cell per step; a time step at the standard stability limit for a 3D grid, so light advances at most 1/√3 of a cell per step and crossing the scene takes about 1.7 steps for every cell across it; a Frontier-class supercomputer (about 10^18 operations per second, about 10 PB of memory). \"One crossing\" means light travelling once across the scene."]),
-        Object.freeze({ table: Object.freeze({
-            caption: SHOWCASE_ESTIMATE_CAPTION,
-            head: Object.freeze(["Scene","Grid cells","Memory needed","Compute for one crossing","Time on Frontier"]),
-            rows: Object.freeze([
-                Object.freeze(["10 cm tabletop","6 × 10^19","about 1.5 zettabytes, about 150,000× Frontier's memory","about 10^28 operations","about 400 years"]),
-                Object.freeze(["5 m room","8 × 10^24","about 2 × 10^26 bytes, more than all the storage on Earth","about 10^35 operations","about 3 billion years"]),
-            ]),
-        }) }),
-        Object.freeze(["Running indefinitely multiplies that by every further crossing. At physical wavelengths, \"impossible for supercomputers\" is literally true."]),
-        Object.freeze(["The table is about light waves. The blackbody, the logic circuit, the Big Bang and the atom are impossible the usual way for a different reason: each needs a theory, equations and a program of its own, at a scale of its own. The glowing box needs energy quanta assumed, the circuit needs a search through its inputs, the cosmos needs gravity computed over 13.8 billion years, and the atom needs quantised energy levels."]),
-        Object.freeze([egptDoc("The EGPT proofs", "08_LEAN/PROOF_CHAINS.md"), ", machine-checked in Lean, show that P=NP. ROSETTA, the engineering that builds on them, is at the proof-of-concept stage, and its results are directional only. These scenes are different: they run in your browser, in front of you, and you can read their code and decide for yourself whether what you are watching is true P=NP quantum computing."]),
-        Object.freeze(["A conventional engine must commit to one physical scale and pay for every level of detail at it. FRQTL computes the same emergent behaviour at whatever scale is declared."]),
     ]),
 });
 assertShowcaseIntro(SHOWCASE_INTRO);
