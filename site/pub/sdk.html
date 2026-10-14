@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FRQTL SDK — Game Objects API Reference</title>
-    <link rel="stylesheet" href="9ecc82bd/css/bootstrap.min.css">
+    <link rel="stylesheet" href="27e42a1a/css/bootstrap.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -164,6 +164,7 @@ universe.init(<span class="number">0</span>, { wavelengthScale: <span class="num
     <tr><td><code>frameGenMode</code></td><td>'groundUp' | 'topDown'</td><td><code>'groundUp'</code></td><td>How PARENT frames are generated: <code>'groundUp'</code> = by actual collisions between the smallest frames; <code>'topDown'</code> = by how many frames an area can parent</td></tr>
     <tr><td><code>minMBFillRate</code></td><td>number</td><td><code>0.1</code></td><td>Compression threshold for frame merging</td></tr>
     <tr><td><code>wavelengthScale</code></td><td>number</td><td><code>1</code></td><td>Global multiplier: wavelength = (capacity/mass) &times; scale</td></tr>
+    <tr><td><code>liveQuantaCap</code></td><td>number | false</td><td><code>300000</code></td><td>Preview cap on live leaf quanta: once this many are alive, <code>makeLeafFrame</code> returns <code>null</code> (the leaf is skipped) and the console warns once. <code>false</code> = uncapped; above the default throws</td></tr>
 </table>
 
 <h3>Key Methods</h3>

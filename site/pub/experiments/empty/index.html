@@ -5,26 +5,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EGPT — Empty Universe</title>
-    <link rel="stylesheet" href="../../9ecc82bd/experiments/_shared/experiment-layout.css">
+    <link rel="stylesheet" href="../../27e42a1a/experiments/_shared/experiment-layout.css">
 </head>
 <body>
 
     <!-- WASM pkg URL (resolved relative to this page) -->
     <script>window._egptDefaultEngine = "wasm";
-    window._egptEnginePathMap = {"assets/vendor/":"../../9ecc82bd/js/lib/","assets/render/":"../../9ecc82bd/js/consumers/","assets/models/":"../../9ecc82bd/js/models/","compat/providers/":"../../9ecc82bd/js/compat/","compat/":"../../9ecc82bd/js/compat/","objects/":"../../9ecc82bd/js/game/","experiments/_shared/":"../../9ecc82bd/experiments/_shared/","experiments/":"../../9ecc82bd/experiments/","scenes/":"../../9ecc82bd/scenes/","shim/":"../../9ecc82bd/ide/"};</script>
-    <script>window._egptWasmPkgUrl = new URL("../../9ecc82bd/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
+    window._egptEnginePathMap = {"assets/vendor/":"../../27e42a1a/js/lib/","assets/render/":"../../27e42a1a/js/consumers/","assets/models/":"../../27e42a1a/js/models/","compat/providers/":"../../27e42a1a/js/compat/","compat/":"../../27e42a1a/js/compat/","objects/":"../../27e42a1a/js/game/","experiments/_shared/":"../../27e42a1a/experiments/_shared/","experiments/":"../../27e42a1a/experiments/","scenes/":"../../27e42a1a/scenes/","shim/":"../../27e42a1a/ide/"};</script>
+    <script>window._egptWasmPkgUrl = new URL("../../27e42a1a/fat/pkg-web/egpt_wasm.js", document.baseURI).href;</script>
 
     <!-- Vendored three.js (r128) — a load-by-eval rung may request the three renderer
          (a scene registered with renderState.renderer 'three', ?renderer=three). render-boot.js reads this before
          falling back to a CDN; setting it mirrors the _egptWasmPkgUrl precedent so the
          dev realm has no silent CDN dependency. Harmless for 2D/p5 loads (only read
          when three is selected). -->
-    <script>window._egptThreeUrl = new URL("../../9ecc82bd/js/lib/three.min.js", document.baseURI).href;</script>
+    <script>window._egptThreeUrl = new URL("../../27e42a1a/js/lib/three.min.js", document.baseURI).href;</script>
 
     <!-- Canonical shared loader. No page scripts: the universe is created via the
          RecipeContext object and populated by an eval'd buildExperiment(exp) module
          (a saved project) OR left blank (Empty Universe / palette authoring). -->
-    <script src="../../9ecc82bd/experiments/_shared/stack-boot.js"></script>
+    <script src="../../27e42a1a/experiments/_shared/stack-boot.js"></script>
 
     <!-- Page structure -->
     <div class="experiment-container">
