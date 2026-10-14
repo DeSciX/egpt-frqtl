@@ -256,6 +256,7 @@
      * @param {string} [options.slitWall='right'] - Wall face for the slit:
      *   `'right'` | `'left'` | `'top'` | `'bottom'`.
      * @param {Array<number>} [options.color=[120,120,120]] - Wall color `[r,g,b]`.
+     * @param {string} [options.name='oven'] - The oven's name (its declared-object row).
      * @param {string} [options.countSource='active-quanta'] - Thermostat count source:
      *   `'active-quanta'` reads `universe.activeQuanta` each tick (config a —
      *   original behaviour, compatible with `getTemperatureTickFunction()`);
@@ -275,6 +276,7 @@
 
         this.universe = universe;
         this._schemaKind = 'OvenBox';
+        this.name = options.name || 'oven';   // its declared name (the Tunnel/LogicGate idiom)
         this.temperature = options.temperature || 300;
 
         var wt        = options.wallThickness || 10;
