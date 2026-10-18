@@ -1,6 +1,6 @@
 # FRQTL Lab — Claude Code plugin
 
-Run real visual physics experiments with the published `@descix/frqtl-sdk`, the way an
+Run real visual physics experiments with the published `@descix/frqtl-web` / `@descix/frqtl-node`, the way an
 experimentalist does: adopt a role, take a recipe, build the apparatus, and **look**.
 
 This plugin is deliberately thin. The personas you adopt, the experimental method, the

@@ -58,7 +58,7 @@ All render intent rides `string_map` keys in the frame's opaque data bubble — 
 | Authority | File | What it decodes |
 |---|---|---|
 | **`RenderShape`** | `lib/frqtl/compat/renderer/RenderShape.js` | Per-frame shape: `'ball'` (glow sprite) \| `'box'` (solid square) \| `'circle'` (outline) \| `'cube'` (true 3D InstancedMesh, 3D only). `RenderShape.resolve(frame, renderOpts)`; `VALID_SHAPES` is FERRIED from frame-data. Priority: `string_map['render.shape']` → `setRenderOption('shape',…)` default → `'ball'`. |
-| **`LightColor`** | `lib/frqtl/objects/constants/LightColor.js` | Color (by fullness/frequency) and alpha (by intensity). `LightColor.getRgbBySchemeName(scheme, v01)`. Schemes: `'warmcool'` (default) and `'roygbiv'`. |
+| **`LightColor`** | `lib/frqtl/parts/LightColor.js` | Color (by fullness/frequency) and alpha (by intensity). `LightColor.getRgbBySchemeName(scheme, v01)`. Schemes: `'warmcool'` (default) and `'roygbiv'`. |
 | **`RenderMesh`** | `lib/frqtl/compat/renderer/RenderMesh.js` | External-geometry routing: `render.mesh` (OPEN-ID — any asset id, e.g. an Objaverse glTF). `RenderMesh.resolve(frame, renderOpts)` → asset id or `null`. The renderer loads/caches the asset and FAILS LOUD on load failure. |
 
 `render.color` rides `string_map['render.color']` as CSV `'r,g,b,a'`; `render.outline` rides `string_map['render.outline']==='true'`. Two key shapes: ENUM keys (`render.shape`/`render.colorScheme`/`render.outline` — a value list, ferried) and OPEN-ID keys (`render.color`/`render.mesh` — any string, validated at the renderer boundary). **Never re-implement a color map, shape dispatch, or value list in a renderer.**
@@ -74,8 +74,8 @@ The spatial axes `x`, `y`, `z` are **identical in physics** (bench S1 and C5 con
 | What | How |
 |---|---|
 | Enable 3D physics | `universe.activeAxes = { x:true, y:true, z:true }` |
-| Switch camera to perspective (orbitable) | Set `window._egpt3D = true` on the experiment page — render-boot switches to three.js `PerspectiveCamera` |
-| Camera sugar handle | `runner.cameraControl` — the renderer's `getCameraControl()` result (null in 2D, a handle in 3D). Capability-checked — never branch on `if(engine==='wasm')`. Wire presets/UI widgets to this handle. |
+| Switch camera to perspective (orbitable) | A scene states it in its first call, `exp.createScene(w, h, d, cfg)` (three, perspective, `activeAxes {x,y,z}`); an experiment page boots the three display (`bootPage({ renderer: 'three' })`) and builds its runner with `is3D: true` |
+| Camera sugar handle | `runner.cameraControl` — the renderer's `getCameraControl()` result: a handle in 2D too (it declares `{distance, target}` in `poseFields`), null only with no pose control. A scene is 3D when `OrbitBag.hasAngularPose(runner.cameraControl)` — never branch on handle presence or `if(engine==='wasm')`. Wire presets/UI widgets to this handle. |
 | 3D ejects from LOs | Use `reposition:'closest3d'` (6-face) instead of `'closest'` (4-face) |
 
 Two senses of "dimension" that authors must keep distinct: **engine dimension** (`addDimension` — aggregation scale, the render-layer axis) vs **spatial 3D** (`activeAxes:{x,y,z}` — the x/y/z position axes). They are orthogonal.

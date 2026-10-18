@@ -3,13 +3,16 @@
 <!-- The Minimal Sim's OWN page. THE_MINIMAL_SIM.md §2's "no build step at all"
      example calls `bootScene('mount', ...)` — this is the page that creates the
      `mount` element that call names, so the guide's browser example is a page a
-     reader can actually open (double-click / file://; the import is an absolute
-     CDN URL and bootScene injects the engine + game layer as classic scripts, so
-     there is no build step and no local server required). It runs §3's packaged
-     "sun" one-liner (the SphereEmitter form, with the two knobs that reproduce
-     the hand-rolled loop above it: emitEveryTicks:1, is2D:true) — the same
-     scene the hand-rolled tick-fn produces, per "same universe, same primitives,
-     same physics, same picture." -->
+     reader can actually open (double-click / file://; the imports are absolute
+     CDN URLs into ONE dist — the boot and the part the sketch uses come from the
+     same dist, so there is one module instance of each — and there is no build
+     step and no local server required). Its sketch states a
+     600 x 400 world in its first line and runs §3's packaged "sun" one-liner (the
+     SphereEmitter form, with the two knobs that reproduce the hand-rolled loop:
+     emitEveryTicks:1, is2D:true) at the world's centre — the same scene the
+     hand-rolled tick-fn produces, per "same universe, same primitives, same
+     physics, same picture." The mount takes its size from the canvas the sketch
+     creates. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -18,25 +21,26 @@
 <style>
   html,body{margin:0;padding:0;background:#050507;color:#c9c9c9;font-family:ui-monospace,Menlo,Consolas,monospace;}
   #status{text-align:center;font-size:12px;color:#888;padding:10px 0 4px;}
-  #mount{width:600px;height:400px;margin:0 auto 24px;position:relative;}
+  #mount{width:fit-content;margin:0 auto 24px;position:relative;}
 </style>
 </head>
 <body>
 <div id="status" data-role="frqtl-scene-status">booting FRQTL sun…</div>
 <div id="mount" data-role="frqtl-scene-mount"></div>
 <script type="module">
-  import { bootScene } from 'https://cdn.jsdelivr.net/npm/@descix/frqtl-sdk/dist/esm/index.js';
+  const DIST = 'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist';
+  const { bootScene } = await import(DIST + '/frqtl/experiments/_shared/doors.js');
+  const { SphereEmitter } = await import(DIST + '/frqtl/parts/index.js');   // the same dist the doors come from
 
   var statusEl = document.getElementById('status');
   var tickCount = 0;
 
-  bootScene('mount', function (u, opts) {
-      u.init(u.universe_rect, 0, { wavelengthScale: 1 });
+  bootScene('mount', function (exp) {
+      exp.createCanvas(600, 400, { dimension: 0, wavelengthScale: 1 });   // THE WORLD: a 600 x 400 canvas + universe
       // THE_MINIMAL_SIM.md §3's packaged form, verbatim.
       new SphereEmitter([300, 200], {
           preset: 'spherical', R: 24, burstSize: 20, emitEveryTicks: 1, is2D: true
-      }).addTo(u);
-      return {};
+      }).addTo(exp.universe);
   }, {
       onTick: function () {
           tickCount++;

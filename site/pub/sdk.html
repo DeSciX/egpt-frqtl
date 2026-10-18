@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FRQTL SDK — Game Objects API Reference</title>
-    <link rel="stylesheet" href="a9654e3e/css/bootstrap.min.css">
+    <link rel="stylesheet" href="bd6e2e45/css/bootstrap.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -103,7 +103,6 @@
     <a href="#live-chart">LiveChart</a>
     <a href="#circuit-probe">CircuitProbe</a>
     <a href="#circuit-gate">CircuitGate</a>
-    <a href="#setup-factories">Setup Factories</a>
     <a href="#constants" class="indent">Constants</a>
     <a href="#rendering">Rendering</a>
 </nav>
@@ -112,32 +111,38 @@
 
 <h2 id="quickstart">Quick Start</h2>
 
-<p>Every EGPT experiment follows the same pattern: get an engine handle, create a universe, call a setup factory, run ticks, render. In Node (headless, no DOM):</p>
+<p>Every FRQTL sim follows the same pattern: get an engine handle, create a universe, add a tick-function or parts, run ticks, render. In node (headless, no DOM — <code>@descix/frqtl-node</code>):</p>
 
-<pre><code><span class="keyword">const</span> { EGPTEngine, setupDoubleSlit } = require(<span class="string">'@descix/frqtl-sdk'</span>);
+<pre><code><span class="keyword">const</span> { bootNode, LargeObject, CollisionTypes } = require(<span class="string">'@descix/frqtl-node'</span>);
 
-<span class="comment">// 1. Get the engine handle (compiled WASM, same on browser and Node)</span>
-<span class="keyword">const</span> handle = <span class="keyword">await</span> EGPTEngine.create({ backend: <span class="string">'wasm'</span> });
+<span class="comment">// 1. Get the engine handle (compiled WASM, same on browser and node)</span>
+<span class="keyword">const</span> handle = <span class="keyword">await</span> bootNode();
 
-<span class="comment">// 2. Create a universe — EGPTUniverse.create(config) is the ONE construction authority</span>
-<span class="keyword">const</span> universe = handle.EGPTUniverse.create({ rect: { left: <span class="number">0</span>, top: <span class="number">0</span>, w: <span class="number">600</span>, h: <span class="number">600</span> }, seed: <span class="number">42</span> });
+<span class="comment">// 2. Create a universe — EGPTUniverse.create(config) is the ONE construction authority — then init it</span>
+<span class="keyword">const</span> universe = handle.EGPTUniverse.create({ rect: <span class="keyword">new</span> handle.Rectangle(<span class="number">0</span>, <span class="number">0</span>, <span class="number">600</span>, <span class="number">400</span>, <span class="keyword">null</span>, <span class="keyword">false</span>), seed: <span class="number">42</span> });
+universe.init(<span class="number">0</span>, { wavelengthScale: <span class="number">1</span> });
 
-<span class="comment">// 3. Setup an experiment</span>
-<span class="keyword">const</span> { detectorWall } = setupDoubleSlit(universe, { wavelength: <span class="number">64</span> });
+<span class="comment">// 3. A tick-function that adds a frame, and a wall it bounces off</span>
+universe.experimentTickFunctions.push(<span class="keyword">function</span> (u) { u.injectFrame(u.makeLeafFrame(<span class="number">20</span>, <span class="number">200</span>, <span class="number">0</span>, <span class="keyword">null</span>, <span class="number">1</span>, <span class="number">0</span>)); });
+<span class="keyword">new</span> LargeObject(universe, [<span class="number">400</span>, <span class="number">0</span>, <span class="number">12</span>, <span class="number">400</span>], CollisionTypes.BOUNCE, [], <span class="string">'mirror'</span>);
 
 <span class="comment">// 4. Run simulation ticks</span>
 <span class="keyword">const</span> tickData = universe.doTick();
 </code></pre>
 
-<p>In the browser (with a rendered canvas) the construction call is the SAME one — <code>EGPTUniverse.create(config)</code> — reached off the global the engine boot installs. Hand each tick's data to a <a href="#rendering">RendererProvider</a>:</p>
+<p>In the browser (<code>@descix/frqtl-web</code>), <code>bootScene(mount, sketch)</code> boots the engine and the renderer and runs a sketch — a <code>buildExperiment(exp)</code> function whose first statement creates the world. Import the parts the sketch uses from the same dist the doors come from:</p>
 
-<pre><code><span class="keyword">var</span> universe = EGPTUniverse.create({ rect: { left: <span class="number">0</span>, top: <span class="number">0</span>, w: <span class="number">600</span>, h: <span class="number">600</span> }, seed: <span class="number">42</span> });
-<span class="keyword">var</span> result = setupParticleWalk(universe, {});
+<pre><code><span class="keyword">const</span> DIST = <span class="string">'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist'</span>;
+<span class="keyword">const</span> { bootScene } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/experiments/_shared/doors.js'</span>);
+<span class="keyword">const</span> { SphereEmitter } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/parts/index.js'</span>);
 
-<span class="comment">// each draw frame (activeRenderer = a RendererProvider — see Rendering below):</span>
-<span class="keyword">var</span> tickData = universe.doTick();
-activeRenderer.renderTick(tickData, result.largeObjects);
+<span class="keyword">await</span> bootScene(<span class="string">'mount'</span>, <span class="keyword">function</span> (exp) {
+    exp.createCanvas(<span class="number">600</span>, <span class="number">400</span>, { dimension: <span class="number">0</span>, wavelengthScale: <span class="number">1</span> });
+    <span class="keyword">new</span> SphereEmitter([<span class="number">300</span>, <span class="number">200</span>], { preset: <span class="string">'spherical'</span>, is2D: <span class="keyword">true</span> }).addTo(exp.universe);
+});
 </code></pre>
+
+<p>A sketch held as text — or a project with more files beside it, such as a forked part — boots through <code>bootProject(mount, { files: { 'sketch.js': text }, entry: 'sketch.js' })</code>. With no module script at all, load <code>DIST + '/frqtl-web.min.js'</code> with a <code>&lt;script&gt;</code> tag and call <code>FRQTL.bootScene(…)</code>.</p>
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
 
@@ -289,7 +294,7 @@ sun.dispose();
 
 <h3>Live STUDIO-editable fields</h3>
 
-<p>Beyond the construction options above, the STUDIO Inspector exposes these fields on an already-placed <code>SphereEmitter</code> (captured/round-tripped by codegen):</p>
+<p>Beyond the construction options above, the STUDIO Inspector exposes these fields on an already-placed <code>SphereEmitter</code> (written into the sketch's <code>parts</code> block by the writer, <code>toSketch</code>). Its <em>Fork into project</em> button copies the part's file into the folder as <code>parts/MySphereEmitter.js</code> through <code>recipeContext.fork(name, NewKind, { by })</code>, the same door a page calls:</p>
 
 <table>
     <tr><th>Field</th><th>Default</th><th>Description</th></tr>
@@ -611,38 +616,6 @@ ObjectFactory.create(<span class="string">'LiveChart'</span>, {
 
 <!-- ═══════════════════════════════════════════════════════════════ -->
 
-<h2 id="setup-factories">Setup Factories</h2>
-
-<p>Setup factories configure complete experiments. Each takes <code>(universe, options)</code> and returns an object with the created game objects.</p>
-
-<h3>setupParticleWalk(universe, options)</h3>
-
-<p>Wave-particle duality demonstration. A single emitter fires particles that exhibit both random-walk and wave behavior.</p>
-
-<pre><code><span class="keyword">var</span> result = setupParticleWalk(universe, {});
-<span class="comment">// result.largeObjects — walls for rendering</span>
-<span class="comment">// result.emitter — the QuantumEmitter</span>
-</code></pre>
-
-<h3>setupWaveInterference(universe, options)</h3>
-
-<p>Two coherent radial sources producing interference patterns.</p>
-
-<pre><code><span class="keyword">var</span> result = setupWaveInterference(universe, {});
-<span class="comment">// result.sources.source1, result.sources.source2, result.largeObjects</span>
-</code></pre>
-
-<h3>setupCircuitBasic(universe, options)</h3>
-
-<p>Series resistor circuit — battery, wire, resistor, ground.</p>
-
-<pre><code><span class="keyword">var</span> result = setupCircuitBasic(universe, {});
-<span class="comment">// result.battery, result.probes.before_resistor, result.probes.after_resistor</span>
-<span class="comment">// result.setBatteryVoltage(v), result.setBatteryAmperage(amp), result.getCircuitState()</span>
-</code></pre>
-
-<!-- ═══════════════════════════════════════════════════════════════ -->
-
 <h2 id="constants">Constants</h2>
 
 <h3>CollisionTypes</h3>
@@ -699,7 +672,7 @@ carries no color. Set it via the render-intent <code>string_map</code> (sugar-la
 
 <div class="callout">
     <strong>Bring your own renderer.</strong> The engine is renderer-agnostic. The shipped p5 and three.js providers
-    (<code>js/compat/renderer/providers/</code> in this package) are two examples behind one frozen interface —
+    (<code>frqtl/compat/renderer/providers/</code> in this package) are two examples behind one frozen interface —
     write your own provider implementing the same <code>init</code>/<code>setSize</code>/<code>renderTick</code>/<code>filter</code>/<code>destroy</code>
     surface to render to Canvas 2D, WebGL, or any other target.
 </div>
@@ -708,7 +681,7 @@ carries no color. Set it via the render-intent <code>string_map</code> (sugar-la
 
 <div style="margin-top:60px; padding-top:20px; border-top:1px solid #222; color:#444; font-size:0.75rem;">
     <p>Copyright 2023-2026 Essam Abadir. Licensed under the DeSciX Community License.</p>
-    <p><strong style="color:#555">@descix/frqtl-sdk</strong> — No force calculations. Physics emerges.</p>
+    <p><strong style="color:#555">@descix/frqtl-web</strong> · <strong style="color:#555">@descix/frqtl-node</strong> — No force calculations. Physics emerges.</p>
 </div>
 
 </div>

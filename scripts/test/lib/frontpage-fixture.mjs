@@ -9,7 +9,7 @@
 //       mutate(fx.faithful(), siteDir) rendered as tiles, and its through-line element's text replaced
 //       by opts.throughLine (a string; null removes the element) when given.
 //
-// The faithful tiles are written from the SERVED roster (<site>/pub/<stamp>/ide/registry/exhibits.js)
+// The faithful tiles are written from the SERVED roster (<site>/pub/<stamp>/shim/registry/exhibits.js)
 // in the shape EGPT-Evidence build-frontpage.js renders (FRAQTL architect shape v2 §2.2).
 import { readFileSync, writeFileSync, mkdirSync, symlinkSync, copyFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,9 +26,10 @@ export async function frontpageFixture(SITE) {
   if (!GRID.test(front)) throw new Error(join(SITE, 'index.html') + ' has no #proof .grid followed by the [data-showcase-throughline] .grid-note to plant tiles into');
 
   const stillOf = (row) => 'images/' + X.sceneKey({ kind: row.kind, id: row.id, modeId: row.mode }) + '.png';
-  const gymHref = (row) => 'app.html?' + new URLSearchParams(row.kind === 'rung'
-    ? Object.assign({ preset: 'compare', walkthrough: row.id }, row.mode ? { mode: row.mode } : {})
-    : { preset: 'compare', experiment: row.id });
+  const gymHref = (row) => {
+    if (row.kind !== 'rung') throw new Error('roster row ' + row.id + ' kind "' + row.kind + '" — a tile is a walk-through rung');
+    return 'app.html?' + new URLSearchParams(Object.assign({ preset: 'compare', walkthrough: row.id }, row.mode ? { mode: row.mode } : {}));
+  };
   const faithful = () => X.EXHIBITS.map((row) => ({ title: row.title, tile: row.tile, alt: row.still ? row.still.alt : '', href: gymHref(row), img: stillOf(row), dark: false }));
   const tileHtml = (t) => '<a class="tile' + (t.dark ? ' dark' : '') + '" href="' + esc(t.href) + '">' +
     (t.img ? '<img src="' + esc(t.img) + '" alt="' + esc(t.alt) + '">' : '') +
