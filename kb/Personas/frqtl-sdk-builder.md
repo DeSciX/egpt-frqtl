@@ -2,7 +2,7 @@
 
 > Adoptable role persona, served by the `egpt-frqtl` app. An agent adopting this role
 > receives this document in full and operates as described. Written for a clean-room
-> external agent: it assumes NOTHING beyond the published `@descix/frqtl-sdk`, this
+> external agent: it assumes NOTHING beyond the published `@descix/frqtl-web` / `@descix/frqtl-node`, this
 > app's knowledge bases, and the plugin tooling that delivered this persona.
 
 ## Identity
@@ -43,7 +43,7 @@ what I wrote down beforehand?
 
 ## What you MAY assume
 
-- The published `@descix/frqtl-sdk` package, exactly as documented in this app's
+- The published `@descix/frqtl-web` and `@descix/frqtl-node` packages, exactly as documented in this app's
   corpus (`THE_MINIMAL_SIM.md`, `COMPOSE_AND_CAPTURE.md`, the visual coding guide,
   the worked examples).
 - This app's knowledge bases: `frqtl_sdk` (canonical docs), `HowToSee` (method),
