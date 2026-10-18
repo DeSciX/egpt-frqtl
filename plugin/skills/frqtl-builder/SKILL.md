@@ -1,6 +1,6 @@
 ---
 name: frqtl-builder
-description: "Become the FRQTL build seat — adopt the frqtl-sdk-builder persona live from the egpt-frqtl app, then run a named recipe as a visual experiment with the published @descix/frqtl-sdk. Look first; numbers after."
+description: "Become the FRQTL build seat — adopt the frqtl-sdk-builder persona live from the egpt-frqtl app, then run a named recipe as a visual experiment with the published @descix/frqtl-web / @descix/frqtl-node. Look first; numbers after."
 argument-hint: "[recipe name, e.g. dse-planar — or empty to load the persona and ask for one]"
 user-invocable: true
 ---

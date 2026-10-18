@@ -36,7 +36,7 @@ resolves its bands.
 
 The published capture stack is how you see:
 
-- `require('@descix/frqtl-sdk/eyes')` → `openHostedEyes({...})` → `getStill(...)`
+- `require('@descix/frqtl-node/eyes')` → `openHostedEyes({...})` → `getStill(...)`
   returns provenance-stamped stills of the real rendered scene (guide:
   `COMPOSE_AND_CAPTURE.md` in this app's corpus).
 - `capture('field')` is the renderer-free heightfield tap — the cheap machine channel

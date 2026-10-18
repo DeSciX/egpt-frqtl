@@ -6,11 +6,10 @@
 // Serves <dir> (default: this repo's site/) at http://127.0.0.1:<port>/site/ (refused if the port is
 // taken — never drifts). For each tile of <site>/index.html, in a fresh browser context, the tile's
 // href must land on the GYM playing the scene the link names:
-//   - [data-role=gym-root] renders, with data-scene = walkthrough:<id> (or <id> for ?experiment=),
+//   - [data-role=gym-root] renders, with data-scene = walkthrough:<id>,
 //     the scene select on that value and, when the link names a mode, that mode's strip button active;
-//   - the GYM's frame is the scene host (experiments/empty/index.html for a rung,
-//     experiments/<id>/ for an experiment page) and the scene is applied: the GYM records
-//     data-booted=1 and the frame publishes its runner;
+//   - the GYM's frame is the scene host (experiments/empty/index.html) and the scene is applied: the GYM records
+//     data-booted=1 and the frame's page door (window.FrqtlPage) publishes its runner;
 //   - zero uncaught errors or unhandled rejections in any frame, no GYM error banner, no boot failure
 //     recorded by the frame.
 // Then the brand row: on the GYM, [data-role=frqtl-brand-home] is a link that resolves to
@@ -91,7 +90,6 @@ const ERROR_TRAP = () => {
 function linkedScene(href) {
   const q = new URLSearchParams(href.split('?')[1] || '');
   if (q.has('walkthrough')) return { value: 'walkthrough:' + q.get('walkthrough'), mode: q.get('mode'), host: /\/experiments\/empty\/index\.html$/ };
-  if (q.has('experiment')) return { value: q.get('experiment'), mode: null, host: new RegExp('/experiments/' + q.get('experiment') + '/(index\\.html)?$') };
   return null;
 }
 
@@ -123,7 +121,7 @@ try {
       const why = [];
       if (!resp || resp.status() !== 200) { why.push(`${t.href} answered ${resp ? resp.status() : 'nothing'}`); return why; }
       const want = linkedScene(t.href);
-      if (!want) { why.push(`${t.href} names no GYM scene (?walkthrough= or ?experiment=)`); return why; }
+      if (!want) { why.push(`${t.href} names no GYM scene (?walkthrough=)`); return why; }
       const root = await page.waitForSelector('[data-role="gym-root"]', { timeout: 30000 }).catch(() => null);
       if (!root) { why.push(`${t.href} did not land on the GYM (no [data-role=gym-root] after 30 s)`); return why; }
       const deadline = Date.now() + BOOT_MS;
@@ -151,8 +149,10 @@ try {
       else {
         const u = new URL(frame.url());
         if (!want.host.test(u.pathname)) why.push(`the GYM frame is ${u.pathname}, not the scene host ${want.host}`);
-        const fr = await frame.evaluate(() => ({ runner: !!window._frqtlApp, failed: document.documentElement.dataset.egptBootFailed || null }));
-        if (!fr.runner) why.push('the frame publishes no runner (_frqtlApp) — the scene was not applied');
+        const fr = await frame.evaluate(() => ({ door: !!window.FrqtlPage, runner: !!(window.FrqtlPage && window.FrqtlPage.runner),
+                                                  failed: document.documentElement.dataset.egptBootFailed || null }));
+        if (!fr.door) why.push('the frame defines no page door (window.FrqtlPage) — it is not a booted FRQTL page');
+        else if (!fr.runner) why.push('the frame publishes no runner (FrqtlPage.runner) — the scene was not applied');
         if (fr.failed) why.push('the frame recorded boot failure at phase ' + fr.failed);
       }
       return why;

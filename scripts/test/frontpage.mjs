@@ -3,7 +3,7 @@
 //
 //   node scripts/test/frontpage.mjs [--site <dir>]        (default: this repo's site/)
 //
-// The tiles are the SERVED showcase roster: EXHIBITS from <site>/pub/<build>/ide/registry/exhibits.js,
+// The tiles are the SERVED showcase roster: EXHIBITS from <site>/pub/<build>/shim/registry/exhibits.js,
 // <build> = the data-frqtl-site-build stamp on <site>/app.html (the bytes the refresh published).
 // Never FRAQTL's tree.
 //
@@ -13,9 +13,9 @@
 //   tiles  — the #proof tiles are EXHIBITS, one per row, in roster order:
 //              title (<b>) and sentence (<span>) are the row's `title` and `tile`;
 //              href is a RELATIVE GYM deep link (an absolute link to this site's own origin is
-//              refused as a self-link) — app.html?preset=compare&walkthrough=<id>[&mode=<m>] for a
-//              rung (mode iff the row names one), app.html?preset=compare&experiment=<id> for an
-//              experiment row — with exactly those keys, ids resolving in the served registries;
+//              refused as a self-link) — app.html?preset=compare&walkthrough=<id>[&mode=<m>] (mode iff
+//              the row names one) — with exactly those keys, the id resolving in the served
+//              walk-through registry; a row of any kind but 'rung' fails;
 //              the call to action is "Open live ↗";
 //              a tile carries an <img> iff it is not .dark, and the img is images/<sceneKey>.png
 //              (exhibits.js sceneKey of the row), present in <site>/images/, its alt the row's
@@ -77,7 +77,7 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
 
 // ── tiles ────────────────────────────────────────────────────────────────────
 {
-  const { X, W, E } = await servedRegistries(SITE);
+  const { X, W } = await servedRegistries(SITE);
 
   const links = proofLinks(html);
   for (const t of links.filter((l) => !isTile(l))) fail('tiles', 'a link in #proof that is not a tile: ' + t.href);
@@ -126,9 +126,7 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
         }
       }
     } else {
-      if (keys !== 'experiment,preset') why.push('href ' + t.href + ' keys {' + keys + '}, want {experiment,preset}');
-      else if (q.get('experiment') !== row.id) why.push('href experiment=' + q.get('experiment') + ', roster id ' + row.id);
-      else if (!E.experimentById(row.id)) why.push('experiment "' + row.id + '" is not in the served experiments registry');
+      why.push('roster row kind "' + row.kind + '" — a tile is a walk-through rung (?walkthrough=<id>)');
     }
 
     // image: .dark iff no image; the image is the row's still.

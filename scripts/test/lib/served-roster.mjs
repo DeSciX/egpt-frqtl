@@ -1,8 +1,8 @@
 // The one loader of the registries a site SERVES (frontpage.mjs, lib/frontpage-fixture.mjs): the
 // build is the data-frqtl-site-build stamp on <site>/app.html (the bytes the refresh published), the
-// modules are <site>/pub/<build>/ide/registry/{exhibits,walkthrough,experiments}.js. Never FRAQTL's tree.
+// modules are <site>/pub/<build>/shim/registry/{exhibits,walkthrough}.js. Never FRAQTL's tree.
 //
-//   await servedRegistries(site) → { build, appHtml, X (exhibits), W (walkthrough), E (experiments) }
+//   await servedRegistries(site) → { build, appHtml, X (exhibits), W (walkthrough) }
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,9 +15,11 @@ export async function servedRegistries(SITE) {
       JSON.stringify(stamps) + ') — refresh site/ from a stamped bundle (scripts/refresh-site.sh)');
   }
   const build = stamps[0];
-  const reg = join(SITE, 'pub', build, 'ide', 'registry');
+  // The bundle publishes no registry path (no import-map row, no manifest): shim/registry mirrors
+  // FRAQTL's lib/shim/registry, which the bundle places at pub/<build>/shim/.
+  const reg = join(SITE, 'pub', build, 'shim', 'registry');
   const mods = {};
-  for (const [key, file] of [['X', 'exhibits.js'], ['W', 'walkthrough.js'], ['E', 'experiments.js']]) {
+  for (const [key, file] of [['X', 'exhibits.js'], ['W', 'walkthrough.js']]) {
     if (!existsSync(join(reg, file))) {
       throw new Error(join(reg, file) + ' is missing — the site serves build ' + build + ', which ships no ' + file +
         ' in its registry; the tiles are the served showcase roster, so refresh site/ from a FRAQTL bundle that serves it (scripts/refresh-site.sh)');

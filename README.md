@@ -12,7 +12,7 @@ Developers are encouraged to make new impossible cards — Three.js-oriented dev
 card is a scene the FRQTL engine computes live in the visitor's tab: compose it from the SDK's parts,
 render it with the renderer you already know, and propose it for the front page's "Impossible things,
 running." grid (`site/index.html`, section `#proof`). The grid is the FRQTL showcase roster the bundle
-serves (`site/pub/<build>/ide/registry/exhibits.js`, `EXHIBITS`): a new card is a new roster row, and
+serves (`site/pub/<build>/shim/registry/exhibits.js`, `EXHIBITS`): a new card is a new roster row, and
 its tile opens the scene in the GYM.
 
 ## Layout
@@ -50,7 +50,7 @@ scripts/
   test/frontpage.mjs           static gate for site/index.html: #proof cards first, approved lede, tiles ==
                                the served EXHIBITS in order (title, tile line, GYM href, still and its
                                alt), the through-line == the served SHOWCASE_THROUGH_LINE (against
-                               site/pub/<build>/ide/registry/, <build> = site/app.html's stamp)
+                               site/pub/<build>/shim/registry/, <build> = site/app.html's stamp)
   test/frontpage-controls.mjs  controls for frontpage.mjs on fixture front pages (`npm test`)
   test/frontpage-tiles.mjs     browser gate: every #proof tile lands on the GYM with its scene applied;
                                the IDE's brand links to the front page
