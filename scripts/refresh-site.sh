@@ -4,9 +4,11 @@
 #
 #   scripts/refresh-site.sh <path-to-.deploy-static>
 #
-# The bundle ships its IDE entry as app.html (APP_PAGE; FRAQTL's owner is
-# lib/shim/engine/router.js STATIC_APP_PAGE) beside its relative app-assets/ and pub/, and the
-# refresh publishes it as site/app.html unchanged. The front page is the publisher's: a bundle that
+# The site's shape is the pinned @descix/frqtl-web ./site-graph export, read by a node one-liner and never
+# typed here: STATIC_APP_PAGE (the IDE entry, APP_PAGE below), SITE_GRAPH_DIR (GRAPH_DIR), SITE_BUILD_ATTR
+# (BUILD_ATTR), HOST_PROVIDED_ATTR (HOST_ATTR), SITE_BUILD_ID_RE and siteBuildStampOf, all through
+# scripts/test/lib/served-roster.mjs (siteGraph, siteBuildOf, otherBuildDirs), which names the package once. The bundle ships its IDE entry as APP_PAGE beside its
+# relative app-assets/ and GRAPH_DIR/, and the refresh publishes it as site/APP_PAGE unchanged. The front page is the publisher's: a bundle that
 # ships an index.html is refused. site/index.html (the front page), site/images/,
 # site/DeSciXAppSDK.js (the shell SDK shim the front page and the IDE load) and site/share.json (the
 # share metadata the edge worker injects into the shell head; its assets live under images/) are
@@ -14,35 +16,40 @@
 # leaves them absent when absent, and refuses a bundle that ships any of those names.
 #
 # HOST-PROVIDED: a bundle declares each publisher file it NEEDS on the element that consumes it —
-# `data-frqtl-host-provided` on a src/href in its app.html (FRAQTL's static build splices
-# <script src="DeSciXAppSDK.js" data-frqtl-host-provided> and <link rel="home" href="index.html"
-# data-frqtl-host-provided>). The set is read from those bytes, never typed here. Each declared
+# HOST_ATTR on a src/href in its APP_PAGE (FRAQTL's static build splices
+# <script src="DeSciXAppSDK.js" HOST_ATTR> and <link rel="home" href="index.html" HOST_ATTR>). The set is read from those bytes, never typed here. Each declared
 # name must be a SITE_FOREIGN name present in site/, or the refresh is refused with site/ untouched: "absent stays absent" does not hold for a declared name, because
-# the published app.html would load a file the site does not serve.
+# the published APP_PAGE would load a file the site does not serve.
 #
-# The bundle's build sha is read from the data-frqtl-site-build attribute in its
-# app.html — the bytes published as site/app.html. A bundle without it is refused: provenance
+# The bundle's build sha is the one BUILD_ATTR stamp on its APP_PAGE (siteBuildStampOf, which throws on more
+# than one) — the bytes published as site/APP_PAGE. A bundle without it is refused: provenance
 # is read from the bytes, never typed by hand. The stamp also NAMES the bundle's graph directory:
-# every file the entry pages load sits under pub/<build>/ (the HTML entries stay at fixed URLs),
-# so the bundle must carry pub/<build>/ and no other pub/<8-hex>/ directory — derived from the
-# stamp, never a second derivation. The previous build's pub/<build>/ leaves site/ with the rest of
+# every file the entry pages load sits under GRAPH_DIR/<build>/ (the HTML entries stay at fixed URLs),
+# so the bundle must carry GRAPH_DIR/<build>/ and no other GRAPH_DIR/<build id>/ directory — derived from the
+# stamp, never a second derivation. The previous build's GRAPH_DIR/<build>/ leaves site/ with the rest of
 # the old bundle.
 #
 # Maintainer state never ships: a bundle (or a carried-over publisher entry) holding a .claude/ or
 # agent-memory/ directory anywhere is refused, site/ untouched.
 #
-# TWO refusals, two facts, both read from the bundle itself:
+# THREE refusals, three facts, all read from the bundle itself:
 #   KNOWN_FAILING.json   present  → the bundle ships surfaces known to fail with no
 #                                  mechanical detector (FRAQTL scripts/_known-failing.mjs).
+#   the pinned releases  the bundle's whole graph (GRAPH_DIR/<build>/ and the entries beside it) is not the
+#                                  releases package.json pins, byte for byte, by the package's siteGraphFaults
+#                                  (scripts/test/served-release.mjs --site <bundle>) → refused before site/ is touched.
+#                                  A GRAPH=local bundle carries locally built bytes, so it is refused by construction.
 #   VERIFICATION.json    missing, stale, or not all-GREEN → the bundle was never verified,
 #                                  or was verified RED, or the record belongs to a DIFFERENT
 #                                  build than the one being published. FRAQTL's
 #                                  scripts/verify-static-deploy.sh writes it on every run and
 #                                  leaves .deploy-static/ on disk when a phase goes RED, so
 #                                  without this check a failed verification publishes silently.
-#                                  Read: `build` and `phases` ({<phase>: "GREEN"|...}). The
+#                                  Read: `build`, `phases` ({<phase>: "GREEN"|...}) and `graph`
+#                                  ({<placed package>: <its dist-manifest.json sha256>}). The
 #                                  verdicts are the members of `phases` ONLY, each exactly "GREEN";
-#                                  a record without a non-empty `phases` object is refused
+#                                  a record without a non-empty `phases` object, or whose `graph` is not
+#                                  the installed records of the placed packages, is refused
 #                                  (scripts/lib/verification.sh::check_verification; controls:
 #                                  scripts/test/verification-record.sh).
 set -euo pipefail
@@ -54,11 +61,15 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 UPSTREAM_REPO="FRAQTL"
 SITE="$ROOT/site"
 PROVENANCE="$ROOT/.descix/site-provenance.json"
-# The IDE entry the bundle ships and the site publishes, and the top-level site/ entries owned
-# outside the bundle. The provenance fingerprint and file count cover the bundle-derived set:
+# The top-level site/ entries owned outside the bundle. The provenance fingerprint and file count cover the bundle-derived set:
 # SITE_FOREIGN is excluded from both and named in the record as tree_excludes.
-APP_PAGE="app.html"
 SITE_FOREIGN=(index.html images DeSciXAppSDK.js share.json)
+
+# The site's shape, from the pinned package (resolved from this repo's node_modules).
+SITE_ROSTER="$ROOT/scripts/test/lib/served-roster.mjs"
+SHAPE=$(node --input-type=module -e "const { siteGraph } = await import(process.argv[1]); try { const g = await siteGraph(); for (const k of ['STATIC_APP_PAGE', 'SITE_GRAPH_DIR', 'SITE_BUILD_ATTR', 'HOST_PROVIDED_ATTR']) { if (typeof g[k] !== 'string' || !g[k]) throw new Error('no ' + k + ' export'); } if (!(g.SITE_BUILD_ID_RE instanceof RegExp)) throw new Error('no SITE_BUILD_ID_RE export'); if (typeof g.siteBuildStampOf !== 'function') throw new Error('no siteBuildStampOf export'); process.stdout.write([g.STATIC_APP_PAGE, g.SITE_GRAPH_DIR, g.SITE_BUILD_ATTR, g.HOST_PROVIDED_ATTR].join('\\n')); } catch (e) { process.stdout.write(e.message); process.exit(1); }" "$SITE_ROSTER" 2>&1) \
+  || die "the site shape (scripts/test/lib/served-roster.mjs siteGraph) does not load from $ROOT — run npm ci: $SHAPE"
+{ read -r APP_PAGE; read -r GRAPH_DIR; read -r BUILD_ATTR; read -r HOST_ATTR; } <<< "$SHAPE"
 
 [ $# -eq 1 ] || die "usage: scripts/refresh-site.sh <path-to-.deploy-static>"
 SRC=$1
@@ -74,22 +85,22 @@ leaked=$( (cd "$SRC" && find . \( -name .claude -o -name agent-memory \) -print)
 # A bundle that still ships pages the assembler knows are broken is not deployable.
 [ ! -e "$SRC/KNOWN_FAILING.json" ] || die "$SRC/KNOWN_FAILING.json is present — the bundle ships known-failing pages: $(jq -c '[.. | .path? // empty]' "$SRC/KNOWN_FAILING.json" 2>/dev/null || cat "$SRC/KNOWN_FAILING.json"); land their fixes in FRAQTL and rebuild"
 
-builds=$(grep -oE 'data-frqtl-site-build="[^"]*"' "$SRC/$APP_PAGE" | sed -E 's/^data-frqtl-site-build="(.*)"$/\1/' | sort -u || true)
-[ -n "$builds" ] || die "$SRC/$APP_PAGE carries no data-frqtl-site-build attribute — rebuild the bundle with FRAQTL \`make static-deploy\` at a ref that stamps it"
-[ "$(printf '%s\n' "$builds" | wc -l | tr -d ' ')" -eq 1 ] || die "$SRC/$APP_PAGE carries conflicting data-frqtl-site-build values: $(echo $builds)"
-printf '%s' "$builds" | grep -qE '^[0-9a-f]{8}$' || die "data-frqtl-site-build=\"$builds\" is not a build id (8 hex digits)"
-UPSTREAM_SHA=$builds
+# The one stamp, by the package's reader (it throws on more than one; null and a non-build-id are refused).
+UPSTREAM_SHA=$(node --input-type=module -e "const { siteBuildOf } = await import(process.argv[1]); try { process.stdout.write((await siteBuildOf(process.argv[2])).build); } catch (e) { process.stdout.write(e.message); process.exit(1); }" "$SITE_ROSTER" "$SRC" 2>&1) \
+  || die "$SRC/$APP_PAGE has no single build stamp — rebuild the bundle with FRAQTL \`make static-deploy GRAPH=release\` at the pinned release's tag: $UPSTREAM_SHA"
 
 # The graph directory the stamp names, and no other build's.
-[ -d "$SRC/pub/$UPSTREAM_SHA" ] || die "$SRC/pub/$UPSTREAM_SHA/ is missing — the bundle's $APP_PAGE is stamped $UPSTREAM_SHA, so its graph must sit under pub/$UPSTREAM_SHA/"
-others=$(cd "$SRC/pub" && for d in */; do d=${d%/}; printf '%s\n' "$d"; done | grep -E '^[0-9a-f]{8}$' | grep -vx "$UPSTREAM_SHA" || true)
-[ -z "$others" ] || die "$SRC/pub/ carries another build's graph directory ($(echo $others)) beside pub/$UPSTREAM_SHA/ — one bundle, one build"
+[ -d "$SRC/$GRAPH_DIR/$UPSTREAM_SHA" ] || die "$SRC/$GRAPH_DIR/$UPSTREAM_SHA/ is missing — the bundle's $APP_PAGE is stamped $UPSTREAM_SHA, so its graph must sit under $GRAPH_DIR/$UPSTREAM_SHA/"
+# One scan (served-roster.mjs::otherBuildDirs) whose exit code is read: a scan that did not run is a refusal. It is the
+# only guard against a stray GRAPH_DIR/<build id>/, which the whole-graph gate does not judge.
+others=$(node --input-type=module -e "const { otherBuildDirs } = await import(process.argv[1]); try { process.stdout.write((await otherBuildDirs(process.argv[2], process.argv[3])).join(' ')); } catch (e) { process.stdout.write(e.message); process.exit(1); }" "$SITE_ROSTER" "$SRC" "$UPSTREAM_SHA" 2>&1) \
+  || die "$SRC/$GRAPH_DIR/ could not be scanned for another build's graph directory — refusing: $others"
+[ -z "$others" ] || die "$SRC/$GRAPH_DIR/ carries another build's graph directory ($(echo $others)) beside $GRAPH_DIR/$UPSTREAM_SHA/ — one bundle, one build"
 
 # The verification record must exist, belong to THIS build, and be GREEN in every phase.
 check_verification "$SRC/VERIFICATION.json" "$UPSTREAM_SHA"
 
 # The host-provided set, from the bundle's own bytes: every element carrying the attribute.
-HOST_ATTR="data-frqtl-host-provided"
 HOST_PROVIDED=()
 while IFS= read -r tag; do
   [ -n "$tag" ] || continue
@@ -103,6 +114,11 @@ for name in ${HOST_PROVIDED[@]+"${HOST_PROVIDED[@]}"}; do
   [ "$owned" -eq 1 ] || die "$SRC/$APP_PAGE declares \"$name\" $HOST_ATTR, but it is not a name this site owns outside the bundle (SITE_FOREIGN: ${SITE_FOREIGN[*]}) — refusing to publish an app page that loads a file nobody publishes"
   [ -e "$SITE/$name" ] || die "$SRC/$APP_PAGE declares \"$name\" $HOST_ATTR, and site/$name is missing — the published $APP_PAGE would load a file the site does not serve; vendor it into site/ first"
 done
+
+# The bundle must be the pinned releases: its whole graph is the placed packages' bytes at the versions
+# package.json pins (scripts/test/served-release.mjs, run against the bundle), checked before site/ is touched.
+release=$(node "$ROOT/scripts/test/served-release.mjs" --site "$SRC" --package "$ROOT/package.json" 2>&1) \
+  || die "$SRC is not the releases package.json pins — refresh from a FRAQTL \`make static-deploy GRAPH=release\` bundle built at the pinned release's tag, or bump both pins to the bundle's releases first (README, Pin bump): $release"
 
 # The bundle as published: unchanged.
 replace_tree "$SRC" "$SITE" "${SITE_FOREIGN[@]}"

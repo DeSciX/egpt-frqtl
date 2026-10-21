@@ -1,8 +1,12 @@
 {
+  "name": "egpt-frqtl",
+  "private": true,
   "scripts": {
-    "test": "bash scripts/test/verification-record.sh && bash scripts/test/refresh-site.sh && node scripts/test/share-contract.mjs && node --no-warnings scripts/test/frontpage-controls.mjs"
+    "test": "bash scripts/test/verification-record.sh && bash scripts/test/refresh-site.sh && node scripts/test/share-contract.mjs && node scripts/test/served-release.mjs && node scripts/test/served-release-controls.mjs && node --no-warnings scripts/test/frontpage-controls.mjs"
   },
   "devDependencies": {
+    "@descix/egpt-math-sdk": "0.3.3-p2.1",
+    "@descix/frqtl-web": "0.6.1-p3.1",
     "@playwright/test": "1.61.0"
   },
   "license": "SEE LICENSE IN LICENSE.md"

@@ -13,14 +13,14 @@ card is a scene the FRQTL engine computes live in the visitor's tab: compose it 
 render it with the renderer you already know, and propose it for the front page's "Impossible things,
 running." grid (`site/index.html`, section `#proof`). The grid is the FRQTL showcase roster the bundle
 serves (`site/pub/<build>/shim/registry/exhibits.js`, `EXHIBITS`): a new card is a new roster row, and
-its tile opens the scene in the GYM.
+its tile opens the scene in STUDIO.
 
 ## Layout
 
 ```
 site/                          the ONLY directory uploaded as the site
   index.html                   front page — built from the shared template (CLAUDE.md), never written
-                               by a refresh; its #proof tiles are the served roster's GYM links
+                               by a refresh; its #proof tiles are the served roster's STUDIO links
   images/*                     front-page images (template images, tile stills) — generator output with
                                index.html, never written by a refresh
   DeSciXAppSDK.js              DeSciX app-side SDK — generator output with index.html, never written by a refresh
@@ -48,14 +48,20 @@ scripts/
   lib/share-contract.mjs       the pre-upload check of site/share.json against runbook §7.3
   test/refresh-site.sh         controls for refresh-site.sh (`npm test`)
   test/frontpage.mjs           static gate for site/index.html: #proof cards first, approved lede, tiles ==
-                               the served EXHIBITS in order (title, tile line, GYM href, still and its
-                               alt), the through-line == the served SHOWCASE_THROUGH_LINE (against
-                               site/pub/<build>/shim/registry/, <build> = site/app.html's stamp)
+                               the served EXHIBITS in order (title, tile line, href == the row's
+                               showcaseHref, still and its alt), the through-line == the served
+                               SHOWCASE_THROUGH_LINE (the served copy of the pinned ./registry export)
   test/frontpage-controls.mjs  controls for frontpage.mjs on fixture front pages (`npm test`)
-  test/frontpage-tiles.mjs     browser gate: every #proof tile lands on the GYM with its scene applied;
-                               the IDE's brand links to the front page
-  test/frontpage-tiles-controls.mjs  controls for frontpage-tiles.mjs (unknown id, STUDIO tile, no home link)
-  test/lib/                    the #proof reader and the fixture-site builder the gates and controls share
+  test/frontpage-tiles.mjs     browser gate: every #proof tile lands on STUDIO with its scene booted and
+                               zero Monaco requests at open; the IDE's brand links to the front page
+  test/frontpage-tiles-controls.mjs  controls for frontpage-tiles.mjs (unknown id, GYM tile, Monaco at open,
+                               no home link)
+  test/served-release.mjs      gate: the whole served graph (pub/<build>/ and the entries beside it) is the
+                               pinned releases, byte for byte, by the pinned ./site-graph siteGraphFaults,
+                               and each pin is the installed record's version
+  test/served-release-controls.mjs  controls for served-release.mjs (`npm test`)
+  test/lib/                    the served-site locator (build stamp, registry, placed releases), the #proof
+                               reader and the fixture builders the gates and controls share
   test/host-view.mjs           browser gate: site/ pages under a stub shell BUS, real SDK bytes
   test/host-view/              its shell-harness page — a fixture, outside site/
   test/share-contract.mjs      controls for lib/share-contract.mjs (`npm test`)
@@ -82,16 +88,23 @@ scripts exit non-zero and change nothing when the input fails a check.
 scripts/refresh-site.sh <.deploy-static directory>
 ```
 
-The argument is the `.deploy-static/` directory FRAQTL `make static-deploy` assembles and
-browser-verifies at the root of a FRAQTL checkout. The script
+The argument is the `.deploy-static/` directory FRAQTL `make static-deploy GRAPH=release` assembles and
+browser-verifies at a FRAQTL checkout of the pinned release's tag: its graph is the published packages' bytes.
+A `GRAPH=local` bundle carries locally built bytes, is not publishable, and the refresh refuses it.
+The refresh follows the npm publish: the releases it serves are on npm before the bundle is built.
+Pin bump: a refresh to a new FRQTL release first bumps BOTH exact pins in this repo's `package.json`, `@descix/frqtl-web` and `@descix/egpt-math-sdk`, to the releases the bundle placed (then `npm ci`). The EGPT-Evidence front-page build reads the roster from this repo's refreshed `site/` (the build `.descix/site-provenance.json` records), so the front page is rebuilt after a refresh that changes the roster.
+`scripts/test/served-release.mjs` holds the whole served graph to the pinned releases byte for byte: every file under `pub/<build>/` is its placement's listed file or record, every listed file is served, each entry page sits at `pub/<entry>` and not in the graph, and each installed record is the pinned version (the rule is the pinned `@descix/frqtl-web/site-graph` export's `siteGraphFaults`, over its `SITE_PLACEMENTS`). The refresh runs it against the bundle (`--site <bundle>`) and refuses, `site/` untouched, a bundle that is not the pinned releases; `npm test` runs it against `site/`, so a pin bump without the refresh is red.
+The script reads the site's shape (`app.html`, `pub/`, the build-stamp reader and the build-id pattern, the host-provided attribute, the placements) from the pinned `@descix/frqtl-web/site-graph` export, so it runs after `npm ci`. The script
 refuses a non-directory, a bundle that ships an `index.html` (the front page is this repo's; FRAQTL
 ships `app.html`), a directory without `app.html`, and an `app.html` without exactly one
-`data-frqtl-site-build="<git sha>"` attribute. It refuses a bundle — or a carried-over `SITE_FOREIGN`
+build stamp (the export's `siteBuildStampOf`) that is a build id. It refuses a bundle — or a carried-over `SITE_FOREIGN`
 entry — holding a `.claude/` or `agent-memory/` directory anywhere. It also refuses a bundle containing
 `KNOWN_FAILING.json`, which the FRAQTL assembler writes while it ships pages it knows are broken,
-and a bundle whose `VERIFICATION.json` is missing, records a different build than the stamp, or does
-not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"` (the reader reads
-`build` and `phases` only) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
+and a bundle whose `VERIFICATION.json` is missing, records a different build than the stamp, does
+not carry a non-empty `phases` object whose every verdict is exactly `"GREEN"`, or does not carry a
+`graph` object whose keys are the placed packages and whose values are the sha256s of their installed
+`<package>/dist-manifest.json` (the reader reads `build`, `phases` and `graph` only; a record without
+`graph` is refused) — FRAQTL's `scripts/verify-static-deploy.sh` writes that record on every
 run and leaves the bundle on disk when a phase goes RED, so without this check a failed browser
 verification would publish silently.
 It also refuses a bundle that ships any name in the script's `SITE_FOREIGN` — the one list of
@@ -161,7 +174,7 @@ workspace, API URL and environment in use). Always dry-run first.
 
 | What | Command |
 |---|---|
-| Site front-page gates | `node scripts/test/frontpage.mjs` (static) and `node scripts/test/frontpage-tiles.mjs --port <n>` (browser) against `site/` — both must report every row PASS before `descix site upload` |
+| Site front-page gates | `node scripts/test/frontpage.mjs` (static) and `node scripts/test/frontpage-tiles.mjs --port <n>` (browser) against `site/`, with `node scripts/test/frontpage-tiles-controls.mjs --port <n>` beside it (the browser gate's negative detectors fail open on drift; the controls show they still bite) — all must report every row PASS before `descix site upload` |
 | Site host-view gate | `node scripts/test/host-view.mjs --port <n>` against `site/` — must report 5/5 PASS before `descix site upload` |
 | Site share-contract gate | `node scripts/lib/share-contract.mjs` — `site/share.json` (the link-preview card; contract: the app-developer runbook §7.3) must report PASS before `descix site upload`; it reports ABSENT and exits 0 when there is none |
 | Site | `descix site upload --dry-run`, then `descix site upload` |

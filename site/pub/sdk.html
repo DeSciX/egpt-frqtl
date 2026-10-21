@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FRQTL SDK — Game Objects API Reference</title>
-    <link rel="stylesheet" href="bd6e2e45/css/bootstrap.min.css">
+    <link rel="stylesheet" href="5bd499fc/css/bootstrap.min.css">
     <style>
         *, *::before, *::after { box-sizing: border-box; }
         body {
@@ -132,7 +132,7 @@ universe.experimentTickFunctions.push(<span class="keyword">function</span> (u) 
 
 <p>In the browser (<code>@descix/frqtl-web</code>), <code>bootScene(mount, sketch)</code> boots the engine and the renderer and runs a sketch — a <code>buildExperiment(exp)</code> function whose first statement creates the world. Import the parts the sketch uses from the same dist the doors come from:</p>
 
-<pre><code><span class="keyword">const</span> DIST = <span class="string">'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.0/dist'</span>;
+<pre><code><span class="keyword">const</span> DIST = <span class="string">'https://cdn.jsdelivr.net/npm/@descix/frqtl-web@0.6.1-p3.1/dist'</span>;
 <span class="keyword">const</span> { bootScene } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/experiments/_shared/doors.js'</span>);
 <span class="keyword">const</span> { SphereEmitter } = <span class="keyword">await</span> import(DIST + <span class="string">'/frqtl/parts/index.js'</span>);
 
