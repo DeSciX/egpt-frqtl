@@ -60,15 +60,15 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
 
 // ── lede ─────────────────────────────────────────────────────────────────────
 {
-  // CEO hand edit 2026-10-14, EGPT-Evidence 3edf669.
-  const LEDE = 'FRQTL is an actual quantum computer that runs so efficiently it runs in an iPhone. ' +
-    'The double-slit experiment, or DSE, is what Richard Feynman, the father of quantum computing ' +
-    'called the ‘only mystery’ and ‘absolutely impossible.’ In 1981 Feynman birthed the idea of what ' +
-    'the world now calls ‘qubit’ based quantum computing but FRQTL takes a different approach based ' +
-    'on the work of Feynman\'s collaborators at the Manhattan Project. FRQTL uses a Monte Carlo ' +
-    'method-like approach based on the work of Stanislaw Ulam and John von Neumann which was ' +
+  // The author's paragraph, verbatim from EGPT 64a728f site-src/frontpage/egpt-frqtl.json.
+  const LEDE = 'FRQTL is an actual quantum computer that is so efficient it runs in an iPhone. ' +
+    'The double-slit experiment, or DSE, is what Richard Feynman called the ‘only mystery’ and ' +
+    '‘absolutely impossible.’ In 1981 Feynman birthed the idea of what the world now calls ‘qubit’ ' +
+    'based quantum computing but FRQTL takes a different approach. FRQTL uses a Monte Carlo ' +
+    'method-like approach based on the work of Stanislaw Ulam and John von Neumann, Feynman\'s ' +
+    'collaborators on the Super at the Manhattan Project. The Ulam and von Neumann approach was ' +
     'continued by Gian-Carlo Rota at Los Alamos National Laboratory and later pursued at Brookhaven ' +
-    'National Laboratory Quantum Chromodynamics (QCD) and super-computing projects.';
+    'National Laboratory Quantum Chromodynamics (QCD) and other governmental super-computing projects.';
   const m = proof.match(/<div class="sec-head">[\s\S]*?<p class="lede">([\s\S]*?)<\/p>/);
   const got = m ? text(m[1]) : '(no lede)';
   if (got === LEDE) pass('lede: the #proof lede is the approved paragraph');
