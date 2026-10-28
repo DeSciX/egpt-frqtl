@@ -1,9 +1,9 @@
 {
   "upstream_repo": "FRAQTL",
-  "upstream_sha": "1310dd35",
+  "upstream_sha": "6afb5661",
   "app_page": "app.html",
   "file_count": 600,
-  "tree_sha256": "419444195b5ac87960e7fcdd23a98df3014fdb660784267881401360efb31231",
+  "tree_sha256": "045e50dc38a54d3a2b0e7f4b4c5a01f562a72915e4bc22b5120499248037e5c7",
   "tree_excludes": [
     "index.html",
     "images",

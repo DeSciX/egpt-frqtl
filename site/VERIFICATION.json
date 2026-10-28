@@ -1,7 +1,7 @@
 {
-  "build": "1310dd35",
+  "build": "6afb5661",
   "graph": {
-    "@descix/frqtl-web": "8482c0f902c244e54dbdf3f50a19f3766edf2a868ebc80ffa6adaba954ed92d2",
+    "@descix/frqtl-web": "7fe2f871e29581bc1d8d2fed445b5d26f5f591e1effbb08edc0d132d4ece70ae",
     "@descix/egpt-math-sdk": "05ea7f39cdeb717f31f8e8677f9e4213623f6e71990247c67850fd0eda0b62ee"
   },
   "phases": {
@@ -9,11 +9,11 @@
     "root": "GREEN",
     "prefix": "GREEN"
   },
-  "verified_at": "2026-10-26T15:22:49Z",
+  "verified_at": "2026-10-28T02:29:15Z",
   "instrument": {
     "script": "scripts/verify-static-deploy.sh",
     "urls": "scripts/verify-static-deploy-urls.mjs",
     "artifact": "scripts/test/site-graph-export.test.mjs",
-    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/boot-phases.spec.js", "apps/ide/test/stale-graph.spec.js", "apps/ide/test/run-once-explainers.spec.js", "apps/ide/test/gym-scene-player.spec.js", "apps/ide/test/gym-scene-editor.spec.js", "apps/ide/test/studio-scene-buffer.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/stack-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js", "apps/ide/test/studio-palette-selector.spec.js", "apps/ide/test/surface-deep-links.spec.js", "apps/ide/test/studio-landing.spec.js", "apps/ide/test/gym-studio-scene-list.spec.js", "apps/ide/test/studio-scene-census.spec.js", "apps/ide/test/rosetta-default-chain.spec.js", "apps/ide/test/studio-hands.spec.js", "apps/ide/test/studio-grab-ux.spec.js", "apps/ide/test/studio-2d-parity.spec.js", "apps/ide/test/math-dist-debug-panel.spec.js", "apps/ide/test/static-ide-debug-panel-once.spec.js", "apps/ide/test/mobile-portrait.spec.js", "apps/ide/test/paint-of.spec.js", "apps/ide/test/studio-drop-emitter-run.spec.js", "apps/ide/test/studio-drop-error-surface.spec.js", "apps/ide/test/studio-declared.spec.js", "apps/ide/test/gym-reopen-cards.spec.js", "apps/ide/test/gym-play-state.spec.js", "apps/ide/test/rotated-wall-no-outline.spec.js", "apps/ide/test/studio-saved-page-controls.spec.js", "apps/ide/test/studio-project-folder.spec.js", "apps/ide/test/gym-save-as.spec.js", "apps/ide/test/rosetta-saved-chains.spec.js", "apps/ide/test/studio-deep-link-run.spec.js"]
+    "specs": ["apps/ide/test/static-deploy.spec.js", "apps/ide/test/boot-phases.spec.js", "apps/ide/test/stale-graph.spec.js", "apps/ide/test/run-once-explainers.spec.js", "apps/ide/test/gym-scene-player.spec.js", "apps/ide/test/gym-scene-editor.spec.js", "apps/ide/test/studio-scene-buffer.spec.js", "apps/ide/test/engine-ready-contract.spec.js", "apps/ide/test/stack-ready-contract.spec.js", "apps/ide/test/sdk-artifact-pages.spec.js", "apps/ide/test/studio-palette-selector.spec.js", "apps/ide/test/surface-deep-links.spec.js", "apps/ide/test/studio-landing.spec.js", "apps/ide/test/gym-studio-scene-list.spec.js", "apps/ide/test/studio-scene-census.spec.js", "apps/ide/test/rosetta-default-chain.spec.js", "apps/ide/test/studio-hands.spec.js", "apps/ide/test/studio-grab-ux.spec.js", "apps/ide/test/studio-2d-parity.spec.js", "apps/ide/test/math-dist-debug-panel.spec.js", "apps/ide/test/static-ide-debug-panel-once.spec.js", "apps/ide/test/mobile-portrait.spec.js", "apps/ide/test/paint-of.spec.js", "apps/ide/test/studio-drop-emitter-run.spec.js", "apps/ide/test/studio-drop-error-surface.spec.js", "apps/ide/test/studio-declared.spec.js", "apps/ide/test/gym-reopen-cards.spec.js", "apps/ide/test/gym-play-state.spec.js", "apps/ide/test/rotated-wall-no-outline.spec.js", "apps/ide/test/studio-saved-page-controls.spec.js", "apps/ide/test/studio-project-folder.spec.js", "apps/ide/test/gym-save-as.spec.js", "apps/ide/test/rosetta-saved-chains.spec.js", "apps/ide/test/studio-deep-link-run.spec.js", "apps/ide/test/studio-showcase-cards.spec.js"]
   }
 }
