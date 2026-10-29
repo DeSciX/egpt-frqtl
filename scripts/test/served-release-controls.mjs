@@ -4,7 +4,7 @@
 // faithful copy PASSES naming each placement, every planted fault FAILS naming its path.
 //
 //   node scripts/test/served-release-controls.mjs [--site <dir>]
-import { appendFileSync, copyFileSync, cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +54,18 @@ for (const r of releases) run('faithful-names-' + r.name, () => {}, 'PASS:' + r.
 // The stamp names the graph.
 run('no-build-stamp', (site) => writeFileSync(join(site, STATIC_APP_PAGE), appHtml.replace(new RegExp('\\s' + SITE_BUILD_ATTR + '="[^"]*"'), '')), SITE_BUILD_ATTR);
 run('other-build', (site) => writeFileSync(join(site, STATIC_APP_PAGE), appHtml.replace(new RegExp('(' + SITE_BUILD_ATTR + '=")[^"]*"'), '$100000000"')), join(SITE_GRAPH_DIR, '00000000'));
+
+run('other-build-dir-beside', (site) => { mkdirSync(join(site, SITE_GRAPH_DIR, '00000001')); writeFileSync(join(site, SITE_GRAPH_DIR, '00000001', 'x.js'), '//'); }, 'carries another build\'s graph directory (00000001)');
+
+// STUDIO at the site root is the release's bytes (app.html excepted: the assembly writes into it).
+const STUDIO_FILE = (() => {
+  const r = releases.find((x) => x.dir === '');
+  const key = Object.keys(r.files).sort().find((k) => k.startsWith('studio/') && k !== 'studio/' + STATIC_APP_PAGE);
+  if (!key) throw new Error('the graph-root release lists no STUDIO file but ' + STATIC_APP_PAGE + ' — the STUDIO control has nothing to plant into');
+  return key.slice('studio/'.length);
+})();
+run('studio-file-off', (site) => appendFileSync(join(site, STUDIO_FILE), ' '), 'site-root file ' + STUDIO_FILE + ' is ');
+run('studio-file-missing', (site) => unlinkSync(join(site, STUDIO_FILE)), 'is absent from the site root (' + STUDIO_FILE + ')');
 
 // The graph is each placement's bytes.
 run('local-engine-wasm', (site, graph) => appendFileSync(join(graph, ENGINE_WASM), '\0'), 'graph file ' + ENGINE_WASM + ' is ');
