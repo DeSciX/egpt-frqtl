@@ -1,14 +1,26 @@
 {
-  "upstream_repo": "FRAQTL",
-  "upstream_sha": "6afb5661",
+  "assembled_by_script": "scripts/assemble-site.mjs",
+  "build": "1c374f6f",
+  "releases": [
+    {
+      "name": "@descix/frqtl-web",
+      "version": "0.7.0-p2",
+      "dist_manifest_sha256": "fc51f040ba03b2ed389db74a4abb6dd9d9c6184ff3e92d4842a7b35eee0e2596"
+    },
+    {
+      "name": "@descix/egpt-math-sdk",
+      "version": "0.3.3-p2.1",
+      "dist_manifest_sha256": "05ea7f39cdeb717f31f8e8677f9e4213623f6e71990247c67850fd0eda0b62ee"
+    }
+  ],
+  "roster_href": "https://egpt-frqtl.descix.net/assets/scenes/roster.json",
   "app_page": "app.html",
-  "file_count": 600,
-  "tree_sha256": "045e50dc38a54d3a2b0e7f4b4c5a01f562a72915e4bc22b5120499248037e5c7",
+  "file_count": 553,
+  "tree_sha256": "6c06fc1b58be9dd7b02c6c779873d9e04f44c0e2904a1bc4ee72cf2d7d6ff754",
   "tree_excludes": [
     "index.html",
     "images",
     "DeSciXAppSDK.js",
     "share.json"
-  ],
-  "refreshed_by_script": "scripts/refresh-site.sh"
+  ]
 }

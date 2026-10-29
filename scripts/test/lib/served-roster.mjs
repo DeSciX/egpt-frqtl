@@ -1,10 +1,9 @@
-// The one locator of what a site SERVES and of the releases it is held to (frontpage.mjs, frontpage-tiles.mjs,
-// lib/frontpage-fixture.mjs, served-release.mjs, lib/verification.sh). The site's shape (its graph directory, the
-// build-stamp reader of its IDE page and the build-id pattern, the IDE page's name, the package placements) is the
-// pinned @descix/frqtl-web ./site-graph export. The build is siteBuildStampOf(<site>/<STATIC_APP_PAGE>) (the bytes
-// the refresh published); the in-graph registry path is derived from the pinned package's ./registry export, made
-// relative to the package's dist root (the directory holding its exported dist-manifest.json), and joined onto
-// <site>/<SITE_GRAPH_DIR>/<build>/. No path, attribute, pattern or placed package is typed here; never FRAQTL's tree.
+// The one locator of what a site SERVES and of the releases and the roster it is held to (frontpage.mjs,
+// frontpage-tiles.mjs, lib/frontpage-fixture.mjs, served-release.mjs, assemble-site.mjs). The site's shape (its graph
+// directory, the build-stamp reader of its IDE page and the build-id pattern, the IDE page's name, the package
+// placements) is the pinned @descix/frqtl-web ./site-graph export. The roster is this repo's scenes/roster.json,
+// normalized by the pinned ./registry export at its media URL (scripts/lib/scenes.mjs ROSTER_HREF): the bytes the
+// media serves once uploaded. No path, attribute, pattern or placed package is typed here.
 //
 //   await siteGraph() → the ./site-graph export
 //   await siteBuildOf(site) → { build, page, appHtml }: the stamp on <site>/<STATIC_APP_PAGE>, non-null and a build id
@@ -12,21 +11,16 @@
 //       other than <build>: another build's graph beside this one
 //   await placedReleases() → one row per SITE_PLACEMENTS row, read from the ONE installed record
 //       <row.package>/dist-manifest.json: { package, dir, name, version, files, manifest: { file, sha256 }, path }
-//   await servedRegistryDir(site) → { build, appHtml, dir, rel, distRoot, entry }
-//       dir: <site>/<SITE_GRAPH_DIR>/<build>/<rel>; rel: the registry directory relative to the dist root;
-//       entry: the export's entry file name inside it
-//   await servedRegistries(site) → { build, appHtml, X }
-//       X: the SERVED copy of the ./registry export's entry module — EXHIBITS, showcaseHref, showcaseUrl,
-//       SHOWCASE_SITE, sceneKey, walkthroughById, … from ONE module instance (showcaseHref refuses a row
-//       of any other instance)
+//   await siteRoster([rosterFile]) → { R, roster }: R the pinned ./registry module (sceneKey, showcaseHref,
+//       showcaseUrl, … — one instance, whose readers take only its own bags), roster = R.normalizeRoster(<file>, ROSTER_HREF)
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { ROSTER_FILE, ROSTER_HREF, UPLOAD_PREFIX } from '../../lib/scenes.mjs';
 
 export const ROSTER_PKG = '@descix/frqtl-web';
 const REGISTRY_EXPORT = ROSTER_PKG + '/registry';
-const MANIFEST_EXPORT = ROSTER_PKG + '/dist-manifest.json';
 const SITE_GRAPH_EXPORT = ROSTER_PKG + '/site-graph';
 
 function resolveExport(spec) {
@@ -34,21 +28,6 @@ function resolveExport(spec) {
   catch (e) {
     throw new Error(spec + ' does not resolve — run npm ci (package.json pins ' + ROSTER_PKG + '): ' + e.message);
   }
-}
-
-// The pinned package's dist root, its manifest file, its registry directory relative to that root (posix
-// form, as dist-manifest.json keys its files) and its release name.
-export function pinnedRegistry() {
-  const entry = resolveExport(REGISTRY_EXPORT);
-  const manifest = resolveExport(MANIFEST_EXPORT);
-  const distRoot = dirname(manifest);
-  const rel = relative(distRoot, dirname(entry));
-  if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error(REGISTRY_EXPORT + ' resolves to ' + entry + ', outside the dist root ' + distRoot + ' (the directory holding ' +
-      MANIFEST_EXPORT + ') — the package does not place its registry in its dist graph');
-  }
-  const { version } = JSON.parse(readFileSync(resolveExport(ROSTER_PKG + '/package.json'), 'utf8'));
-  return { distRoot, manifest, rel: rel.split(sep).join('/'), entry: basename(entry), release: ROSTER_PKG + '@' + version, version };
 }
 
 // The pinned package's ./site-graph export: the names a static FRQTL site's documents carry.
@@ -65,8 +44,8 @@ export async function siteBuildOf(SITE) {
   const appHtml = readFileSync(page, 'utf8');
   let build;
   try { build = siteBuildStampOf(appHtml); }
-  catch (e) { throw new Error(page + ': ' + e.message + ' — refresh site/ from a bundle stamped once (scripts/refresh-site.sh)'); }
-  if (build === null) throw new Error(page + ' carries no ' + SITE_BUILD_ATTR + ' stamp — refresh site/ from a stamped bundle (scripts/refresh-site.sh)');
+  catch (e) { throw new Error(page + ': ' + e.message + ' — run npm run assemble'); }
+  if (build === null) throw new Error(page + ' carries no ' + SITE_BUILD_ATTR + ' stamp — run npm run assemble');
   if (!SITE_BUILD_ID_RE.test(build)) throw new Error(page + ' is stamped ' + SITE_BUILD_ATTR + '=' + JSON.stringify(build) + ', not a build id (' + SITE_BUILD_ID_RE + ')');
   return { build, page, appHtml };
 }
@@ -100,20 +79,12 @@ export async function placedReleases() {
   });
 }
 
-export async function servedRegistryDir(SITE) {
-  const { SITE_GRAPH_DIR } = await siteGraph();
-  const { build, appHtml } = await siteBuildOf(SITE);
-  const { distRoot, rel, entry } = pinnedRegistry();
-  return { build, appHtml, dir: join(SITE, SITE_GRAPH_DIR, build, ...rel.split('/')), rel, distRoot, entry };
-}
+const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
 
-export async function servedRegistries(SITE) {
-  const { build, appHtml, dir, entry } = await servedRegistryDir(SITE);
-  const file = join(dir, entry);
-  if (!existsSync(file)) {
-    throw new Error(file + ' is missing — the site serves build ' + build + ', which ships no copy of the ' + REGISTRY_EXPORT +
-      ' entry; the tiles are the served showcase roster, so refresh site/ from a FRAQTL bundle of the pinned release (scripts/refresh-site.sh)');
-  }
-  const X = await import(pathToFileURL(file).href);
-  return { build, appHtml, X };
+export async function siteRoster(rosterFile = join(ROOT, UPLOAD_PREFIX, ROSTER_FILE)) {
+  const R = await import(REGISTRY_EXPORT);
+  let json;
+  try { json = JSON.parse(readFileSync(rosterFile, 'utf8')); }
+  catch (e) { throw new Error(rosterFile + ' is unreadable or not JSON: ' + e.message); }
+  return { R, roster: R.normalizeRoster(json, ROSTER_HREF) };
 }

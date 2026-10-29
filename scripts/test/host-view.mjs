@@ -24,6 +24,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { siteGraph } from './lib/served-roster.mjs';
+
+// The IDE page's name: the pinned @descix/frqtl-web ./site-graph export (index.html is the publisher's own front page).
+const { STATIC_APP_PAGE } = await siteGraph();
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const HARNESS = path.join(ROOT, 'scripts/test/host-view/shell-harness.html');
@@ -42,7 +46,7 @@ if (!Number.isInteger(port) || port <= 0) {
 const SITE = path.resolve(arg('--site') || path.join(ROOT, 'site'));
 const SHOTS = arg('--shots') ? path.resolve(arg('--shots')) : null;
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
-for (const f of ['app.html', 'index.html', SDK]) {
+for (const f of [STATIC_APP_PAGE, 'index.html', SDK]) {
   if (!fs.existsSync(path.join(SITE, f))) {
     console.error(`ERROR: ${path.join(SITE, f)} is missing — this gate drives the published site as it is`);
     process.exit(2);
@@ -112,13 +116,13 @@ try {
   }
 
   const CASES = [
-    { name: 'app-html-view-aware-host', query: 'listening=1', page: 'app.html?preset=author', view: 'requested:' + MODE, sets: [MODE] },
-    { name: 'app-html-bare-iframe-host', query: 'listening=0', page: 'app.html?preset=author', view: 'not-listening', sets: [] },
+    { name: 'app-html-view-aware-host', query: 'listening=1', page: STATIC_APP_PAGE + '?preset=author', view: 'requested:' + MODE, sets: [MODE] },
+    { name: 'app-html-bare-iframe-host', query: 'listening=0', page: STATIC_APP_PAGE + '?preset=author', view: 'not-listening', sets: [] },
     { name: 'front-page-view-aware-host', query: 'listening=1', page: 'index.html', view: 'requested:' + MODE, sets: [MODE] },
     { name: 'front-page-bare-iframe-host', query: 'listening=0', page: 'index.html', view: 'not-listening', sets: [] },
     // The SDK, framed with no readable bus, rejects ready() (an unnamed TypeError today); the
     // declarer names that state instead of throwing.
-    { name: 'app-html-no-bus-embedded-no-bridge', query: 'bus=none', page: 'app.html?preset=author', view: 'embedded-no-bridge', sets: [], detail: /^ready\(\) rejected: / },
+    { name: 'app-html-no-bus-embedded-no-bridge', query: 'bus=none', page: STATIC_APP_PAGE + '?preset=author', view: 'embedded-no-bridge', sets: [], detail: /^ready\(\) rejected: / },
   ];
   for (const c of CASES) {
     const got = await row(c.name, c.query, c.page);

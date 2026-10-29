@@ -1,42 +1,42 @@
 #!/usr/bin/env node
 // Static gate for the published front page, <site>/index.html. Exit 0 only when every check passes.
 //
-//   node scripts/test/frontpage.mjs [--site <dir>]        (default: this repo's site/)
+//   node scripts/test/frontpage.mjs [--site <dir>] [--origin <origin>] [--roster <file>]
+//       (defaults: this repo's site/; this app's origin, scripts/lib/scenes.mjs APP_ORIGIN; scenes/roster.json)
 //
-// The tiles are the SERVED showcase roster: EXHIBITS from <site>/pub/<build>/shim/registry/exhibits.js,
-// <build> = the data-frqtl-site-build stamp on <site>/app.html (the bytes the refresh published).
-// Never FRAQTL's tree.
+// The tiles are the showcase of this repo's roster (scenes/roster.json, the bytes the media serves), normalized by
+// the pinned @descix/frqtl-web ./registry (lib/served-roster.mjs::siteRoster): R's readers and the roster bag.
 //
 // Checks:
 //   order  — section#proof (the cards) is the first element after the nav, above the hero.
 //   lede   — the #proof lede is the CEO-approved paragraph, exactly.
-//   tiles  — the #proof tiles are EXHIBITS, one per row, in roster order:
-//              title (<b>) and sentence (<span>) are the row's `title` and `tile`;
-//              href is a RELATIVE GYM deep link (an absolute link to this site's own origin is
-//              refused as a self-link) — app.html?preset=compare&walkthrough=<id>[&mode=<m>] (mode iff
-//              the row names one) — with exactly those keys, the id resolving in the served
-//              walk-through registry; a row of any kind but 'rung' fails;
-//              the call to action is "Open live ↗";
+//   tiles  — the #proof tiles are roster.showcase.rows (the cards), one per card, in roster order:
+//              title (<b>) and sentence (<span>) are the card's `title` and `tile`;
+//              href is the card's link from its one writer, by the self_host rule: R.showcaseHref(roster, card)
+//              (relative) when the page's origin is roster.showcase.siteOrigin, else R.showcaseUrl(roster, card)
+//              (absolute on that origin); the call to action is "Open live ↗";
 //              a tile carries an <img> iff it is not .dark, and the img is images/<sceneKey>.png
-//              (exhibits.js sceneKey of the row), present in <site>/images/, its alt the row's
-//              `still.alt`.
+//              (R.sceneKey of the card), present in <site>/images/, its alt the card's `still.alt`.
+//   stills — every card that declares a still has images/<R.sceneKey>.png in <site>, refused by name.
 //   through-line — #proof holds exactly one [data-showcase-throughline] element, after the grid, and
-//              its text is the served SHOWCASE_THROUGH_LINE.
+//              its text is roster.showcase.throughLine.
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { servedRegistries } from './lib/served-roster.mjs';
+import { siteRoster } from './lib/served-roster.mjs';
+import { APP_ORIGIN } from '../lib/scenes.mjs';
 import { proofSection, proofLinks, throughLines, isTile, text } from './lib/proof-tiles.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const siteArg = process.argv.indexOf('--site');
-const SITE = resolve(siteArg === -1 ? join(ROOT, 'site') : process.argv[siteArg + 1]);
-const APP_PAGE = 'app.html';
-const GYM_PRESET = 'compare';
+const arg = (n) => { const i = process.argv.indexOf(n); return i === -1 ? undefined : process.argv[i + 1]; };
+const SITE = resolve(arg('--site') || join(ROOT, 'site'));
+const ORIGIN = arg('--origin') || APP_ORIGIN;
+const { R, roster } = await siteRoster(arg('--roster') ? resolve(arg('--roster')) : undefined);
+if (roster.showcase === null) throw new Error('the roster declares no showcase — the front page\'s tiles are its cards');
+const CARDS = roster.showcase.rows;
+const SITE_ORIGIN = roster.showcase.siteOrigin;
+const stillOf = (card) => 'images/' + R.sceneKey(roster, { id: card.id, modeId: card.mode }) + '.png';
 const CTA = 'Open live ↗';
-// This site's own origin: a tile on its own front page links the GYM relatively; the generator's
-// self_host rule writes the absolute form only for OTHER sites' pages.
-const SELF_ORIGIN = 'https://egpt-frqtl.descix.net';
 
 const html = readFileSync(join(SITE, 'index.html'), 'utf8');
 let FAIL = 0;
@@ -77,67 +77,49 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
 
 // ── tiles ────────────────────────────────────────────────────────────────────
 {
-  const { X, W } = await servedRegistries(SITE);
+  // The self_host rule: this page is the showcase site's own iff it is served from roster.showcase.siteOrigin.
+  const SELF = ORIGIN === SITE_ORIGIN;
+  console.log('INFO  page origin ' + ORIGIN + (SELF ? ' is ' : ' is not ') + 'the showcase site ' + SITE_ORIGIN + ': tiles link ' +
+    (SELF ? 'relative, showcaseHref(roster, card)' : 'absolute, showcaseUrl(roster, card)'));
 
   const links = proofLinks(html);
   for (const t of links.filter((l) => !isTile(l))) fail('tiles', 'a link in #proof that is not a tile: ' + t.href);
   const grid = links.filter(isTile);
-  if (grid.length !== X.EXHIBITS.length) {
-    fail('tiles', grid.length + ' #proof tiles, the served roster has ' + X.EXHIBITS.length + ' rows (' +
-      X.EXHIBITS.map((r) => r.id).join(', ') + ')');
+  if (grid.length !== CARDS.length) {
+    fail('tiles', grid.length + ' #proof tiles, the roster showcase has ' + CARDS.length + ' cards (' +
+      CARDS.map((r) => r.id).join(', ') + ')');
   }
 
-  const n = Math.max(grid.length, X.EXHIBITS.length);
+  const n = Math.max(grid.length, CARDS.length);
   for (let i = 0; i < n; i++) {
-    const row = X.EXHIBITS[i];
+    const row = CARDS[i];
     const t = grid[i];
-    const name = 'tile ' + (i + 1) + ' ' + (row ? row.kind + ':' + row.id + (row.mode ? '/' + row.mode : '') : '(no roster row)');
+    const name = 'tile ' + (i + 1) + ' ' + (row ? row.id + (row.mode ? '/' + row.mode : '') : '(no roster card)');
     if (!row) { fail(name, 'extra tile "' + t.title + '" → ' + t.href); continue; }
-    if (!t) { fail(name, 'missing — the roster row "' + row.title + '" has no tile'); continue; }
+    if (!t) { fail(name, 'missing — the roster card "' + row.title + '" has no tile'); continue; }
     const why = [];
     if (t.title !== row.title) why.push('title "' + t.title + '" ≠ roster "' + row.title + '"');
     if (t.tile !== row.tile) why.push('sentence "' + t.tile + '" ≠ roster tile "' + row.tile + '"');
     if (t.cta !== CTA) why.push('call to action "' + t.cta + '" ≠ "' + CTA + '"');
 
-    // href: the GYM deep link of this row, nothing else.
-    const href = t.href || '';
-    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(href)) {
-      why.push(new URL(href, SELF_ORIGIN + '/').origin === SELF_ORIGIN
-        ? 'href ' + href + ' is an absolute self-link — this site\'s own page links its GYM relatively (' + APP_PAGE + '?preset=' + GYM_PRESET + '…)'
-        : 'href ' + href + ' leaves this site — a tile opens this site\'s GYM (' + APP_PAGE + '?preset=' + GYM_PRESET + '…)');
-      fail(name, why.join('; '));
-      continue;
-    }
-    const [path, query = ''] = href.split('?');
-    const q = new URLSearchParams(query);
-    const keys = [...q.keys()].sort().join(',');
-    if (path !== APP_PAGE) why.push('href ' + t.href + ' is not the GYM (' + APP_PAGE + '?preset=' + GYM_PRESET + '…)');
-    else if (q.get('preset') !== GYM_PRESET) why.push('href ' + t.href + ' preset=' + q.get('preset') + ', not ' + GYM_PRESET);
-    else if (row.kind === 'rung') {
-      const want = row.mode ? 'mode,preset,walkthrough' : 'preset,walkthrough';
-      if (keys !== want) why.push('href ' + t.href + ' keys {' + keys + '}, want {' + want + '}');
-      else if (q.get('walkthrough') !== row.id) why.push('href walkthrough=' + q.get('walkthrough') + ', roster id ' + row.id);
-      else if (row.mode && q.get('mode') !== row.mode) why.push('href mode=' + q.get('mode') + ', roster mode ' + row.mode);
-      else {
-        const rung = W.walkthroughById(q.get('walkthrough'));
-        if (!rung) why.push('walkthrough "' + q.get('walkthrough') + '" is not in the served walkthrough registry');
-        else if (q.has('mode') && !W.walkthroughModes(rung).map((m) => m.id).includes(q.get('mode'))) {
-          why.push('mode "' + q.get('mode') + '" is not declared by ' + rung.id);
-        }
-      }
-    } else {
-      why.push('roster row kind "' + row.kind + '" — a tile is a walk-through rung (?walkthrough=<id>)');
+    // href: the card's link from its one writer, relative or absolute by the self_host rule.
+    const want = SELF ? R.showcaseHref(roster, row) : R.showcaseUrl(roster, row);
+    if (t.href !== want) {
+      const other = SELF ? R.showcaseUrl(roster, row) : R.showcaseHref(roster, row);
+      why.push('href ' + t.href + ' ≠ ' + (SELF ? 'showcaseHref' : 'showcaseUrl') + '(roster, card) ' + want +
+        (t.href !== other ? '' : SELF ? ' — an absolute self-link: the showcase site\'s own page links relatively'
+          : ' — a relative link on a page served from ' + ORIGIN + ', which is not ' + SITE_ORIGIN));
     }
 
-    // image: .dark iff no image; the image is the row's still.
+    // image: .dark iff no image; the image is the card's still.
     const dark = t.classes.includes('dark');
-    const still = 'images/' + X.sceneKey({ kind: row.kind, id: row.id, modeId: row.mode }) + '.png';
+    const still = stillOf(row);
     if (dark && t.img) why.push('.dark tile carries an image ' + t.img);
     else if (!dark && !t.img) why.push('tile has no image and is not .dark');
-    else if (t.img && t.img !== still) why.push('image ' + t.img + ' is not the row\'s still ' + still);
+    else if (t.img && t.img !== still) why.push('image ' + t.img + ' is not the card\'s still ' + still);
     else if (t.img && !existsSync(join(SITE, t.img))) why.push('image ' + t.img + ' is not in ' + join(SITE, 'images'));
     if (t.img && (!row.still || t.alt !== row.still.alt)) {
-      why.push('alt "' + t.alt + '" ≠ roster still.alt "' + (row.still ? row.still.alt : '(row declares no still)') + '"');
+      why.push('alt "' + t.alt + '" ≠ roster still.alt "' + (row.still ? row.still.alt : '(card declares no still)') + '"');
     }
 
     if (why.length) fail(name, why.join('; '));
@@ -145,17 +127,23 @@ if (proofBody === null) fail('proof', 'no <section id="proof"> in ' + join(SITE,
   }
 }
 
+// ── stills ───────────────────────────────────────────────────────────────────
+{
+  const missing = CARDS.filter((c) => c.still !== null && !existsSync(join(SITE, stillOf(c))));
+  for (const c of missing) fail('still ' + c.id + (c.mode ? '/' + c.mode : ''), stillOf(c) + ' (R.sceneKey of the card) is not in ' + SITE);
+  if (!missing.length) pass('stills: every card\'s still is in ' + join(SITE, 'images') + ' (' + CARDS.filter((c) => c.still !== null).length + ')');
+}
+
 // ── through-line ─────────────────────────────────────────────────────────────
 {
-  const { X } = await servedRegistries(SITE);
-  const want = Array.isArray(X.SHOWCASE_THROUGH_LINE) ? X.SHOWCASE_THROUGH_LINE.join('') : null;
+  const want = roster.showcase.throughLine === null ? null : roster.showcase.throughLine.join('');
   const got = throughLines(html);
   const gridAt = proof.indexOf('data-exhibits'), markAt = proof.indexOf('data-showcase-throughline');
-  if (want === null) fail('through-line', 'the served roster exports no SHOWCASE_THROUGH_LINE');
+  if (want === null) fail('through-line', 'the roster showcase declares no throughLine');
   else if (got.length !== 1) fail('through-line', got.length + ' [data-showcase-throughline] elements in #proof, want exactly 1');
-  else if (got[0] !== text(want)) fail('through-line', '"' + got[0].slice(0, 80) + '…" ≠ the served SHOWCASE_THROUGH_LINE');
+  else if (got[0] !== text(want)) fail('through-line', '"' + got[0].slice(0, 80) + '…" ≠ the roster showcase.throughLine');
   else if (gridAt < 0 || markAt < gridAt) fail('through-line', 'the through-line is not under the tile grid');
-  else pass('through-line: the served SHOWCASE_THROUGH_LINE, once, under the grid');
+  else pass('through-line: the roster showcase.throughLine, once, under the grid');
 }
 
 process.exit(FAIL);
