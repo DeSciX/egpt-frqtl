@@ -2,12 +2,16 @@
   "name": "egpt-frqtl",
   "private": true,
   "scripts": {
-    "test": "bash scripts/test/verification-record.sh && bash scripts/test/refresh-site.sh && node scripts/test/share-contract.mjs && node scripts/test/served-release.mjs && node scripts/test/served-release-controls.mjs && node --no-warnings scripts/test/frontpage-controls.mjs"
+    "test": "node scripts/test/share-contract.mjs && node scripts/test/served-release.mjs && node scripts/test/served-release-controls.mjs && node scripts/test/site-static.mjs && node --test scripts/test/site-static.test.mjs && node --no-warnings scripts/test/frontpage.mjs && node --no-warnings scripts/test/frontpage-controls.mjs && node scripts/scene-check.mjs && node --test scripts/test/scene-check.test.mjs && node --test scripts/test/no-bucket-reads.test.mjs",
+    "scene-check": "node scripts/scene-check.mjs",
+    "assemble": "node scripts/assemble-site.mjs",
+    "upload-scenes": "node scripts/upload-scenes.mjs"
   },
   "devDependencies": {
     "@descix/egpt-math-sdk": "0.3.3-p2.1",
-    "@descix/frqtl-web": "0.6.1-p3.4",
-    "@playwright/test": "1.61.0"
+    "@descix/frqtl-web": "0.7.0-p2",
+    "@playwright/test": "1.61.0",
+    "acorn": "8.19.0"
   },
   "license": "SEE LICENSE IN LICENSE.md"
 }

@@ -1,4 +1,4 @@
-# Sourced by scripts/refresh-*.sh. The one definition of a tree fingerprint.
+# Sourced by scripts/refresh-kb.sh and run by scripts/assemble-site.mjs. The one definition of a tree fingerprint.
 
 die() {
   echo "ERROR: $*" >&2

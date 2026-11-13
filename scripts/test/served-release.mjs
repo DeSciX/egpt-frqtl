@@ -4,11 +4,13 @@
 //   graph     sha256 of EVERY regular file under <site>/<SITE_GRAPH_DIR>/<build>/, keyed graph-relative (the root
 //             dist-manifest.json included; a symlink or any other non-file is refused);
 //   entries   the SITE_GRAPH_DIR-relative paths of every file under <site>/<SITE_GRAPH_DIR>/ outside <build>/;
+//   app       sha256 of every file at the site root outside <SITE_GRAPH_DIR>/ (STUDIO's files must be the release's,
+//             app.html excepted: the assembly writes the site's facts into it);
 //   releases  one row per SITE_PLACEMENTS row, read from the ONE installed record <row.package>/dist-manifest.json
 //             (lib/served-roster.mjs::placedReleases).
 // <build> is siteBuildStampOf(<site>/<STATIC_APP_PAGE>) (lib/served-roster.mjs::siteBuildOf). Each placed record must
 // be the version package.json pins exactly in devDependencies[<row.package>] (else npm ci, or the pin is not what
-// the site places). scripts/refresh-site.sh runs this gate against a bundle (--site <bundle>) before it touches site/.
+// the site places). No other build's graph directory may sit beside <build>/ (lib/served-roster.mjs::otherBuildDirs).
 // Exit 0 printing the file count per placement only when there is no fault; exit 1 printing the faults.
 //
 //   node scripts/test/served-release.mjs [--site <dir>] [--package <package.json>]
@@ -17,7 +19,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { placedReleases, siteBuildOf, siteGraph } from './lib/served-roster.mjs';
+import { otherBuildDirs, placedReleases, siteBuildOf, siteGraph } from './lib/served-roster.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const siteArg = process.argv.indexOf('--site');
@@ -63,13 +65,17 @@ const pubDir = join(SITE, SITE_GRAPH_DIR);
 const graphDir = join(pubDir, build);
 let graphFiles;
 try { graphFiles = listFiles(graphDir); }
-catch (e) { die('the site is stamped ' + build + ' but has no ' + join(SITE_GRAPH_DIR, build) + '/ (' + (e.code || e.message) + ') — refresh site/ from a bundle of the pinned releases (' + named + ')'); }
+catch (e) { die('the site is stamped ' + build + ' but has no ' + join(SITE_GRAPH_DIR, build) + '/ (' + (e.code || e.message) + ') — run npm run assemble (' + named + ')'); }
 if (!graphFiles.length) die(join(SITE_GRAPH_DIR, build) + '/ is empty');
 const graph = {};
 for (const f of graphFiles) graph[f] = createHash('sha256').update(readFileSync(join(graphDir, f))).digest('hex');
 const entries = new Set(listFiles(pubDir, build));
+const others = await otherBuildDirs(SITE, build);
+if (others.length) die(join(SITE, SITE_GRAPH_DIR) + '/ carries another build\'s graph directory (' + others.join(', ') + ') beside ' + build + '/ — one site, one build');
+const app = {};
+for (const f of listFiles(SITE, SITE_GRAPH_DIR)) app[f] = createHash('sha256').update(readFileSync(join(SITE, f))).digest('hex');
 
-const faults = siteGraphFaults({ graph, entries }, releases);
+const faults = siteGraphFaults({ graph, entries, app }, releases);
 if (faults.length) {
   console.log('FAIL  served-release: ' + join(SITE, SITE_GRAPH_DIR, build) + '/ is not the pinned releases (' + named + '): ' + faults.length + ' fault' + (faults.length > 1 ? 's' : ''));
   for (const f of faults.slice(0, SHOWN)) console.log('  ' + f);
