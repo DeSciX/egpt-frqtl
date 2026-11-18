@@ -27,14 +27,14 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as acorn from 'acorn';
-import { APP_ID, ROSTER_FILE, ROSTER_HREF, UPLOAD_PREFIX, contentTypeOf, sceneObjectOf } from './lib/scenes.mjs';
+import { APP_ID, MEDIA_VISIBILITY, ROSTER_FILE, ROSTER_HREF, UPLOAD_PREFIX, contentTypeOf, sceneObjectOf } from './lib/scenes.mjs';
 import { descix, jsonOf } from './lib/descix.mjs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = '@descix/frqtl-web';
 const SOURCE = /^([0-9a-f]{8})\/([^/]+\.js)$/;
-/** Refuse an upload above this many used bytes, below the app's media quota (the token's storage.limit_bytes): app
- *  media has no list or delete verb yet (the DeSciX platform has them as a proposal). */
+/** Refuse an upload above this many used bytes, below the app's media quota (the token's storage.limit_bytes): the
+ *  headroom is freed by hand with `descix app media-list` and `descix app media-delete`. */
 export const QUOTA_LIMIT_BYTES = 150 * 1024 * 1024;
 const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, '') + ' MB';
 
@@ -117,8 +117,12 @@ function stopMint() { throw ADMITTED; }
 export function readStorageFromUploadToken(upload, checkout) {
     const files = upload.map((u) => ({ path: u.path, content_type: contentTypeOf(u.path), size: u.bytes }));
     const { stdout } = descix(['mcp', 'execute', '--tool', 'get_asset_upload_token', '--params',
-        JSON.stringify({ app_id: APP_ID, files }), '--json'], checkout);
+        JSON.stringify({ app_id: APP_ID, visibility: MEDIA_VISIBILITY, files }), '--json'], checkout);
     const j = jsonOf(stdout, 'get_asset_upload_token');
+    if (j && j.status === 'OK' && j.message && j.message.visibility !== MEDIA_VISIBILITY) {
+        throw new Error('scene-check --quota: get_asset_upload_token answered for visibility ' + JSON.stringify(j.message.visibility) +
+            ', but ' + JSON.stringify(MEDIA_VISIBILITY) + ' was asked for.');
+    }
     const s = j && j.status === 'OK' && j.message ? j.message.storage : undefined;
     if (!s || !Number.isInteger(s.used_bytes) || !Number.isInteger(s.projected_bytes) || !Number.isInteger(s.limit_bytes)) {
         throw new Error('scene-check --quota: storage not readable from the upload token: status ' + JSON.stringify(j && j.status) +
@@ -141,7 +145,7 @@ export function quotaRefusalOf(usedBytes, limitBytes) {
     }
     if (usedBytes > QUOTA_LIMIT_BYTES) {
         return 'used_bytes ' + usedBytes + ' is above ' + QUOTA_LIMIT_BYTES + ' (' + mb(QUOTA_LIMIT_BYTES) + ') of the ' + mb(limitBytes) + ' media quota; ' +
-            'app media has no list or delete verb yet (a DeSciX platform proposal), so only a platform admin can remove objects.';
+            'free space with `descix app media-list -a ' + APP_ID + '` and `descix app media-delete -a ' + APP_ID + ' <path>...` (--dry-run first).';
     }
     return null;
 }

@@ -4,6 +4,8 @@
  *   APP_ID           the app the scenes are media of
  *   APP_ORIGIN       the app's public origin: its site, and its media under <origin>/assets/ (descix app media-upload)
  *   UPLOAD_PREFIX    the media prefix every scene object and the roster sit under
+ *   MEDIA_VISIBILITY 'public': the media space scenes live in (media-upload without --private; the visibility every
+ *                    direct media command sends, since the server refuses an absent one)
  *   ROSTER_FILE      the roster's one fixed name
  *   ROSTER_HREF      the roster's absolute URL: STUDIO's <link rel="frqtl-roster" href>, and normalizeRoster's href
  *   sha8Of(bytes)    the first 8 hex of the sha256 of a scene's bytes
@@ -19,6 +21,7 @@ import { createHash } from 'node:crypto';
 export const APP_ID = 'egpt-frqtl';
 export const APP_ORIGIN = 'https://egpt-frqtl.descix.net';
 export const UPLOAD_PREFIX = 'scenes';
+export const MEDIA_VISIBILITY = 'public';
 export const ROSTER_FILE = 'roster.json';
 export const ROSTER_HREF = APP_ORIGIN + '/assets/' + UPLOAD_PREFIX + '/' + ROSTER_FILE;
 
