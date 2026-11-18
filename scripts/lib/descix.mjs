@@ -11,7 +11,7 @@
  */
 import { spawnSync } from 'node:child_process';
 
-export const CLI_PACKAGE = '@descix/cli@4.3.1';
+export const CLI_PACKAGE = '@descix/cli@5.0.0';
 export const PROD_BANNER = 'env: prod (.descix/workspace.json env.apiUrl) https://descix.net';
 
 export function descix(args, cwd) {

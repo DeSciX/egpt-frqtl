@@ -51,9 +51,10 @@ buildExperiment(exp)`, importing only `@descix/frqtl-web/...` rows of the pinned
 - a scene file with no row and no `unlisted.json` entry, an `unlisted.json` entry with no file, no reason, or a row.
 
 `--quota [--checkout <dir>]` mints an upload token for the planned objects (`get_asset_upload_token`, through
-`descix mcp execute`, run in the checkout that holds the PROD workspace and wallet; minting signs PUT URLs and uploads
-nothing), prints `used_bytes` and `projected_bytes` from its `storage` field, and refuses when `used_bytes` is above
-150 MB of the 200 MB media quota (app media has no list or delete verb yet; the DeSciX platform has them as a
-proposal). A storage field it cannot read, or a CLI whose first line is not the PROD banner, stops it.
+`descix mcp execute` with `visibility` `public`, run in the checkout that holds the PROD workspace and wallet; minting
+signs PUT URLs and uploads nothing), prints `used_bytes` and `projected_bytes` from its `storage` field, and refuses
+when `used_bytes` is above 150 MB of the 200 MB media quota (free space with `descix app media-list` and
+`descix app media-delete`). A storage field it cannot read, a token answered for another visibility, or a CLI whose
+first line is not the PROD banner, stops it.
 
 `scripts/test/scene-check.test.mjs` (in `npm test`) plants each refusal in a temporary copy of `scenes/`.
