@@ -2,7 +2,7 @@
 
 https://egpt-frqtl.descix.net/ (frqtl.com 301-forwards to it); app `egpt-frqtl`, community `egpt`. One site, one repo: this repo builds and uploads this app; nothing else uploads to it.
 Lane app, env PROD from `.descix/workspace.json` (never an env var). Only the published CLI and app-sdk, never platform source; handbook: `descix tell-me-how "<question>"`, then the app-developer runbook, live at https://descix.net/prod/daita-docs/site/app-sdk/app-developer-runbook.html. When the handbook does not answer: stop, write the question with evidence (command, output, the CLI's origin line) for the orchestrator, who asks the owner for a platform session.
-CLI: `npx -y -p @descix/cli@4.3.1 descix …` from this root (written `descix …` below and in README; never a dependency). Its first line reads `env: prod (.descix/workspace.json env.apiUrl) https://descix.net`; read it on every call.
+CLI: `npx -y -p @descix/cli@5.0.0 descix …` from this root (written `descix …` below and in README; never a dependency). Its first line reads `env: prod (.descix/workspace.json env.apiUrl) https://descix.net`; read it on every call.
 
 ## Anti-priors rule
 Agents may not insert their own gloss, directly or indirectly, nor surreptitiously elevate their priors over the prior work here, disregarding the billions of tokens spent on it.
